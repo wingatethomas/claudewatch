@@ -30,20 +30,30 @@ ClaudeWatch polls every 2 seconds and shows all active Claude Code sessions in y
 - **✦ Working** — Claude is actively running
 - **⏸ Idle** — session is waiting for user input
 
-Click any session to focus its window. Works with:
+Each session shows its model (e.g. opus 4.6) and host app. Click any session to focus its window.
+
+### Supported Environments
 
 - **Terminal.app** — focuses the exact window
 - **PyCharm** — focuses the window and switches to the correct terminal tab
 - **VS Code** — focuses the window and switches to the correct terminal tab
 - **tmux** — matches sessions by project name in the window title
 
+### Activity Feed
+
+Right-click any session and select **Activity** to see a timeline of what Claude did — user messages, assistant responses, and every tool call with inputs.
+
 ### Pinned Sessions
 
-Pin sessions you want to come back to. Pinned sessions show 📌 in the dropdown when active, and appear in a separate "Pinned" section when paused. Click a pinned session to resume it in a new Terminal tab. Pins persist across app restarts with a 30-day TTL.
+Pin sessions you want to come back to later. Pinned sessions show ★ when active, and appear in a separate "Pinned" section when paused. Click a pinned session to resume it in a new Terminal tab. Pins persist across app restarts with a 30-day TTL.
 
 ### Notifications
 
-When a session needs attention, ClaudeWatch sends a macOS notification with the project name, task, and what Claude is asking for. Notifications are suppressed if the session's window is already in front, with a 30-second cooldown between alerts.
+Native macOS notifications when a session needs attention. Shows the project name and what Claude is asking for. Notifications are suppressed if the session's window is already in front, with a 30-second cooldown.
+
+### Preferences
+
+Accessible from the dropdown menu. Configure notifications on/off and alert sound.
 
 ### How it works
 
@@ -61,7 +71,7 @@ ClaudeWatch needs **Accessibility** access (System Settings → Privacy & Securi
 
 ### Audit Log
 
-ClaudeWatch writes an audit log to `~/.claude/claudewatch.log` (owner-readable only). It records session starts/ends, status transitions, focus actions, and notifications — never terminal content or sensitive data. Rotates at 1MB with 3 backups.
+ClaudeWatch writes an audit log to `~/.claude/claudewatch.log` (owner-readable only). It records session starts/ends, status transitions, and notifications — never terminal content or sensitive data. Viewable from Preferences → Audit Log.
 
 ```bash
 tail -f ~/.claude/claudewatch.log
