@@ -7,6 +7,8 @@ import webbrowser
 
 import objc
 from AppKit import (
+    NSAlert,
+    NSAlertFirstButtonReturn,
     NSApplication,
     NSApplicationActivationPolicyAccessory,
     NSBox,
@@ -34,13 +36,13 @@ from claudewatch import __version__
 from claudewatch.backend.helpers import escape_applescript, run_applescript
 from claudewatch.backend.repositories.bookmarks import get_pinned_cwds
 from claudewatch.backend.repositories.config import get_available_sounds, get_setting, set_setting
-from claudewatch.backend.repositories.history import get_history
+from claudewatch.backend.repositories.history import get_history, remove_history_entry
 from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES
 from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
-_W = 580
-_H = 380
+_W = 680
+_H = 420
 _SIDEBAR_W = 150
 _CONTENT_W = _W - _SIDEBAR_W
 _PAD = 24
@@ -79,6 +81,18 @@ class _PrefsDelegate(NSObject):
 
     def openRepo_(self, sender: objc.objc_object) -> None:
         webbrowser.open(_REPO_URL)
+
+    def deleteHistoryEntry_(self, sender: objc.objc_object) -> None:
+        """Delete a history entry — tag stores CWD."""
+        cwd = str(sender.representedObject())
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_("Delete this session from history?")
+        alert.setInformativeText_("This cannot be undone.")
+        alert.addButtonWithTitle_("Delete")
+        alert.addButtonWithTitle_("Cancel")
+        if alert.runModal() == NSAlertFirstButtonReturn:
+            remove_history_entry(cwd)
 
     def resumeSession_(self, sender: objc.objc_object) -> None:
         """Resume a session from history — tag stores 'session_id|cwd'."""
@@ -318,18 +332,24 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         date_label.setTextColor_(NSColor.tertiaryLabelColor())
         list_view.addSubview_(date_label)
 
-        # Resume button
-        resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(entry_w - 135, ey - 6, 65, 24))
-        resume_btn.setTitle_("Resume")
-        resume_btn.setBezelStyle_(1)
-        resume_btn.setFont_(NSFont.systemFontOfSize_(11.0))
-        resume_btn.setTarget_(delegate)
-        resume_btn.setAction_(objc.selector(delegate.resumeSession_, signature=b"v@:@"))
-        resume_btn.setRepresentedObject_(f"{sid}|{cwd}")
-        list_view.addSubview_(resume_btn)
+        # Action buttons
+        _btn_w = 70
+        _btn_gap = 6
+        _btn_y = ey - 6
+        bx = entry_w
 
-        # Activity button
-        activity_btn = NSButton.alloc().initWithFrame_(NSMakeRect(entry_w - 65, ey - 6, 65, 24))
+        bx -= _btn_w
+        delete_btn = NSButton.alloc().initWithFrame_(NSMakeRect(bx, _btn_y, _btn_w, 24))
+        delete_btn.setTitle_("Delete")
+        delete_btn.setBezelStyle_(1)
+        delete_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+        delete_btn.setTarget_(delegate)
+        delete_btn.setAction_(objc.selector(delegate.deleteHistoryEntry_, signature=b"v@:@"))
+        delete_btn.setRepresentedObject_(cwd)
+        list_view.addSubview_(delete_btn)
+
+        bx -= _btn_w + _btn_gap
+        activity_btn = NSButton.alloc().initWithFrame_(NSMakeRect(bx, _btn_y, _btn_w, 24))
         activity_btn.setTitle_("Activity")
         activity_btn.setBezelStyle_(1)
         activity_btn.setFont_(NSFont.systemFontOfSize_(11.0))
@@ -337,6 +357,16 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         activity_btn.setAction_(objc.selector(delegate.viewActivity_, signature=b"v@:@"))
         activity_btn.setRepresentedObject_(f"{proj}|{cwd}")
         list_view.addSubview_(activity_btn)
+
+        bx -= _btn_w + _btn_gap
+        resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(bx, _btn_y, _btn_w, 24))
+        resume_btn.setTitle_("Resume")
+        resume_btn.setBezelStyle_(1)
+        resume_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+        resume_btn.setTarget_(delegate)
+        resume_btn.setAction_(objc.selector(delegate.resumeSession_, signature=b"v@:@"))
+        resume_btn.setRepresentedObject_(f"{sid}|{cwd}")
+        list_view.addSubview_(resume_btn)
 
         ey -= 50
 
