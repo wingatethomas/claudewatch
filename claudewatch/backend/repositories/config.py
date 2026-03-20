@@ -10,7 +10,7 @@ _SETTINGS_PATH = os.path.expanduser("~/.claude/claudewatch.json")
 
 _DEFAULTS: dict[str, object] = {
     "notifications_enabled": True,
-    "poll_interval": 2,
+    "poll_interval": 1,
     "notification_sound": "Glass",
     "pin_expiry_days": 30,
 }

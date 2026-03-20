@@ -198,6 +198,32 @@ def _is_accessibility_trusted() -> bool:
         return False
 
 
+def _clean_exit_session(tty: str, pid: int, project: str) -> bool:
+    """Send EOF (Ctrl+D) to a session's TTY for a clean Claude Code exit.
+
+    Claude Code saves the session on EOF, making it resumable with --resume.
+    Falls back to SIGINT if TTY write fails.
+    """
+    tty_path = f"/dev/{tty}" if not tty.startswith("/dev/") else tty
+    try:
+        fd = os.open(tty_path, os.O_WRONLY | os.O_NOCTTY)
+        try:
+            os.write(fd, b"\x04")  # EOF / Ctrl+D
+        finally:
+            os.close(fd)
+        log.info("session.exit project=%s tty=%s pid=%d method=eof", project, tty, pid)
+        return True
+    except OSError:
+        # Fallback to SIGINT if TTY isn't writable
+        try:
+            os.kill(pid, signal.SIGINT)
+            log.info("session.exit project=%s pid=%d method=sigint", project, pid)
+            return True
+        except OSError:
+            log.warning("session.exit failed project=%s pid=%d", project, pid)
+            return False
+
+
 _MAX_ERRORS = 10
 
 
@@ -527,6 +553,7 @@ class ClaudeWatchApp(rumps.App):
         project = session.project
         cwd = session.cwd
         pid = session.pid
+        tty = session.tty
 
         def handler(_: rumps.MenuItem) -> None:
             self._modal_active = True
@@ -553,17 +580,13 @@ class ClaudeWatchApp(rumps.App):
                     quit_alert = NSAlert.alloc().init()
                     quit_alert.setMessageText_("Quit this session?")
                     quit_alert.setInformativeText_(
-                        f"Send Ctrl+C to {project} (pid {pid})?\n"
+                        f"Cleanly exit {project}?\n"
                         f"Resume later from the Pinned section."
                     )
                     quit_alert.addButtonWithTitle_("Quit Session")
                     quit_alert.addButtonWithTitle_("Keep Running")
                     if quit_alert.runModal() == NSAlertFirstButtonReturn:
-                        try:
-                            os.kill(pid, signal.SIGINT)
-                            log.info("session quit: pid=%d project=%s", pid, project)
-                        except OSError:
-                            log.warning("failed to quit session pid=%d", pid)
+                        _clean_exit_session(tty, pid, project)
             finally:
                 self._modal_active = False
                 self._last_menu_key = ""
@@ -575,24 +598,19 @@ class ClaudeWatchApp(rumps.App):
         pid = session.pid
         project = session.project
         cwd = session.cwd
+        tty = session.tty
         pinned = cwd in get_pinned_cwds()
 
         def handler(_: rumps.MenuItem) -> None:
             if pinned:
-                # Pinned: just quit + notify
-                try:
-                    os.kill(pid, signal.SIGINT)
-                    log.info("session quit: pid=%d project=%s", pid, project)
-                    rumps.notification(
-                        title="Session paused",
-                        subtitle=project,
-                        message="Resume from the Pinned section",
-                        sound=False,
-                    )
-                except OSError:
-                    log.warning("failed to quit session pid=%d", pid)
+                _clean_exit_session(tty, pid, project)
+                rumps.notification(
+                    title="Session paused",
+                    subtitle=project,
+                    message="Resume from the Pinned section",
+                    sound=False,
+                )
             else:
-                # Unpinned: confirm first
                 self._modal_active = True
                 try:
                     app = NSApplication.sharedApplication()
@@ -600,15 +618,11 @@ class ClaudeWatchApp(rumps.App):
                     app.activateIgnoringOtherApps_(True)
                     alert = NSAlert.alloc().init()
                     alert.setMessageText_(f"Quit {project}?")
-                    alert.setInformativeText_(f"This will send Ctrl+C to pid {pid}.")
+                    alert.setInformativeText_("This will cleanly exit the Claude session.")
                     alert.addButtonWithTitle_("Quit")
                     alert.addButtonWithTitle_("Cancel")
                     if alert.runModal() == NSAlertFirstButtonReturn:
-                        try:
-                            os.kill(pid, signal.SIGINT)
-                            log.info("session quit: pid=%d project=%s", pid, project)
-                        except OSError:
-                            log.warning("failed to quit session pid=%d", pid)
+                        _clean_exit_session(tty, pid, project)
                 finally:
                     self._modal_active = False
             self._last_menu_key = ""
