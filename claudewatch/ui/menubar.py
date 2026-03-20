@@ -35,6 +35,7 @@ from claudewatch.backend.models import (
 )
 from claudewatch.backend.repositories.bookmarks import get_pinned_cwds, get_pins, pin_session, unpin_session
 from claudewatch.backend.repositories.config import get_setting
+from claudewatch.backend.repositories.history import get_history, record_session
 from claudewatch.backend.services.detection import detect_sessions
 from claudewatch.backend.services.notifications import (
     NotificationManager,
@@ -213,6 +214,7 @@ class ClaudeWatchApp(rumps.App):
         self._modal_active = False
         self._prev_pids: set[int] = set()
         self._prev_status: dict[int, str] = {}
+        self._prev_sessions: dict[int, ClaudeSession] = {}
         self._status_since: dict[int, float] = {}
         self._check_accessibility()
         self.update_display()
@@ -241,11 +243,20 @@ class ClaudeWatchApp(rumps.App):
                     pid,
                 )
 
-        # Ended sessions
+        # Ended sessions — record to history
         for pid in self._prev_pids - current_pids:
             duration = now - self._status_since.get(pid, now)
             log.info("session.ended pid=%d duration=%.0fs", pid, duration)
             self._status_since.pop(pid, None)
+            prev = self._prev_sessions.get(pid)
+            if prev:
+                record_session(
+                    session_id=prev.session_id,
+                    project=prev.project,
+                    cwd=prev.cwd,
+                    model=get_session_model(prev.cwd),
+                    host_app=prev.host_app.value,
+                )
 
         # Status changes — debounced (must hold for 2+ cycles)
         for pid in current_pids & self._prev_pids:
@@ -268,6 +279,7 @@ class ClaudeWatchApp(rumps.App):
 
         self._prev_pids = current_pids
         self._prev_status = current_status
+        self._prev_sessions = session_map
 
     def _check_accessibility(self) -> None:
         """Show a warning if Accessibility permissions are not granted."""
@@ -438,6 +450,31 @@ class ClaudeWatchApp(rumps.App):
                     detail.set_callback(None)
                     self.menu.add(detail)
 
+        # History — ended sessions (exclude active and pinned CWDs)
+        history = get_history()
+        pinned_and_active = active_cwds | {p.get("cwd", "") for p in get_pins()}
+        visible_history = [h for h in history if h.get("cwd", "") not in pinned_and_active][:5]
+        if visible_history:
+            self.menu.add(rumps.separator)
+            hist_header = rumps.MenuItem(f"History ({len(visible_history)})")
+            hist_header.set_callback(None)
+            self.menu.add(hist_header)
+            for entry in visible_history:
+                sid = entry.get("session_id", "")
+                proj = entry.get("project", "unknown")
+                cwd = entry.get("cwd", "")
+                model = entry.get("model", "")
+                ended = entry.get("ended_at", "")[:10]
+                label = f"  {proj}"
+                if model:
+                    label += f" · {model}"
+                if ended:
+                    label += f" · {ended}"
+                item = rumps.MenuItem(label, callback=self._make_resume_handler(sid, cwd))
+                item.add(rumps.MenuItem("Pin...", callback=self._make_history_pin_handler(sid, proj, cwd)))
+                item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler_for_cwd(proj, cwd)))
+                self.menu.add(item)
+
         self.menu.add(rumps.separator)
         self.menu.add(rumps.MenuItem("Preferences...", callback=self._open_preferences))
 
@@ -513,6 +550,39 @@ class ClaudeWatchApp(rumps.App):
 
         def handler(_: rumps.MenuItem) -> None:
             show_activity(project, cwd)
+
+        return handler
+
+    def _make_activity_handler_for_cwd(self, project: str, cwd: str):  # noqa: ANN202
+        def handler(_: rumps.MenuItem) -> None:
+            show_activity(project, cwd)
+
+        return handler
+
+    def _make_history_pin_handler(self, session_id: str, project: str, cwd: str):  # noqa: ANN202
+        def handler(_: rumps.MenuItem) -> None:
+            self._modal_active = True
+            try:
+                app = NSApplication.sharedApplication()
+                app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+                app.activateIgnoringOtherApps_(True)
+                alert = NSAlert.alloc().init()
+                alert.setMessageText_("Pin Session")
+                alert.setInformativeText_(f"Add a note for {project}:")
+                alert.addButtonWithTitle_("Pin")
+                alert.addButtonWithTitle_("Cancel")
+                text_field = NSTextField.alloc().initWithFrame_(((0, 0), (300, 24)))
+                text_field.setStringValue_("")
+                text_field.setPlaceholderString_("e.g. continue refactoring")
+                alert.setAccessoryView_(text_field)
+                alert.window().setInitialFirstResponder_(text_field)
+                if alert.runModal() == NSAlertFirstButtonReturn:
+                    note = str(text_field.stringValue()).strip()
+                    pin_session(session_id, project, cwd, note)
+            finally:
+                self._modal_active = False
+                self._last_menu_key = ""
+                self.update_display()
 
         return handler
 
