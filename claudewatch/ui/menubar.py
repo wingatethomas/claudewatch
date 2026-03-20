@@ -41,6 +41,7 @@ from claudewatch.backend.services.notifications import (
     handle_notification_click,
     install_notification_delegate,
 )
+from claudewatch.backend.services.usage import get_session_model
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
 
@@ -423,9 +424,12 @@ class ClaudeWatchApp(rumps.App):
                 item.add(rumps.MenuItem("Pin session...", callback=self._make_pin_handler(s)))
             item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
         self.menu.add(item)
+        # Detail line: status text + model name
         detail = s.detail_line
-        if detail:
-            detail_item = rumps.MenuItem(f"      {detail}")
+        model = get_session_model(s.cwd)
+        detail_parts = [p for p in [detail, model] if p]
+        if detail_parts:
+            detail_item = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
             detail_item.set_callback(None)
             self.menu.add(detail_item)
 
