@@ -33,7 +33,8 @@ ignore = [
 
 [lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S108", "ANN", "PLR2004", "ARG"]
-"claudewatch/ui/preferences.py" = ["N802", "ARG002"]  # ObjC selector names require camelCase; sender/notification args required by ObjC
+"claudewatch/ui/preferences.py" = ["N802", "ARG002"]  # ObjC selector names require camelCase
+"claudewatch/ui/activity.py" = ["N802", "ARG002"]  # ObjC delegate methods
 
 [format]
 quote-style = "double"
