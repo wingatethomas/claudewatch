@@ -37,12 +37,7 @@ from claudewatch.backend.repositories.bookmarks import get_pinned_cwds, get_pins
 from claudewatch.backend.repositories.config import get_setting
 from claudewatch.backend.repositories.history import record_session
 from claudewatch.backend.services.detection import detect_sessions
-from claudewatch.backend.services.notifications import (
-    NotificationManager,
-    ensure_info_plist,
-    handle_notification_click,
-    install_notification_delegate,
-)
+from claudewatch.backend.services.notifications import NotificationManager
 from claudewatch.backend.services.usage import get_session_model
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
@@ -711,19 +706,4 @@ def main() -> None:
         ))
         logger.addHandler(file_handler)
 
-    # Set up native notifications (Info.plist + delegate)
-    ensure_info_plist()
-    install_notification_delegate()
-
     ClaudeWatchApp().run()
-
-
-@rumps.notifications
-def _on_notification_click(notification: object) -> None:
-    """Handle notification click — focus the relevant session window."""
-    data = getattr(notification, "data", None)
-    if data and isinstance(data, dict) and "pid" in data:
-        try:
-            handle_notification_click(data)
-        except Exception:
-            log.exception("notification click handler failed")
