@@ -41,7 +41,6 @@ from claudewatch.backend.services.notifications import (
     handle_notification_click,
     install_notification_delegate,
 )
-from claudewatch.backend.services.usage import get_session_usage
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
 
@@ -410,15 +409,7 @@ class ClaudeWatchApp(rumps.App):
     def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:
         """Add a session entry + detail line to the menu."""
         pin_mark = " 📌" if pinned else ""
-
-        # Token usage suffix
-        usage = get_session_usage(s.cwd)
-        usage_str = ""
-        if usage:
-            pct = usage.get("context_pct", 0)
-            usage_str = f"  {pct}%"
-
-        label = s.menu_label + suffix + pin_mark + usage_str
+        label = s.menu_label + suffix + pin_mark
         item = rumps.MenuItem(label, callback=self._make_click_handler(s))
         icon = _get_app_icon(s.host_app)
         if icon:
