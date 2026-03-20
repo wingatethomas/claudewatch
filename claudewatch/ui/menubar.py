@@ -226,7 +226,7 @@ class ClaudeWatchApp(rumps.App):
     def __init__(self) -> None:
         super().__init__("ClaudeWatch", quit_button=None)
         self.sessions: list[ClaudeSession] = []
-        self._last_menu_key = ""
+        self._last_menu_key = "__uninitialized__"
         self._consecutive_errors = 0
         self.icon = None
         self.notifications = NotificationManager()
