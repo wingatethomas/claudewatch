@@ -1,4 +1,4 @@
-"""Saved session bookmarks stored at ~/.claude/claudewatch-sessions.json."""
+"""Pinned session bookmarks stored at ~/.claude/claudewatch-pins.json."""
 
 import json
 import logging
@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 log = logging.getLogger("claudewatch")
 
-_PATH = os.path.expanduser("~/.claude/claudewatch-sessions.json")
+_PATH = os.path.expanduser("~/.claude/claudewatch-pins.json")
 _TTL_DAYS = 30
 
 
@@ -19,7 +19,6 @@ def _load() -> list[dict]:
                 return []
     except (OSError, json.JSONDecodeError):
         return []
-    # Prune expired entries
     cutoff = datetime.now(tz=UTC).timestamp() - _TTL_DAYS * 86400
     alive = []
     for entry in data:
@@ -36,43 +35,50 @@ def _load() -> list[dict]:
     return alive
 
 
-def _save(sessions: list[dict]) -> None:
+def _save(pins: list[dict]) -> None:
     try:
         with open(_PATH, "w") as f:
-            json.dump(sessions, f, indent=2)
+            json.dump(pins, f, indent=2)
     except OSError:
-        log.warning("Failed to save bookmarks to %s", _PATH)
+        log.warning("Failed to save pins to %s", _PATH)
 
 
-def save_bookmark(session_id: str, project: str, cwd: str, note: str) -> None:
-    """Save or update a session bookmark."""
-    saved = _load()
+def pin_session(session_id: str, project: str, cwd: str, note: str) -> None:
+    """Pin a session with a note. Updates if already pinned."""
+    pins = _load()
     ts = datetime.now(tz=UTC).isoformat()
-    for entry in saved:
-        if isinstance(entry, dict) and entry.get("session_id") == session_id:
+    # Match by CWD (session IDs change between runs)
+    for entry in pins:
+        if isinstance(entry, dict) and entry.get("cwd") == cwd:
+            entry["session_id"] = session_id
             entry["note"] = note
             entry["timestamp"] = ts
-            _save(saved)
-            log.info("bookmark updated: %s project=%s", session_id[:8], project)
+            _save(pins)
+            log.info("pin updated: project=%s", project)
             return
-    saved.append({
+    pins.append({
         "session_id": session_id,
         "project": project,
         "cwd": cwd,
         "note": note,
         "timestamp": ts,
     })
-    _save(saved)
-    log.info("bookmark saved: %s project=%s", session_id[:8], project)
+    _save(pins)
+    log.info("session pinned: project=%s", project)
 
 
-def get_bookmarks() -> list[dict]:
-    """Return all saved bookmarks."""
+def get_pins() -> list[dict]:
+    """Return all pinned sessions."""
     return _load()
 
 
-def remove_bookmark(session_id: str) -> None:
-    """Remove a bookmark by session ID."""
-    saved = _load()
-    saved = [s for s in saved if not (isinstance(s, dict) and s.get("session_id") == session_id)]
-    _save(saved)
+def get_pinned_cwds() -> set[str]:
+    """Return the set of CWDs that are pinned — for quick lookup."""
+    return {p.get("cwd", "") for p in _load() if isinstance(p, dict)}
+
+
+def unpin_session(cwd: str) -> None:
+    """Unpin a session by CWD."""
+    pins = _load()
+    pins = [p for p in pins if not (isinstance(p, dict) and p.get("cwd") == cwd)]
+    _save(pins)
