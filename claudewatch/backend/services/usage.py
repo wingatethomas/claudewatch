@@ -3,7 +3,7 @@
 import json
 import os
 
-CLAUDE_PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
+from claudewatch.backend.models import CLAUDE_PROJECTS_DIR
 
 # Model display names — keep factual
 _MODEL_NAMES: dict[str, str] = {

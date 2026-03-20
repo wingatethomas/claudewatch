@@ -16,7 +16,7 @@
 - All values interpolated into AppleScript must go through `escape_applescript()` which strips control chars and escapes quotes.
 - JSONL file reads must validate the resolved path stays within `~/.claude/projects/` via `os.path.realpath()` (symlink traversal protection).
 - Notification content must never include raw terminal buffer data. Only tool names and project names. Truncation limit: 200 chars.
-- `terminal-notifier` resolution prefers trusted Homebrew paths before falling back to `shutil.which()`. The fallback is susceptible to PATH hijacking.
+- Notifications use native `NSUserNotificationCenter` via PyObjC. An `Info.plist` with `CFBundleIdentifier` is created automatically next to `sys.executable`.
 
 ## Code Style
 

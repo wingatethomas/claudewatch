@@ -39,8 +39,9 @@ claudewatch/
 │   ├── helpers.py             # Shared utilities: AppleScript, escaping
 │   ├── services/              # Business logic
 │   │   ├── detection.py       # Session discovery via libproc + AppleScript
-│   │   ├── notifications.py   # Notification delivery (terminal-notifier)
-│   │   └── procinfo.py        # Native macOS libproc bindings (ctypes)
+│   │   ├── notifications.py   # Native macOS notifications (NSUserNotification)
+│   │   ├── procinfo.py        # Native macOS libproc bindings (ctypes)
+│   │   └── usage.py           # Session metadata from JSONL logs (model name)
 │   └── repositories/          # Data persistence
 │       ├── config.py          # App settings (~/.claude/claudewatch.json)
 │       └── bookmarks.py       # Saved session bookmarks
