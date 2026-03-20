@@ -382,15 +382,18 @@ class ClaudeWatchApp(rumps.App):
                 cwd = entry.get("cwd", "")
                 ts = entry.get("timestamp", "")
                 label = f"  {proj}"
+                _max_note = 25
                 if note:
-                    label += f" — {note}"
+                    short_note = note[:_max_note] + "…" if len(note) > _max_note else note
+                    label += f" — {short_note}"
                 item = rumps.MenuItem(label, callback=self._make_resume_handler(sid, cwd))
                 item.add(rumps.MenuItem("Remove", callback=self._make_remove_saved_handler(sid)))
                 self.menu.add(item)
                 # Detail: CWD + saved time
                 detail_parts = []
                 if cwd:
-                    detail_parts.append(cwd)
+                    short_cwd = "~" + cwd[len(os.path.expanduser("~")):] if cwd.startswith(os.path.expanduser("~")) else cwd
+                    detail_parts.append(short_cwd)
                 if ts:
                     detail_parts.append(ts[:16].replace("T", " "))
                 if detail_parts:
