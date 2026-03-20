@@ -443,13 +443,12 @@ class ClaudeWatchApp(rumps.App):
 
         help_menu = rumps.MenuItem("Help")
         for tip in (
-            "Click a session to focus its window",
-            "Hover a session for: Activity, Pin, Quit",
-            "★ marks a pinned session",
-            "Pinned sessions can be resumed after quitting",
-            "Activity shows a timeline of what Claude did",
+            "Click → focus window",
+            "Hover → Activity · Pin · Quit",
+            "★ = pinned (resume later)",
+            "🔴 attention  🟢 working  🟡 idle",
         ):
-            item = rumps.MenuItem(tip)
+            item = rumps.MenuItem(f"  {tip}")
             item.set_callback(None)
             help_menu.add(item)
         help_menu.add(rumps.separator)
