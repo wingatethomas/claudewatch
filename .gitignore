@@ -13,5 +13,5 @@ build/
 .pytest_cache/
 .vscode/
 .env
-vscode-extension/
+macOS/
 .claude/worktrees/
