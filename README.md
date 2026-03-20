@@ -26,9 +26,9 @@ uv run claudewatch
 
 ClaudeWatch polls every 2 seconds and shows all active Claude Code sessions in your menu bar, grouped by status:
 
-- **⚠ Attention** — session is waiting for permission (e.g. file edit, shell command)
-- **✦ Working** — Claude is actively running
-- **⏸ Idle** — session is waiting for user input
+- **⚠ Attention** (red dot) — session is waiting for permission
+- **✦ Working** (green dot) — Claude is actively running
+- **⏸ Idle** (yellow dot) — session is waiting for user input
 
 Each session shows its model (e.g. opus 4.6) and host app. Click any session to focus its window.
 
