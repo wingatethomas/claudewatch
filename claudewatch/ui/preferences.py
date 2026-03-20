@@ -15,6 +15,7 @@ from AppKit import (
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
+    NSMutableAttributedString,
     NSPopUpButton,
     NSSound,
     NSTextField,
@@ -23,7 +24,7 @@ from AppKit import (
     NSWindowStyleMaskClosable,
     NSWindowStyleMaskTitled,
 )
-from Foundation import NSMakeRect, NSObject
+from Foundation import NSMakeRect, NSObject, NSRange
 
 from claudewatch import __version__
 from claudewatch.backend.repositories.config import get_available_sounds, get_setting, set_setting
@@ -82,16 +83,15 @@ def _build_ui(content: objc.objc_object, delegate: _PrefsDelegate) -> None:  # n
 
     # ── Branding ──────────────────────────────────
     # App name prominent, version subtle beside it
-    name = NSTextField.labelWithString_("✦ ClaudeWatch")
-    name.setFrame_(NSMakeRect(_PAD, y - 22, 160, 22))
-    name.setFont_(NSFont.boldSystemFontOfSize_(15.0))
-    content.addSubview_(name)
-
-    ver = NSTextField.labelWithString_(f"v{__version__}")
-    ver.setFrame_(NSMakeRect(_PAD + 162, y - 19, 60, 16))
-    ver.setFont_(NSFont.systemFontOfSize_(11.0))
-    ver.setTextColor_(NSColor.tertiaryLabelColor())
-    content.addSubview_(ver)
+    name_field = NSTextField.labelWithString_("")
+    name_field.setFrame_(NSMakeRect(_PAD, y - 22, _INNER, 22))
+    title_str = NSMutableAttributedString.alloc().initWithString_(f"✦ ClaudeWatch  v{__version__}")
+    bold_len = len("✦ ClaudeWatch  ")
+    title_str.addAttribute_value_range_("NSFont", NSFont.boldSystemFontOfSize_(15.0), NSRange(0, bold_len))
+    title_str.addAttribute_value_range_("NSFont", NSFont.systemFontOfSize_(11.0), NSRange(bold_len, len(f"v{__version__}")))
+    title_str.addAttribute_value_range_("NSColor", NSColor.tertiaryLabelColor(), NSRange(bold_len, len(f"v{__version__}")))
+    name_field.setAttributedStringValue_(title_str)
+    content.addSubview_(name_field)
 
     y -= 38
 
