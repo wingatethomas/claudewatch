@@ -96,20 +96,31 @@ class ClaudeSession:
 
     @property
     def menu_label(self) -> str:
+        _max_label = 40
         ind = STATUS_INDICATOR[self.status]
         task = self.task_summary
         tab = f" (tab {self.tab_index + 1})" if self.tab_index is not None else ""
         if task and task != "Claude Code":
-            return f"{ind} {self.project}{tab} — {task}"
-        return f"{ind} {self.project}{tab}"
+            label = f"{ind} {self.project}{tab} — {task}"
+        else:
+            label = f"{ind} {self.project}{tab}"
+        if len(label) > _max_label:
+            return label[: _max_label - 1] + "…"
+        return label
 
     @property
     def detail_line(self) -> str:
         """Secondary line shown under the session in the menu."""
+        _max_detail = 35
+        text = ""
         if self.status == SessionStatus.ATTENTION and self.prompt_text:
-            return self.prompt_text
-        if self.last_output:
-            return self.last_output
+            text = self.prompt_text
+        elif self.last_output:
+            text = self.last_output
+        if text:
+            if len(text) > _max_detail:
+                return text[: _max_detail - 1] + "…"
+            return text
         if self.status == SessionStatus.WORKING:
             return "Working..."
         if self.status == SessionStatus.IDLE:
