@@ -319,18 +319,21 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         cwd = entry.get("cwd", "")
         pin_mark = " ★" if cwd in pinned_cwds else ""
 
-        # Project + model + pin
-        label = NSTextField.labelWithString_(f"{proj}{pin_mark}  {model}")
-        label.setFrame_(NSMakeRect(0, ey, entry_w - 140, 18))
-        label.setFont_(NSFont.systemFontOfSize_(12.0))
+        # Project name + pin
+        label = NSTextField.labelWithString_(f"{proj}{pin_mark}")
+        label.setFrame_(NSMakeRect(0, ey, entry_w - 230, 18))
+        label.setFont_(NSFont.systemFontOfSize_(13.0))
         list_view.addSubview_(label)
 
-        # Date
-        date_label = NSTextField.labelWithString_(ended)
-        date_label.setFrame_(NSMakeRect(0, ey - 16, entry_w - 140, 14))
-        date_label.setFont_(NSFont.systemFontOfSize_(10.0))
-        date_label.setTextColor_(NSColor.tertiaryLabelColor())
-        list_view.addSubview_(date_label)
+        # Meta: last active + model in light grey
+        meta_line = f"Last active: {ended}"
+        if model:
+            meta_line += f"  ·  Model: {model}"
+        meta_label = NSTextField.labelWithString_(meta_line)
+        meta_label.setFrame_(NSMakeRect(0, ey - 18, entry_w - 230, 14))
+        meta_label.setFont_(NSFont.systemFontOfSize_(10.0))
+        meta_label.setTextColor_(NSColor.tertiaryLabelColor())
+        list_view.addSubview_(meta_label)
 
         # Action buttons
         _btn_w = 70
@@ -420,7 +423,7 @@ def show_preferences() -> None:  # noqa: PLR0915
     table.setHeaderView_(None)
     table.setDataSource_(_delegate)
     table.setDelegate_(_delegate)
-    table.setRowHeight_(32)
+    table.setRowHeight_(36)
     table.setBackgroundColor_(NSColor.clearColor())
     table.setIntercellSpacing_(NSMakeSize(0, 2))
 
