@@ -23,14 +23,14 @@ jobs:
 
       - name: Build .app bundle
         run: |
-          uv run briefcase create macOS || true
-          uv run briefcase build macOS
-          uv run briefcase package macOS --no-sign
+          uv run briefcase create macOS --no-input || true
+          uv run briefcase build macOS --no-input
+          uv run briefcase package macOS --adhoc-sign --no-input
 
       - name: Zip the app
         run: |
-          cd macOS/ClaudeWatch
-          zip -r ../../ClaudeWatch-${{ github.ref_name }}-arm64.zip ClaudeWatch.app
+          cd build/claudewatch/macos/app
+          zip -r ../../../../ClaudeWatch-${{ github.ref_name }}-arm64.zip ClaudeWatch.app
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
