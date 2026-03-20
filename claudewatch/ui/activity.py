@@ -1,14 +1,21 @@
 """Activity feed window — shows what Claude did in a session."""
 
+import os
+import re
+import subprocess
+
 import objc
 from AppKit import (
     NSApplication,
     NSApplicationActivationPolicyAccessory,
+    NSBox,
+    NSButton,
     NSColor,
     NSFont,
     NSMutableAttributedString,
     NSScrollView,
     NSTextView,
+    NSView,
     NSWindow,
     NSWindowStyleMaskClosable,
     NSWindowStyleMaskMiniaturizable,
@@ -17,6 +24,8 @@ from AppKit import (
 )
 from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
 
+from claudewatch.backend.helpers import escape_applescript, run_applescript
+from claudewatch.backend.models import CLAUDE_PROJECTS_DIR
 from claudewatch.backend.services.activity import ActivityEntry, parse_activity
 
 _W = 750
@@ -35,13 +44,46 @@ _MONO_BOLD = NSFont.monospacedSystemFontOfSize_weight_(11.0, 0.5)
 _MONO_SMALL = NSFont.monospacedSystemFontOfSize_weight_(10.0, 0)
 
 
+def _get_session_id(cwd: str) -> str:
+    """Get the most recent session ID for a CWD."""
+    proj_key = cwd.replace("/", "-")
+    proj_dir = os.path.join(CLAUDE_PROJECTS_DIR, proj_key)
+    if not os.path.isdir(proj_dir):
+        return ""
+    try:
+        jsonls = sorted(
+            [f for f in os.listdir(proj_dir) if f.endswith(".jsonl")],
+            key=lambda f: os.path.getmtime(os.path.join(proj_dir, f)),
+            reverse=True,
+        )
+    except OSError:
+        return ""
+    return jsonls[0].removesuffix(".jsonl") if jsonls else ""
+
+
 class _ActivityDelegate(NSObject):
-    """Handle window close to clean up tracking."""
+    """Handle window close and resume action."""
 
     _cwd: str = ""
 
     def windowWillClose_(self, notification: objc.objc_object) -> None:
         _windows.pop(self._cwd, None)
+
+    def openInFinder_(self, sender: objc.objc_object) -> None:
+        if os.path.isdir(self._cwd):
+            subprocess.run(["open", self._cwd], check=False)  # noqa: S603, S607
+
+    def resumeSession_(self, sender: objc.objc_object) -> None:
+        sid = _get_session_id(self._cwd)
+        if not sid or not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", sid):
+            return
+        safe_cwd = escape_applescript(self._cwd)
+        run_applescript(f'''
+            tell application "Terminal"
+                activate
+                do script "cd \\"{safe_cwd}\\" && claude -r {sid}"
+            end tell
+        ''')
 
 
 def _append(attr_str: NSMutableAttributedString, text: str, font: NSFont, color: NSColor) -> None:
@@ -94,7 +136,7 @@ def _render_timeline(entries: list[ActivityEntry]) -> NSMutableAttributedString:
     return result
 
 
-def show_activity(project: str, cwd: str) -> None:
+def show_activity(project: str, cwd: str) -> None:  # noqa: PLR0915
     """Show (or bring to front) the activity window for a session."""
     if cwd in _windows:
         _windows[cwd].makeKeyAndOrderFront_(None)
@@ -118,31 +160,60 @@ def show_activity(project: str, cwd: str) -> None:
         2,  # NSBackingStoreBuffered
         False,
     )
-    window.setTitle_(f"{project} — Activity")
+    short_cwd = "~" + cwd[len(os.path.expanduser("~")):] if cwd.startswith(os.path.expanduser("~")) else cwd
+    window.setTitle_(f"{project} — {short_cwd}")
     window.setDelegate_(delegate)
     window.setReleasedWhenClosed_(False)
     window.setMinSize_(NSMakeSize(400, 300))
 
-    # Scrollable text view
-    scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, _H))
+    root = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, _H))
+
+    # Bottom bar with Resume button
+    _bar_h = 40
+    bar = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, _bar_h))
+    bar.setAutoresizingMask_(2)  # flexible width
+
+    sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, _bar_h - 1, _W, 1))
+    sep.setBoxType_(2)
+    bar.addSubview_(sep)
+
+    finder_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - 205, 8, 95, 24))
+    finder_btn.setTitle_("Open Folder")
+    finder_btn.setBezelStyle_(1)
+    finder_btn.setTarget_(delegate)
+    finder_btn.setAction_(objc.selector(delegate.openInFinder_, signature=b"v@:@"))
+    finder_btn.setAutoresizingMask_(4)
+    bar.addSubview_(finder_btn)
+
+    resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - 100, 8, 85, 24))
+    resume_btn.setTitle_("Resume")
+    resume_btn.setBezelStyle_(1)
+    resume_btn.setTarget_(delegate)
+    resume_btn.setAction_(objc.selector(delegate.resumeSession_, signature=b"v@:@"))
+    resume_btn.setAutoresizingMask_(4)
+    bar.addSubview_(resume_btn)
+
+    root.addSubview_(bar)
+
+    # Scrollable text view above the bar
+    scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, _bar_h, _W, _H - _bar_h))
     scroll.setHasVerticalScroller_(True)
     scroll.setAutoresizingMask_(18)  # flexible width + height
 
-    text_view = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, _H))
+    text_view = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, _H - _bar_h))
     text_view.setEditable_(False)
     text_view.setBackgroundColor_(NSColor.textBackgroundColor())
     text_view.setAutoresizingMask_(18)
     text_view.setTextContainerInset_(NSMakeSize(16, 16))
 
-    # Parse and render
     entries = parse_activity(cwd)
     text_view.textStorage().setAttributedString_(_render_timeline(entries))
-
-    # Scroll to bottom (newest)
     text_view.scrollRangeToVisible_(NSRange(len(text_view.string()), 0))
 
     scroll.setDocumentView_(text_view)
-    window.setContentView_(scroll)
+    root.addSubview_(scroll)
+
+    window.setContentView_(root)
 
     _windows[cwd] = window
     window.center()
