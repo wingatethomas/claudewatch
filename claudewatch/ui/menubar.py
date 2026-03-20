@@ -10,7 +10,10 @@ from concurrent.futures import Future, ThreadPoolExecutor
 
 import rumps
 from AppKit import (
+    NSAlert,
+    NSAlertFirstButtonReturn,
     NSApplication,
+    NSApplicationActivationPolicyAccessory,
     NSBezierPath,
     NSColor,
     NSFont,
@@ -19,6 +22,7 @@ from AppKit import (
     NSPasteboard,
     NSString,
     NSStringPboardType,
+    NSTextField,
     NSWorkspace,
 )
 from Foundation import NSMakeRect, NSMakeSize, NSRange
@@ -439,26 +443,37 @@ class ClaudeWatchApp(rumps.App):
         def handler(_: rumps.MenuItem) -> None:
             self._modal_active = True
             try:
-                NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
-                w = rumps.Window(
-                    message=f"Add a note for {project}:",
-                    title="Save Session",
-                    default_text="",
-                    ok="Save",
-                    cancel="Cancel",
-                    dimensions=(300, 24),
-                )
-                response = w.run()
-                if response.clicked:
-                    save_bookmark(sid, project, cwd, response.text.strip())
-                    quit_response = rumps.alert(
-                        title="Quit this session?",
-                        message=f"Send Ctrl+C to {project} (pid {pid})?\n"
-                        f"You can resume later with: claude -r {sid[:8]}...",
-                        ok="Quit Session",
-                        cancel="Keep Running",
+                # Ensure we can receive keyboard input
+                app = NSApplication.sharedApplication()
+                app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+                app.activateIgnoringOtherApps_(True)
+
+                # Custom NSAlert with text field — rumps.Window doesn't get keyboard focus
+                alert = NSAlert.alloc().init()
+                alert.setMessageText_("Save Session")
+                alert.setInformativeText_(f"Add a note for {project}:")
+                alert.addButtonWithTitle_("Save")
+                alert.addButtonWithTitle_("Cancel")
+                text_field = NSTextField.alloc().initWithFrame_(((0, 0), (300, 24)))
+                text_field.setStringValue_("")
+                text_field.setPlaceholderString_("e.g. waiting on PR review")
+                alert.setAccessoryView_(text_field)
+                alert.window().setInitialFirstResponder_(text_field)
+
+                if alert.runModal() == NSAlertFirstButtonReturn:
+                    note = str(text_field.stringValue()).strip()
+                    save_bookmark(sid, project, cwd, note)
+
+                    # Ask to quit
+                    quit_alert = NSAlert.alloc().init()
+                    quit_alert.setMessageText_("Quit this session?")
+                    quit_alert.setInformativeText_(
+                        f"Send Ctrl+C to {project} (pid {pid})?\n"
+                        f"Resume later with: claude -r {sid[:8]}..."
                     )
-                    if quit_response:
+                    quit_alert.addButtonWithTitle_("Quit Session")
+                    quit_alert.addButtonWithTitle_("Keep Running")
+                    if quit_alert.runModal() == NSAlertFirstButtonReturn:
                         try:
                             os.kill(pid, signal.SIGINT)
                             log.info("session quit: pid=%d project=%s", pid, project)
