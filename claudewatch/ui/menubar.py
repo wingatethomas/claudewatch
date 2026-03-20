@@ -446,13 +446,34 @@ class ClaudeWatchApp(rumps.App):
             "Click → focus window",
             "Hover → Activity · Pin · Quit",
             "★ = pinned (resume later)",
-            "⚠ = needs attention",
-            "✦ = working",
-            "⏸ = idle",
         ):
             item = rumps.MenuItem(f"  {tip}")
             item.set_callback(None)
             help_menu.add(item)
+
+        # Color legend with actual colored dots
+        legend = rumps.MenuItem("  Status dots")
+        legend.set_callback(None)
+        legend_text = NSMutableAttributedString.alloc().initWithString_("")
+        _legend_font = NSFont.menuFontOfSize_(13.0)
+        for label, status in (
+            ("  ● attention  ", SessionStatus.ATTENTION),
+            ("● working  ", SessionStatus.WORKING),
+            ("● idle", SessionStatus.IDLE),
+        ):
+            seg = NSMutableAttributedString.alloc().initWithString_(label)
+            r = NSRange(0, len(label))
+            seg.addAttribute_value_range_("NSFont", _legend_font, r)
+            dot_end = label.index("●") + 1
+            seg.addAttribute_value_range_(
+                "NSColor", _STATUS_COLORS[status], NSRange(label.index("●"), 1),
+            )
+            seg.addAttribute_value_range_(
+                "NSColor", NSColor.secondaryLabelColor(), NSRange(dot_end, len(label) - dot_end),
+            )
+            legend_text.appendAttributedString_(seg)
+        legend._menuitem.setAttributedTitle_(legend_text)
+        help_menu.add(legend)
         help_menu.add(rumps.separator)
         help_menu.add(rumps.MenuItem("GitHub", callback=self._open_github))
         self.menu.add(help_menu)
