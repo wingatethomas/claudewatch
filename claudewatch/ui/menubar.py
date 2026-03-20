@@ -32,7 +32,7 @@ from claudewatch.backend.models import (
     HostApp,
     SessionStatus,
 )
-from claudewatch.backend.repositories.bookmarks import get_bookmarks, remove_bookmark, save_bookmark
+from claudewatch.backend.repositories.bookmarks import get_pinned_cwds, get_pins, pin_session, unpin_session
 from claudewatch.backend.repositories.config import get_setting
 from claudewatch.backend.services.detection import detect_sessions
 from claudewatch.backend.services.notifications import (
@@ -314,6 +314,9 @@ class ClaudeWatchApp(rumps.App):
             self.menu.add(warn)
             self.menu.add(rumps.separator)
 
+        pinned_cwds = get_pinned_cwds()
+        active_cwds = {s.cwd for s in self.sessions}
+
         if not self.sessions:
             self.menu.add(rumps.MenuItem("No active Claude sessions", callback=None))
         else:
@@ -340,7 +343,8 @@ class ClaudeWatchApp(rumps.App):
                 )
                 self.menu.add(header)
                 for s in attention:
-                    self._add_session_items(s, suffixes[s.pid])
+                    is_pinned = s.cwd in pinned_cwds
+                    self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
             if attention and (working or idle):
                 self.menu.add(rumps.separator)
@@ -353,7 +357,8 @@ class ClaudeWatchApp(rumps.App):
                 )
                 self.menu.add(header)
                 for s in working:
-                    self._add_session_items(s, suffixes[s.pid])
+                    is_pinned = s.cwd in pinned_cwds
+                    self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
             if working and idle:
                 self.menu.add(rumps.separator)
@@ -366,57 +371,48 @@ class ClaudeWatchApp(rumps.App):
                 )
                 self.menu.add(header)
                 for s in idle:
-                    self._add_session_items(s, suffixes[s.pid])
+                    is_pinned = s.cwd in pinned_cwds
+                    self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
-        # Saved sessions
-        saved = get_bookmarks()
-        if saved:
+        # Pinned sessions that are NOT currently active
+        pins = get_pins()
+        inactive_pins = [p for p in pins if p.get("cwd", "") not in active_cwds]
+        if inactive_pins:
             self.menu.add(rumps.separator)
-            saved_header = rumps.MenuItem(f"Saved ({len(saved)})")
-            saved_header.set_callback(None)
-            self.menu.add(saved_header)
-            for entry in saved:
+            pin_header = rumps.MenuItem(f"📌 Pinned ({len(inactive_pins)})")
+            pin_header.set_callback(None)
+            self.menu.add(pin_header)
+            for entry in inactive_pins:
                 sid = entry.get("session_id", "")
                 proj = entry.get("project", "unknown")
                 note = entry.get("note", "")
                 cwd = entry.get("cwd", "")
-                ts = entry.get("timestamp", "")
-                label = f"  {proj}"
                 _max_note = 25
+                label = f"  {proj}"
                 if note:
                     short_note = note[:_max_note] + "…" if len(note) > _max_note else note
                     label += f" — {short_note}"
                 item = rumps.MenuItem(label, callback=self._make_resume_handler(sid, cwd))
-                item.add(rumps.MenuItem("Remove", callback=self._make_remove_saved_handler(sid)))
+                item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(cwd)))
                 self.menu.add(item)
-                # Detail: CWD + saved time
-                detail_parts = []
-                if cwd:
-                    short_cwd = "~" + cwd[len(os.path.expanduser("~")):] if cwd.startswith(os.path.expanduser("~")) else cwd
-                    detail_parts.append(short_cwd)
-                if ts:
-                    detail_parts.append(ts[:16].replace("T", " "))
-                if detail_parts:
-                    detail = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
-                    detail.set_callback(None)
-                    self.menu.add(detail)
 
         self.menu.add(rumps.separator)
         self.menu.add(rumps.MenuItem("Preferences...", callback=self._open_preferences))
         self.menu.add(rumps.MenuItem("Quit", callback=self._quit))
 
-    def _add_session_items(self, s: ClaudeSession, suffix: str = "") -> None:
+    def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:
         """Add a session entry + detail line to the menu."""
-        label = s.menu_label + suffix
-        # Main item — click to focus
+        pin_mark = " 📌" if pinned else ""
+        label = s.menu_label + suffix + pin_mark
         item = rumps.MenuItem(label, callback=self._make_click_handler(s))
         icon = _get_app_icon(s.host_app)
         if icon:
             item._menuitem.setImage_(icon)
-        # Save sub-item nested under the session
-        if s.session_id:
-            save_item = rumps.MenuItem("Save session...", callback=self._make_save_handler(s))
-            item.add(save_item)
+        # Pin/unpin sub-item
+        if pinned:
+            item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(s.cwd)))
+        elif s.session_id:
+            item.add(rumps.MenuItem("Pin session...", callback=self._make_pin_handler(s)))
         self.menu.add(item)
         detail = s.detail_line
         if detail:
@@ -436,7 +432,7 @@ class ClaudeWatchApp(rumps.App):
 
         return handler
 
-    def _make_save_handler(self, session: ClaudeSession):  # noqa: ANN202
+    def _make_pin_handler(self, session: ClaudeSession):  # noqa: ANN202
         sid = session.session_id
         project = session.project
         cwd = session.cwd
@@ -445,16 +441,14 @@ class ClaudeWatchApp(rumps.App):
         def handler(_: rumps.MenuItem) -> None:
             self._modal_active = True
             try:
-                # Ensure we can receive keyboard input
                 app = NSApplication.sharedApplication()
                 app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
                 app.activateIgnoringOtherApps_(True)
 
-                # Custom NSAlert with text field — rumps.Window doesn't get keyboard focus
                 alert = NSAlert.alloc().init()
-                alert.setMessageText_("Save Session")
+                alert.setMessageText_("Pin Session")
                 alert.setInformativeText_(f"Add a note for {project}:")
-                alert.addButtonWithTitle_("Save")
+                alert.addButtonWithTitle_("Pin")
                 alert.addButtonWithTitle_("Cancel")
                 text_field = NSTextField.alloc().initWithFrame_(((0, 0), (300, 24)))
                 text_field.setStringValue_("")
@@ -464,14 +458,13 @@ class ClaudeWatchApp(rumps.App):
 
                 if alert.runModal() == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
-                    save_bookmark(sid, project, cwd, note)
+                    pin_session(sid, project, cwd, note)
 
-                    # Ask to quit
                     quit_alert = NSAlert.alloc().init()
                     quit_alert.setMessageText_("Quit this session?")
                     quit_alert.setInformativeText_(
                         f"Send Ctrl+C to {project} (pid {pid})?\n"
-                        f"Resume later with: claude -r {sid[:8]}..."
+                        f"Resume later from the Pinned section."
                     )
                     quit_alert.addButtonWithTitle_("Quit Session")
                     quit_alert.addButtonWithTitle_("Keep Running")
@@ -485,6 +478,14 @@ class ClaudeWatchApp(rumps.App):
                 self._modal_active = False
                 self._last_menu_key = ""
                 self.update_display()
+
+        return handler
+
+    def _make_unpin_handler(self, cwd: str):  # noqa: ANN202
+        def handler(_: rumps.MenuItem) -> None:
+            unpin_session(cwd)
+            self._last_menu_key = ""
+            self.update_display()
 
         return handler
 
@@ -504,14 +505,6 @@ class ClaudeWatchApp(rumps.App):
                 end tell
             """)
             log.info("session resumed: %s", session_id[:8])
-
-        return handler
-
-    def _make_remove_saved_handler(self, session_id: str):  # noqa: ANN202
-        def handler(_: rumps.MenuItem) -> None:
-            remove_bookmark(session_id)
-            self._last_menu_key = ""
-            self.update_display()
 
         return handler
 
