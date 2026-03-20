@@ -1,6 +1,5 @@
 """Native macOS notifications via NSUserNotificationCenter.
 
-Replaces the terminal-notifier external binary with direct PyObjC calls.
 Requires an Info.plist with CFBundleIdentifier next to sys.executable —
 created automatically by ensure_info_plist().
 """

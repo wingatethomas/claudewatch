@@ -1,6 +1,9 @@
+import os
 import re
 from dataclasses import dataclass
 from enum import Enum
+
+CLAUDE_PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
 
 class HostApp(Enum):
