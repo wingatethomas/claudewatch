@@ -41,14 +41,16 @@ claudewatch/
 │   │   ├── detection.py       # Session discovery via libproc + AppleScript
 │   │   ├── notifications.py   # Native macOS notifications (NSUserNotification)
 │   │   ├── procinfo.py        # Native macOS libproc bindings (ctypes)
-│   │   └── usage.py           # Session metadata from JSONL logs (model name)
+│   │   ├── usage.py           # Session metadata from JSONL logs (model name)
+│   │   └── activity.py        # Session activity timeline from JSONL
 │   └── repositories/          # Data persistence
 │       ├── config.py          # App settings (~/.claude/claudewatch.json)
-│       └── bookmarks.py       # Saved session bookmarks
+│       └── bookmarks.py       # Pinned session bookmarks
 └── ui/
     ├── menubar.py             # Menu bar view (rumps NSStatusItem)
     ├── focus.py               # Window focusing (AppleScript, CGEvent)
-    └── preferences.py         # Preferences window (PyObjC NSWindow)
+    ├── preferences.py         # Preferences window (PyObjC NSWindow)
+    └── activity.py            # Activity feed window
 ```
 
 **services/** = business logic (detection, notifications). **repositories/** = data persistence (config, bookmarks). **ui/** = presentation (menu bar, preferences, window focus). **models.py** and **helpers.py** are shared across layers.
