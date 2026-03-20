@@ -1,0 +1,40 @@
+line-length = 120
+indent-width = 4
+target-version = "py313"
+
+[lint]
+select = [
+    "F",      # Pyflakes
+    "E", "W", # pycodestyle
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "S",      # flake8-bandit (security)
+    "ANN",    # flake8-annotations
+    "B",      # flake8-bugbear
+    "A",      # flake8-builtins
+    "COM",    # flake8-commas
+    "C4",     # flake8-comprehensions
+    "PT",     # flake8-pytest-style
+    "RET",    # flake8-return
+    "SIM",    # flake8-simplify
+    "ARG",    # flake8-unused-arguments
+    "ERA",    # eradicate (commented-out code)
+    "PL",     # pylint
+]
+
+ignore = [
+    "ANN401",  # Dynamically typed expressions (typing.Any) are disallowed
+    "COM812",  # trailing comma (conflicts with formatter)
+    "E501",    # line too long (handled by formatter)
+    "S603",    # subprocess call with untrusted input (PIDs are validated ints)
+    "S607",    # partial executable path (we use pgrep, ps, etc.)
+]
+
+[lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S108", "ANN", "PLR2004", "ARG"]
+"claudewatch/ui/preferences.py" = ["N802", "ARG002"]  # ObjC selector names require camelCase; sender/notification args required by ObjC
+
+[format]
+quote-style = "double"
+indent-style = "space"
