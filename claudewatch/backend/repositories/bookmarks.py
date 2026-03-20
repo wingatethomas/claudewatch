@@ -5,10 +5,11 @@ import logging
 import os
 from datetime import UTC, datetime
 
+from claudewatch.backend.repositories.config import get_setting
+
 log = logging.getLogger("claudewatch")
 
 _PATH = os.path.expanduser("~/.claude/claudewatch-pins.json")
-_TTL_DAYS = 30
 
 
 def _load() -> list[dict]:
@@ -19,7 +20,10 @@ def _load() -> list[dict]:
                 return []
     except (OSError, json.JSONDecodeError):
         return []
-    cutoff = datetime.now(tz=UTC).timestamp() - _TTL_DAYS * 86400
+    ttl_days = int(get_setting("pin_expiry_days") or 30)
+    if ttl_days <= 0:  # "Never" = no expiry
+        return data
+    cutoff = datetime.now(tz=UTC).timestamp() - ttl_days * 86400
     alive = []
     for entry in data:
         if not isinstance(entry, dict):

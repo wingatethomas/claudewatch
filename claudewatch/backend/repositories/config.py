@@ -12,6 +12,7 @@ _DEFAULTS: dict[str, object] = {
     "notifications_enabled": True,
     "poll_interval": 2,
     "notification_sound": "Glass",
+    "pin_expiry_days": 30,
 }
 
 _SOUNDS = ("Glass", "Blow", "Bottle", "Frog", "Funk", "Hero", "Morse", "Ping", "Pop", "Purr", "Submarine", "Tink")
