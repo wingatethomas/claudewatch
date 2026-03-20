@@ -1,33 +1,30 @@
-"""Parse token usage from Claude Code JSONL session logs."""
+"""Parse session metadata from Claude Code JSONL session logs."""
 
 import json
 import os
 
 CLAUDE_PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
-# Model context windows — verified from Anthropic docs
-_CONTEXT_WINDOWS: dict[str, int] = {
-    "claude-opus-4-6": 200_000,
-    "claude-sonnet-4-6": 200_000,
-    "claude-haiku-4-5": 200_000,
-    "claude-sonnet-4-5-20250514": 200_000,
-    "claude-opus-4-20250512": 200_000,
+# Model display names — keep factual
+_MODEL_NAMES: dict[str, str] = {
+    "claude-opus-4-6": "opus 4.6",
+    "claude-sonnet-4-6": "sonnet 4.6",
+    "claude-haiku-4-5": "haiku 4.5",
+    "claude-sonnet-4-5-20250514": "sonnet 4.5",
+    "claude-opus-4-20250512": "opus 4",
 }
-_DEFAULT_CONTEXT = 200_000
 
 
-def get_session_usage(cwd: str) -> dict:  # noqa: PLR0911
-    """Get token usage for the most recent session at a CWD.
+def get_session_model(cwd: str) -> str:
+    """Get the model name for the most recent session at a CWD.
 
-    Reads the last usage entry from the JSONL — this contains the actual
-    current context size for the conversation. Returns:
-    {"context_tokens": int, "context_pct": int, "model": str}
-    or empty dict if unavailable.
+    Reads the last assistant message from the JSONL to find the model.
+    Returns a display name like 'opus 4.6' or empty string if unavailable.
     """
     proj_key = cwd.replace("/", "-")
     proj_dir = os.path.join(CLAUDE_PROJECTS_DIR, proj_key)
     if not os.path.isdir(proj_dir):
-        return {}
+        return ""
 
     try:
         jsonls = sorted(
@@ -36,60 +33,37 @@ def get_session_usage(cwd: str) -> dict:  # noqa: PLR0911
             reverse=True,
         )
     except OSError:
-        return {}
+        return ""
 
     if not jsonls:
-        return {}
+        return ""
 
     # Validate symlink traversal
     real_proj_dir = os.path.realpath(CLAUDE_PROJECTS_DIR)
     real_jsonl = os.path.realpath(jsonls[0])
     if not real_jsonl.startswith(real_proj_dir + os.sep):
-        return {}
+        return ""
 
-    # Read last ~20KB — we only need the most recent usage entry
+    # Read last ~10KB — model is in every assistant message
     try:
         with open(jsonls[0], "rb") as f:
             f.seek(0, 2)
             size = f.tell()
-            f.seek(max(0, size - 20480))
+            f.seek(max(0, size - 10240))
             tail = f.read().decode("utf-8", errors="replace")
     except OSError:
-        return {}
+        return ""
 
     last_model = ""
-    last_context = 0
-
     for line in tail.strip().splitlines():
         try:
             d = json.loads(line)
             msg = d.get("message", {})
-            if not isinstance(msg, dict):
-                continue
-            model = msg.get("model")
-            if model:
-                last_model = model
-            usage = msg.get("usage")
-            if usage and isinstance(usage, dict):
-                # Total context = all input tokens (fresh + cached)
-                context = (
-                    usage.get("input_tokens", 0)
-                    + usage.get("cache_creation_input_tokens", 0)
-                    + usage.get("cache_read_input_tokens", 0)
-                )
-                if context > 0:
-                    last_context = context
+            if isinstance(msg, dict):
+                model = msg.get("model", "")
+                if model:
+                    last_model = model
         except (json.JSONDecodeError, AttributeError):
             continue
 
-    if not last_context:
-        return {}
-
-    window = _CONTEXT_WINDOWS.get(last_model, _DEFAULT_CONTEXT)
-    pct = min(round(last_context / window * 100), 100)
-
-    return {
-        "context_tokens": last_context,
-        "context_pct": pct,
-        "model": last_model,
-    }
+    return _MODEL_NAMES.get(last_model, last_model)
