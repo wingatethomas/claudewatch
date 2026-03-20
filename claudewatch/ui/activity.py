@@ -19,8 +19,8 @@ from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
 
 from claudewatch.backend.services.activity import ActivityEntry, parse_activity
 
-_W = 560
-_H = 500
+_W = 750
+_H = 550
 
 _windows: dict[str, NSWindow] = {}
 
