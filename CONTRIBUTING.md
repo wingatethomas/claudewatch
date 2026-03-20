@@ -45,7 +45,8 @@ claudewatch/
 │   │   └── activity.py        # Session activity timeline from JSONL
 │   └── repositories/          # Data persistence
 │       ├── config.py          # App settings (~/.claude/claudewatch.json)
-│       └── bookmarks.py       # Pinned session bookmarks
+│       ├── bookmarks.py       # Pinned session bookmarks
+│       └── history.py         # Session history (auto-recorded)
 └── ui/
     ├── menubar.py             # Menu bar view (rumps NSStatusItem)
     ├── focus.py               # Window focusing (AppleScript, CGEvent)
