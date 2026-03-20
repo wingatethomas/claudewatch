@@ -42,6 +42,7 @@ from claudewatch.backend.services.notifications import (
     install_notification_delegate,
 )
 from claudewatch.backend.services.usage import get_session_model
+from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
 
@@ -449,6 +450,7 @@ class ClaudeWatchApp(rumps.App):
         if icon:
             item._menuitem.setImage_(icon)
         # Sub-items
+        item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
         if pinned:
             item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(s.cwd)))
             item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
@@ -465,6 +467,15 @@ class ClaudeWatchApp(rumps.App):
             detail_item = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
             detail_item.set_callback(None)
             self.menu.add(detail_item)
+
+    def _make_activity_handler(self, session: ClaudeSession):  # noqa: ANN202
+        project = session.project
+        cwd = session.cwd
+
+        def handler(_: rumps.MenuItem) -> None:
+            show_activity(project, cwd)
+
+        return handler
 
     def _make_click_handler(self, session: ClaudeSession):  # noqa: ANN202
         pid = session.pid
