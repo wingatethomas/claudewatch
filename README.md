@@ -37,6 +37,10 @@ Click any session to focus its window. Works with:
 - **VS Code** — focuses the window and switches to the correct terminal tab
 - **tmux** — matches sessions by project name in the window title
 
+### Pinned Sessions
+
+Pin sessions you want to come back to. Pinned sessions show 📌 in the dropdown when active, and appear in a separate "Pinned" section when paused. Click a pinned session to resume it in a new Terminal tab. Pins persist across app restarts with a 30-day TTL.
+
 ### Notifications
 
 When a session needs attention, ClaudeWatch sends a macOS notification with the project name, task, and what Claude is asking for. Notifications are suppressed if the session's window is already in front, with a 30-second cooldown between alerts.

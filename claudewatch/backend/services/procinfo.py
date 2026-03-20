@@ -32,13 +32,9 @@ _DEV_MAJOR_MASK = 0xFF
 _DEV_MINOR_MASK = 0xFFFFFF
 _PTY_MAJOR = 16  # pseudo-terminal major device number
 
-# Struct offsets — derived from XNU headers.
-# proc_taskallinfo contains proc_bsdinfo (offset 0) then proc_taskinfo.
-# We only need fields from proc_bsdinfo:
-#   pbsd_pid   @ offset 8  (uint32)
-#   pbsd_ppid  @ offset 12 (uint32)
-#   pbsd_tdev  @ offset 24 (int32 = dev_t)
-# Total size of proc_taskallinfo = 624 bytes on ARM64 / x86_64.
+# Struct offsets — verified empirically on macOS ARM64.
+# proc_pidinfo(PROC_PIDTASKALLINFO) returns 232 bytes.
+# Fields from proc_bsdinfo: ppid @ offset 16, tdev @ offset 108.
 _TASKALLINFO_SIZE = 232
 _PBSD_PPID_OFFSET = 16
 _PBSD_TDEV_OFFSET = 108

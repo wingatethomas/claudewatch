@@ -5,6 +5,7 @@ import time
 
 from claudewatch.backend.helpers import _shell, run_applescript
 from claudewatch.backend.models import (
+    CLAUDE_PROJECTS_DIR,
     HOST_PROCESS_NAMES,
     IDLE_INDICATOR,
     PROMPT_KEYWORDS,
@@ -154,8 +155,6 @@ def _extract_prompt_info(buffer: str) -> tuple[str, str]:
 
     return one_line, full_context
 
-
-CLAUDE_PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
 
 def _get_session_id(cwd: str) -> str:
