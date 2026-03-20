@@ -6,6 +6,7 @@ import re
 import signal
 import subprocess
 import time
+import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
 
 import rumps
@@ -439,6 +440,22 @@ class ClaudeWatchApp(rumps.App):
 
         self.menu.add(rumps.separator)
         self.menu.add(rumps.MenuItem("Preferences...", callback=self._open_preferences))
+
+        help_menu = rumps.MenuItem("Help")
+        for tip in (
+            "Click a session to focus its window",
+            "Hover a session for: Activity, Pin, Quit",
+            "★ marks a pinned session",
+            "Pinned sessions can be resumed after quitting",
+            "Activity shows a timeline of what Claude did",
+        ):
+            item = rumps.MenuItem(tip)
+            item.set_callback(None)
+            help_menu.add(item)
+        help_menu.add(rumps.separator)
+        help_menu.add(rumps.MenuItem("GitHub", callback=self._open_github))
+        self.menu.add(help_menu)
+
         self.menu.add(rumps.MenuItem("Quit", callback=self._quit))
 
     def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:
@@ -633,6 +650,9 @@ class ClaudeWatchApp(rumps.App):
 
     def _open_preferences(self, _: rumps.MenuItem) -> None:
         show_preferences()
+
+    def _open_github(self, _: rumps.MenuItem) -> None:
+        webbrowser.open("https://github.com/wingatethomas/claudewatch")
 
     def _quit(self, _: rumps.MenuItem) -> None:
         rumps.quit_application()
