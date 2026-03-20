@@ -1,58 +1,33 @@
-"""Native macOS notifications via NSUserNotificationCenter.
+"""macOS notifications via terminal-notifier.
 
-Requires an Info.plist with CFBundleIdentifier next to sys.executable —
-created automatically by ensure_info_plist().
+Uses the terminal-notifier binary for reliable notification delivery on
+macOS 13+. NSUserNotificationCenter is deprecated and silently drops
+notifications on modern macOS.
+
+Requires: brew install terminal-notifier
 """
 
 import logging
 import os
+import shutil
 import subprocess
-import sys
 import time
 
-from Foundation import NSDate, NSMutableDictionary, NSUserNotification, NSUserNotificationCenter
-from rumps._internal import string_to_objc
-from rumps.rumps import App as RumpsApp
-from rumps.rumps import NSApp as RumpsNSApp
-
-from claudewatch.backend.helpers import escape_applescript, run_applescript
-from claudewatch.backend.models import ClaudeSession, HostApp
+from claudewatch.backend.helpers import run_applescript
+from claudewatch.backend.models import ClaudeSession
 from claudewatch.backend.repositories.config import get_setting
 
 log = logging.getLogger("claudewatch")
 
-_BUNDLE_ID = "com.claudewatch.app"
-
-
-def ensure_info_plist() -> bool:
-    """Create Info.plist next to sys.executable if missing.
-
-    NSUserNotificationCenter requires a CFBundleIdentifier to deliver
-    notifications. Without this, defaultUserNotificationCenter() returns None.
-    """
-    plist_dir = os.path.dirname(sys.executable)
-    plist_path = os.path.join(plist_dir, "Info.plist")
-    if os.path.exists(plist_path):
-        return True
-    try:
-        subprocess.run(  # noqa: S603, S607
-            ["/usr/libexec/PlistBuddy", "-c", f"Add :CFBundleIdentifier string {_BUNDLE_ID}", plist_path],
-            check=True,
-            capture_output=True,
-        )
-        log.info("Created Info.plist at %s", plist_path)
-        return True
-    except (subprocess.CalledProcessError, OSError) as e:
-        log.warning("Failed to create Info.plist: %s", e)
-        return False
-
-
-def install_notification_delegate() -> None:
-    """Patch rumps delegate to always show notifications, even when app is active."""
-    def _should_present(self, center, notification):  # noqa: ANN001, ANN202, ARG001
-        return True
-
-    RumpsNSApp.userNotificationCenter_shouldPresentNotification_ = _should_present
+# Resolve terminal-notifier, preferring trusted Homebrew paths
+_TRUSTED_PATHS = ("/opt/homebrew/bin/terminal-notifier", "/usr/local/bin/terminal-notifier")
+TERMINAL_NOTIFIER: str | None = None
+for _p in _TRUSTED_PATHS:
+    if os.path.isfile(_p) and os.access(_p, os.X_OK):
+        TERMINAL_NOTIFIER = _p
+        break
+if TERMINAL_NOTIFIER is None:
+    TERMINAL_NOTIFIER = shutil.which("terminal-notifier")
 
 
 def _get_frontmost_window() -> tuple[str, str]:
@@ -74,87 +49,6 @@ def _get_frontmost_window() -> tuple[str, str]:
     return "", ""
 
 
-def _build_focus_data(s: ClaudeSession) -> dict:
-    """Build data dict for the notification click callback."""
-    data: dict = {"pid": s.pid, "project": s.project, "host_app": s.host_app.value}
-    if s.host_app == HostApp.TERMINAL and s.window_id is not None:
-        data["window_id"] = s.window_id
-    return data
-
-
-def handle_notification_click(data: dict) -> None:
-    """Focus the session window when a notification is clicked."""
-    host_app = data.get("host_app", "")
-    project = data.get("project", "")
-
-    if host_app == HostApp.TERMINAL.value and "window_id" in data:
-        wid = data["window_id"]
-        # window_id is always int — validated via isdigit() in detection.py
-        run_applescript(f"""
-            tell application "Terminal"
-                set index of window id {wid} to 1
-            end tell
-            tell application "System Events"
-                tell process "Terminal"
-                    perform action "AXRaise" of first window
-                    set frontmost to true
-                end tell
-            end tell
-        """)
-    elif host_app == HostApp.PYCHARM.value:
-        safe_project = escape_applescript(project)
-        run_applescript(
-            f'tell application "System Events" to tell process "pycharm"'
-            f' to perform action "AXRaise" of first window whose name contains "{safe_project}"',
-        )
-    elif host_app == HostApp.VSCODE.value:
-        safe_project = escape_applescript(project)
-        run_applescript(
-            f'tell application "System Events" to tell process "Code"'
-            f' to perform action "AXRaise" of first window whose name contains "{safe_project}"',
-        )
-
-
-def _send_notification(  # noqa: PLR0913
-    title: str,
-    subtitle: str,
-    message: str,
-    sound_name: str,
-    group_id: str,
-    data: dict | None = None,
-) -> bool:
-    """Send a native macOS notification. Returns True on success."""
-    nc = NSUserNotificationCenter.defaultUserNotificationCenter()
-    if nc is None:
-        log.warning("NSUserNotificationCenter unavailable (missing Info.plist?)")
-        return False
-
-    n = NSUserNotification.alloc().init()
-    n.setTitle_(title)
-    n.setSubtitle_(subtitle)
-    n.setInformativeText_(message)
-    n.setIdentifier_(group_id)
-
-    if sound_name and sound_name.lower() != "none":
-        n.setSoundName_(sound_name)
-
-    # Attach focus data for click callback — rumps deserializes from userInfo
-    if data is not None:
-        try:
-            app_instance = getattr(RumpsApp, "*app_instance", None)
-            if app_instance and hasattr(app_instance, "serializer"):
-                dumped = app_instance.serializer.dumps(data)
-                ns_dict = NSMutableDictionary.alloc().init()
-                ns_dict.setObject_forKey_(string_to_objc(dumped), "value")
-                n.setUserInfo_(ns_dict)
-        except Exception:
-            log.debug("Could not attach click data to notification")
-
-    n.setDeliveryDate_(NSDate.dateWithTimeInterval_sinceDate_(0, NSDate.date()))
-    nc.scheduleNotification_(n)
-    return True
-
-
 class NotificationManager:
     def __init__(self) -> None:
         self._notified_pids: set[int] = set()
@@ -162,7 +56,7 @@ class NotificationManager:
         self.last_notification_time = 0.0
 
     def notify_if_needed(self, sessions: list[ClaudeSession]) -> None:
-        if not get_setting("notifications_enabled"):
+        if not TERMINAL_NOTIFIER or not get_setting("notifications_enabled"):
             return
 
         attention = [s for s in sessions if s.needs_attention]
@@ -199,16 +93,29 @@ class NotificationManager:
                 s.pid,
             )
 
-            sent = _send_notification(
-                title=title,
-                subtitle=subtitle,
-                message=message[:200],
-                sound_name=str(get_setting("notification_sound")),
-                group_id=f"claudewatch-{s.pid}",
-                data=_build_focus_data(s),
-            )
-            if sent:
+            try:
+                subprocess.run(
+                    [
+                        TERMINAL_NOTIFIER,
+                        "-title",
+                        title,
+                        "-message",
+                        message[:200],
+                        "-subtitle",
+                        subtitle,
+                        "-sound",
+                        str(get_setting("notification_sound")),
+                        "-group",
+                        f"claudewatch-{s.pid}",
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    check=False,
+                )
                 self._notified_pids.add(s.pid)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
 
         live_attention_pids = {s.pid for s in attention}
         self._notified_pids &= live_attention_pids

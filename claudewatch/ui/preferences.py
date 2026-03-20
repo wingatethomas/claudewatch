@@ -35,7 +35,7 @@ from claudewatch.backend.helpers import escape_applescript, run_applescript
 from claudewatch.backend.repositories.bookmarks import get_pinned_cwds
 from claudewatch.backend.repositories.config import get_available_sounds, get_setting, set_setting
 from claudewatch.backend.repositories.history import get_history
-from claudewatch.backend.services.usage import _MODEL_NAMES
+from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES
 from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
@@ -299,7 +299,7 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
     for entry in history:
         proj = entry.get("project", "unknown")
         raw_model = entry.get("model", "")
-        model = _MODEL_NAMES.get(raw_model, raw_model)
+        model = MODEL_DISPLAY_NAMES.get(raw_model, raw_model)
         ended = entry.get("ended_at", "")[:16].replace("T", " ")
         sid = entry.get("session_id", "")
         cwd = entry.get("cwd", "")
