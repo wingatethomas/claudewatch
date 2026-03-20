@@ -396,10 +396,16 @@ class ClaudeWatchApp(rumps.App):
                 item = rumps.MenuItem(label, callback=self._make_resume_handler(sid, cwd))
                 item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(cwd)))
                 self.menu.add(item)
-                # Detail: last interacted date
+                # Date + model
+                detail_parts = []
                 ts = entry.get("timestamp", "")
                 if ts:
-                    detail = rumps.MenuItem(f"      {ts[:10]}")
+                    detail_parts.append(ts[:10])
+                model = get_session_model(cwd)
+                if model:
+                    detail_parts.append(model)
+                if detail_parts:
+                    detail = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
                     detail.set_callback(None)
                     self.menu.add(detail)
 
