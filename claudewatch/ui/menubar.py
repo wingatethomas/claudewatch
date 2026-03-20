@@ -215,7 +215,6 @@ class ClaudeWatchApp(rumps.App):
         self._prev_pids: set[int] = set()
         self._prev_status: dict[int, str] = {}
         self._prev_sessions: dict[int, ClaudeSession] = {}
-        self._status_since: dict[int, float] = {}
         self._check_accessibility()
         self.update_display()
 
@@ -228,7 +227,6 @@ class ClaudeWatchApp(rumps.App):
         current_pids = {s.pid for s in self.sessions}
         current_status = {s.pid: s.status.value for s in self.sessions}
         session_map = {s.pid: s for s in self.sessions}
-        now = time.time()
 
         # New sessions (skip on first poll — don't log all existing sessions as "started")
         if self._prev_pids:  # not first poll
@@ -245,9 +243,7 @@ class ClaudeWatchApp(rumps.App):
 
         # Ended sessions — record to history
         for pid in self._prev_pids - current_pids:
-            duration = now - self._status_since.get(pid, now)
-            log.info("session.ended pid=%d duration=%.0fs", pid, duration)
-            self._status_since.pop(pid, None)
+            log.info("session.ended pid=%d", pid)
             prev = self._prev_sessions.get(pid)
             if prev:
                 record_session(
@@ -258,24 +254,9 @@ class ClaudeWatchApp(rumps.App):
                     host_app=prev.host_app.value,
                 )
 
-        # Status changes — only log transitions that held for 30+ seconds
-        # Short flickers (working→attention→working in <30s) are noise
-        _min_hold = 30
-        for pid in current_pids & self._prev_pids:
-            old = self._prev_status.get(pid)
-            new = current_status[pid]
-            if old and old != new:
-                held = now - self._status_since.get(pid, now)
-                if held >= _min_hold:
-                    s = session_map[pid]
-                    log.info(
-                        "session.%s project=%s after=%.0fs pid=%d",
-                        new,
-                        s.project,
-                        held,
-                        pid,
-                    )
-                self._status_since[pid] = now
+        # No status transition logging — it's polling noise.
+        # Meaningful events (notifications, pins, quits, resumes) are
+        # logged where they happen.
 
         self._prev_pids = current_pids
         self._prev_status = current_status
