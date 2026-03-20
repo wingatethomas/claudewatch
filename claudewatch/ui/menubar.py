@@ -407,7 +407,7 @@ class ClaudeWatchApp(rumps.App):
         inactive_pins = [p for p in pins if p.get("cwd", "") not in active_cwds]
         if inactive_pins:
             self.menu.add(rumps.separator)
-            pin_header = rumps.MenuItem(f"📌 Pinned ({len(inactive_pins)})")
+            pin_header = rumps.MenuItem(f"★ Pinned ({len(inactive_pins)})")
             pin_header.set_callback(None)
             self.menu.add(pin_header)
             for entry in inactive_pins:
@@ -442,7 +442,7 @@ class ClaudeWatchApp(rumps.App):
 
     def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:
         """Add a session entry + detail line to the menu."""
-        pin_mark = " 📌" if pinned else ""
+        pin_mark = " ★" if pinned else ""
         label = s.menu_label + suffix + pin_mark
         item = rumps.MenuItem(label, callback=self._make_click_handler(s))
         icon = _get_app_icon(s.host_app)
