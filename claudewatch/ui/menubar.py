@@ -19,14 +19,13 @@ from AppKit import (
     NSFont,
     NSImage,
     NSMutableAttributedString,
-    NSPasteboard,
     NSString,
-    NSStringPboardType,
     NSTextField,
     NSWorkspace,
 )
 from Foundation import NSMakeRect, NSMakeSize, NSRange
 
+from claudewatch.backend.helpers import escape_applescript, run_applescript
 from claudewatch.backend.models import (
     HOST_APP_PATH,
     ClaudeSession,
@@ -486,22 +485,22 @@ class ClaudeWatchApp(rumps.App):
 
         return handler
 
-    def _make_resume_handler(self, session_id: str, _cwd: str = ""):  # noqa: ANN202, ARG002
+    def _make_resume_handler(self, session_id: str, cwd: str = ""):  # noqa: ANN202
         def handler(_: rumps.MenuItem) -> None:
-            # Validate session ID is a UUID to prevent command injection via clipboard
+            # Validate session ID is a UUID to prevent command injection
             if not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", session_id):
                 log.warning("invalid session ID: %s", session_id[:20])
                 return
-            cmd = f"claude -r {session_id}"
-            pb = NSPasteboard.generalPasteboard()
-            pb.clearContents()
-            pb.setString_forType_(cmd, NSStringPboardType)
-            rumps.notification(
-                title="Resume command copied",
-                subtitle="",
-                message=f"Paste in terminal: {cmd[:40]}...",
-                sound=False,
-            )
+            # Open a new Terminal tab, cd to the project dir, and resume
+            safe_cwd = escape_applescript(cwd) if cwd else ""
+            cd_cmd = f"cd \\\"{safe_cwd}\\\" && " if safe_cwd else ""
+            run_applescript(f"""
+                tell application "Terminal"
+                    activate
+                    do script "{cd_cmd}claude -r {session_id}"
+                end tell
+            """)
+            log.info("session resumed: %s", session_id[:8])
 
         return handler
 
