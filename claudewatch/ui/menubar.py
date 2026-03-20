@@ -211,31 +211,58 @@ class ClaudeWatchApp(rumps.App):
         self._modal_active = False
         self._prev_pids: set[int] = set()
         self._prev_status: dict[int, str] = {}
+        self._status_since: dict[int, float] = {}
         self._check_accessibility()
         self.update_display()
 
     def _log_changes(self) -> None:
-        """Log only meaningful events: new sessions, ended sessions, status changes."""
+        """Log meaningful events: new sessions, ended sessions, status changes.
+
+        Debounces rapid status flickers (e.g. working→attention→working)
+        by requiring a state to persist for 2+ poll cycles before logging.
+        """
         current_pids = {s.pid for s in self.sessions}
         current_status = {s.pid: s.status.value for s in self.sessions}
         session_map = {s.pid: s for s in self.sessions}
+        now = time.time()
 
-        # New sessions
-        for pid in current_pids - self._prev_pids:
-            s = session_map[pid]
-            log.info("session started: project=%s host=%s pid=%d", s.project, s.host_app.value, pid)
+        # New sessions (skip on first poll — don't log all existing sessions as "started")
+        if self._prev_pids:  # not first poll
+            for pid in current_pids - self._prev_pids:
+                s = session_map[pid]
+                model = get_session_model(s.cwd)
+                log.info(
+                    "session.started project=%s host=%s model=%s pid=%d",
+                    s.project,
+                    s.host_app.value,
+                    model or "unknown",
+                    pid,
+                )
 
         # Ended sessions
         for pid in self._prev_pids - current_pids:
-            log.info("session ended: pid=%d", pid)
+            duration = now - self._status_since.get(pid, now)
+            log.info("session.ended pid=%d duration=%.0fs", pid, duration)
+            self._status_since.pop(pid, None)
 
-        # Status changes
+        # Status changes — debounced (must hold for 2+ cycles)
         for pid in current_pids & self._prev_pids:
             old = self._prev_status.get(pid)
             new = current_status[pid]
             if old and old != new:
-                s = session_map[pid]
-                log.info("status change: project=%s %s -> %s pid=%d", s.project, old, new, pid)
+                held = now - self._status_since.get(pid, now)
+                # Only log if the previous state was held for at least 4 seconds
+                _min_hold = 4
+                if held >= _min_hold:
+                    s = session_map[pid]
+                    log.info(
+                        "session.%s project=%s held=%.0fs pid=%d",
+                        new,
+                        s.project,
+                        held,
+                        pid,
+                    )
+                self._status_since[pid] = now
 
         self._prev_pids = current_pids
         self._prev_status = current_status
