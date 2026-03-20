@@ -6,7 +6,7 @@ import os
 from claudewatch.backend.models import CLAUDE_PROJECTS_DIR
 
 # Model display names — keep factual
-_MODEL_NAMES: dict[str, str] = {
+MODEL_DISPLAY_NAMES: dict[str, str] = {
     "claude-opus-4-6": "opus 4.6",
     "claude-sonnet-4-6": "sonnet 4.6",
     "claude-haiku-4-5": "haiku 4.5",
@@ -66,4 +66,4 @@ def get_session_model(cwd: str) -> str:
         except (json.JSONDecodeError, AttributeError):
             continue
 
-    return _MODEL_NAMES.get(last_model, last_model)
+    return MODEL_DISPLAY_NAMES.get(last_model, last_model)

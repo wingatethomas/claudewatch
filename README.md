@@ -7,6 +7,7 @@ macOS menu bar app that monitors all your running [Claude Code](https://docs.ant
 - macOS 13+
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/) (package manager)
+- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (optional, for notifications): `brew install terminal-notifier`
 
 ## Install
 
@@ -24,7 +25,7 @@ uv run claudewatch
 
 ## What it does
 
-ClaudeWatch polls every 2 seconds and shows all active Claude Code sessions in your menu bar, grouped by status:
+ClaudeWatch polls every second and shows all active Claude Code sessions in your menu bar, grouped by status:
 
 - **⚠ Attention** (red dot) — session is waiting for permission
 - **✦ Working** (green dot) — Claude is actively running
