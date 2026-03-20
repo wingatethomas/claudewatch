@@ -32,8 +32,10 @@ from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
 
 from claudewatch import __version__
 from claudewatch.backend.helpers import escape_applescript, run_applescript
+from claudewatch.backend.repositories.bookmarks import get_pinned_cwds
 from claudewatch.backend.repositories.config import get_available_sounds, get_setting, set_setting
 from claudewatch.backend.repositories.history import get_history
+from claudewatch.backend.services.usage import _MODEL_NAMES
 from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
@@ -292,15 +294,19 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
     entry_w = _CONTENT_W - _PAD * 2 - 16
     ey = len(history) * 50 - 10
 
+    pinned_cwds = get_pinned_cwds()
+
     for entry in history:
         proj = entry.get("project", "unknown")
-        model = entry.get("model", "")
+        raw_model = entry.get("model", "")
+        model = _MODEL_NAMES.get(raw_model, raw_model)
         ended = entry.get("ended_at", "")[:16].replace("T", " ")
         sid = entry.get("session_id", "")
         cwd = entry.get("cwd", "")
+        pin_mark = " ★" if cwd in pinned_cwds else ""
 
-        # Project + model
-        label = NSTextField.labelWithString_(f"{proj}  {model}")
+        # Project + model + pin
+        label = NSTextField.labelWithString_(f"{proj}{pin_mark}  {model}")
         label.setFrame_(NSMakeRect(0, ey, entry_w - 140, 18))
         label.setFont_(NSFont.systemFontOfSize_(12.0))
         list_view.addSubview_(label)
