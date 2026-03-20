@@ -41,6 +41,7 @@ from claudewatch.backend.services.notifications import (
     handle_notification_click,
     install_notification_delegate,
 )
+from claudewatch.backend.services.usage import get_session_usage
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
 
@@ -395,6 +396,12 @@ class ClaudeWatchApp(rumps.App):
                 item = rumps.MenuItem(label, callback=self._make_resume_handler(sid, cwd))
                 item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(cwd)))
                 self.menu.add(item)
+                # Detail: last interacted date
+                ts = entry.get("timestamp", "")
+                if ts:
+                    detail = rumps.MenuItem(f"      {ts[:10]}")
+                    detail.set_callback(None)
+                    self.menu.add(detail)
 
         self.menu.add(rumps.separator)
         self.menu.add(rumps.MenuItem("Preferences...", callback=self._open_preferences))
@@ -403,16 +410,27 @@ class ClaudeWatchApp(rumps.App):
     def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:
         """Add a session entry + detail line to the menu."""
         pin_mark = " 📌" if pinned else ""
-        label = s.menu_label + suffix + pin_mark
+
+        # Token usage suffix
+        usage = get_session_usage(s.cwd)
+        usage_str = ""
+        if usage:
+            pct = usage.get("context_pct", 0)
+            usage_str = f"  {pct}%"
+
+        label = s.menu_label + suffix + pin_mark + usage_str
         item = rumps.MenuItem(label, callback=self._make_click_handler(s))
         icon = _get_app_icon(s.host_app)
         if icon:
             item._menuitem.setImage_(icon)
-        # Pin/unpin sub-item
+        # Sub-items
         if pinned:
             item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(s.cwd)))
-        elif s.session_id:
-            item.add(rumps.MenuItem("Pin session...", callback=self._make_pin_handler(s)))
+            item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
+        else:
+            if s.session_id:
+                item.add(rumps.MenuItem("Pin session...", callback=self._make_pin_handler(s)))
+            item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
         self.menu.add(item)
         detail = s.detail_line
         if detail:
@@ -478,6 +496,51 @@ class ClaudeWatchApp(rumps.App):
                 self._modal_active = False
                 self._last_menu_key = ""
                 self.update_display()
+
+        return handler
+
+    def _make_quit_handler(self, session: ClaudeSession):  # noqa: ANN202
+        pid = session.pid
+        project = session.project
+        cwd = session.cwd
+        pinned = cwd in get_pinned_cwds()
+
+        def handler(_: rumps.MenuItem) -> None:
+            if pinned:
+                # Pinned: just quit + notify
+                try:
+                    os.kill(pid, signal.SIGINT)
+                    log.info("session quit: pid=%d project=%s", pid, project)
+                    rumps.notification(
+                        title="Session paused",
+                        subtitle=project,
+                        message="Resume from the Pinned section",
+                        sound=False,
+                    )
+                except OSError:
+                    log.warning("failed to quit session pid=%d", pid)
+            else:
+                # Unpinned: confirm first
+                self._modal_active = True
+                try:
+                    app = NSApplication.sharedApplication()
+                    app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+                    app.activateIgnoringOtherApps_(True)
+                    alert = NSAlert.alloc().init()
+                    alert.setMessageText_(f"Quit {project}?")
+                    alert.setInformativeText_(f"This will send Ctrl+C to pid {pid}.")
+                    alert.addButtonWithTitle_("Quit")
+                    alert.addButtonWithTitle_("Cancel")
+                    if alert.runModal() == NSAlertFirstButtonReturn:
+                        try:
+                            os.kill(pid, signal.SIGINT)
+                            log.info("session quit: pid=%d project=%s", pid, project)
+                        except OSError:
+                            log.warning("failed to quit session pid=%d", pid)
+                finally:
+                    self._modal_active = False
+            self._last_menu_key = ""
+            self.update_display()
 
         return handler
 
