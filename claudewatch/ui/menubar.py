@@ -574,9 +574,22 @@ class ClaudeWatchApp(rumps.App):
 
     def _make_unpin_handler(self, cwd: str):  # noqa: ANN202
         def handler(_: rumps.MenuItem) -> None:
-            unpin_session(cwd)
-            self._last_menu_key = ""
-            self.update_display()
+            self._modal_active = True
+            try:
+                app = NSApplication.sharedApplication()
+                app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+                app.activateIgnoringOtherApps_(True)
+                alert = NSAlert.alloc().init()
+                alert.setMessageText_("Unpin this session?")
+                alert.setInformativeText_("You can always pin it again later.")
+                alert.addButtonWithTitle_("Unpin")
+                alert.addButtonWithTitle_("Cancel")
+                if alert.runModal() == NSAlertFirstButtonReturn:
+                    unpin_session(cwd)
+            finally:
+                self._modal_active = False
+                self._last_menu_key = ""
+                self.update_display()
 
         return handler
 
