@@ -1,6 +1,7 @@
 """Sidebar-based preferences window using PyObjC."""
 
 import os
+import re
 import subprocess
 import webbrowser
 
@@ -27,23 +28,26 @@ from AppKit import (
     NSWindowStyleMaskTitled,
 )
 from AppKit import NSScrollView as AppKitScrollView
-from Foundation import NSMakeRect, NSObject, NSRange
+from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
 
 from claudewatch import __version__
+from claudewatch.backend.helpers import escape_applescript, run_applescript
 from claudewatch.backend.repositories.config import get_available_sounds, get_setting, set_setting
+from claudewatch.backend.repositories.history import get_history
+from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
-_W = 520
-_H = 320
-_SIDEBAR_W = 140
+_W = 580
+_H = 380
+_SIDEBAR_W = 150
 _CONTENT_W = _W - _SIDEBAR_W
-_PAD = 20
+_PAD = 24
 
 _window: NSWindow | None = None
 _delegate: "_PrefsDelegate | None" = None
 _content_views: dict[str, NSView] = {}
 
-_SECTIONS = ["General", "Sessions", "About"]
+_SECTIONS = ["General", "Sessions", "History", "About"]
 
 
 class _PrefsDelegate(NSObject):
@@ -73,6 +77,31 @@ class _PrefsDelegate(NSObject):
 
     def openRepo_(self, sender: objc.objc_object) -> None:
         webbrowser.open(_REPO_URL)
+
+    def resumeSession_(self, sender: objc.objc_object) -> None:
+        """Resume a session from history — tag stores 'session_id|cwd'."""
+        data = str(sender.representedObject())
+        if "|" not in data:
+            return
+        sid, cwd = data.split("|", 1)
+        if not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", sid):
+            return
+        safe_cwd = escape_applescript(cwd) if cwd else ""
+        cd_cmd = f"cd \\\"{safe_cwd}\\\" && " if safe_cwd else ""
+        run_applescript(f'''
+            tell application "Terminal"
+                activate
+                do script "{cd_cmd}claude -r {sid}"
+            end tell
+        ''')
+
+    def viewActivity_(self, sender: objc.objc_object) -> None:
+        """Open activity for a history entry — tag stores 'project|cwd'."""
+        data = str(sender.representedObject())
+        if "|" not in data:
+            return
+        project, cwd = data.split("|", 1)
+        show_activity(project, cwd)
 
     def windowWillClose_(self, notification: objc.objc_object) -> None:
         global _window  # noqa: PLW0603
@@ -233,6 +262,84 @@ def _build_about_view(delegate: _PrefsDelegate) -> NSView:
     return view
 
 
+def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
+    """Build the History pane with a list of ended sessions."""
+    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W, _H))
+    y = _H - 40
+
+    header = NSTextField.labelWithString_("History")
+    header.setFrame_(NSMakeRect(_PAD, y, 200, 22))
+    header.setFont_(NSFont.boldSystemFontOfSize_(15.0))
+    view.addSubview_(header)
+
+    y -= 28
+
+    history = get_history()
+    if not history:
+        empty = NSTextField.labelWithString_("No session history yet.")
+        empty.setFrame_(NSMakeRect(_PAD, y, _CONTENT_W - _PAD * 2, 16))
+        empty.setFont_(NSFont.systemFontOfSize_(12.0))
+        empty.setTextColor_(NSColor.secondaryLabelColor())
+        view.addSubview_(empty)
+        return view
+
+    # Scrollable list of history entries
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_PAD, 10, _CONTENT_W - _PAD * 2, y - 10))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setDrawsBackground_(False)
+
+    list_view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W - _PAD * 2 - 16, len(history) * 50))
+    entry_w = _CONTENT_W - _PAD * 2 - 16
+    ey = len(history) * 50 - 10
+
+    for entry in history:
+        proj = entry.get("project", "unknown")
+        model = entry.get("model", "")
+        ended = entry.get("ended_at", "")[:16].replace("T", " ")
+        sid = entry.get("session_id", "")
+        cwd = entry.get("cwd", "")
+
+        # Project + model
+        label = NSTextField.labelWithString_(f"{proj}  {model}")
+        label.setFrame_(NSMakeRect(0, ey, entry_w - 140, 18))
+        label.setFont_(NSFont.systemFontOfSize_(12.0))
+        list_view.addSubview_(label)
+
+        # Date
+        date_label = NSTextField.labelWithString_(ended)
+        date_label.setFrame_(NSMakeRect(0, ey - 16, entry_w - 140, 14))
+        date_label.setFont_(NSFont.systemFontOfSize_(10.0))
+        date_label.setTextColor_(NSColor.tertiaryLabelColor())
+        list_view.addSubview_(date_label)
+
+        # Resume button
+        resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(entry_w - 135, ey - 6, 65, 24))
+        resume_btn.setTitle_("Resume")
+        resume_btn.setBezelStyle_(1)
+        resume_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+        resume_btn.setTarget_(delegate)
+        resume_btn.setAction_(objc.selector(delegate.resumeSession_, signature=b"v@:@"))
+        resume_btn.setRepresentedObject_(f"{sid}|{cwd}")
+        list_view.addSubview_(resume_btn)
+
+        # Activity button
+        activity_btn = NSButton.alloc().initWithFrame_(NSMakeRect(entry_w - 65, ey - 6, 65, 24))
+        activity_btn.setTitle_("Activity")
+        activity_btn.setBezelStyle_(1)
+        activity_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+        activity_btn.setTarget_(delegate)
+        activity_btn.setAction_(objc.selector(delegate.viewActivity_, signature=b"v@:@"))
+        activity_btn.setRepresentedObject_(f"{proj}|{cwd}")
+        list_view.addSubview_(activity_btn)
+
+        ey -= 50
+
+    scroll.setDocumentView_(list_view)
+    view.addSubview_(scroll)
+
+    return view
+
+
 def show_preferences() -> None:  # noqa: PLR0915
     """Show (or bring to front) the preferences window."""
     global _window, _delegate  # noqa: PLW0603
@@ -272,13 +379,14 @@ def show_preferences() -> None:  # noqa: PLR0915
 
     table = NSTableView.alloc().initWithFrame_(NSMakeRect(0, 0, _SIDEBAR_W, _H))
     col = NSTableColumn.alloc().initWithIdentifier_("name")
-    col.setWidth_(_SIDEBAR_W - 4)
+    col.setWidth_(_SIDEBAR_W - 8)
     table.addTableColumn_(col)
     table.setHeaderView_(None)
     table.setDataSource_(_delegate)
     table.setDelegate_(_delegate)
-    table.setRowHeight_(28)
+    table.setRowHeight_(32)
     table.setBackgroundColor_(NSColor.clearColor())
+    table.setIntercellSpacing_(NSMakeSize(0, 2))
 
     sidebar_scroll.setDocumentView_(table)
     root.addSubview_(sidebar_scroll)
@@ -297,6 +405,7 @@ def show_preferences() -> None:  # noqa: PLR0915
     _content_views.clear()
     _content_views["General"] = _build_general_view(_delegate)
     _content_views["Sessions"] = _build_sessions_view(_delegate)
+    _content_views["History"] = _build_history_view(_delegate)
     _content_views["About"] = _build_about_view(_delegate)
 
     for name, pane in _content_views.items():

@@ -58,7 +58,7 @@ def pin_session(session_id: str, project: str, cwd: str, note: str) -> None:
             entry["note"] = note
             entry["timestamp"] = ts
             _save(pins)
-            log.info("pin updated: project=%s", project)
+            log.info("pin.updated project=%s", project)
             return
     pins.append({
         "session_id": session_id,
@@ -68,7 +68,7 @@ def pin_session(session_id: str, project: str, cwd: str, note: str) -> None:
         "timestamp": ts,
     })
     _save(pins)
-    log.info("session pinned: project=%s", project)
+    log.info("pin.created project=%s", project)
 
 
 def get_pins() -> list[dict]:
@@ -84,5 +84,8 @@ def get_pinned_cwds() -> set[str]:
 def unpin_session(cwd: str) -> None:
     """Unpin a session by CWD."""
     pins = _load()
+    before = len(pins)
     pins = [p for p in pins if not (isinstance(p, dict) and p.get("cwd") == cwd)]
+    if len(pins) < before:
+        log.info("pin.removed cwd=%s", cwd)
     _save(pins)
