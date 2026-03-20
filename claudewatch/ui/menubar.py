@@ -446,7 +446,9 @@ class ClaudeWatchApp(rumps.App):
             "Click → focus window",
             "Hover → Activity · Pin · Quit",
             "★ = pinned (resume later)",
-            "🔴 attention  🟢 working  🟡 idle",
+            "⚠ = needs attention",
+            "✦ = working",
+            "⏸ = idle",
         ):
             item = rumps.MenuItem(f"  {tip}")
             item.set_callback(None)
