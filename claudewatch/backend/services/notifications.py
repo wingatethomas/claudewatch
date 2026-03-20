@@ -192,7 +192,13 @@ class NotificationManager:
             subtitle = s.project
             message = s.prompt_text if s.prompt_text else "Waiting for permission"
 
-            log.info("notification: pid=%d project=%s host=%s", s.pid, s.project, s.host_app.value)
+            log.info(
+                "notification.sent project=%s action=%s host=%s pid=%d",
+                s.project,
+                s.prompt_text or "permission",
+                s.host_app.value,
+                s.pid,
+            )
 
             sent = _send_notification(
                 title=title,
