@@ -454,15 +454,17 @@ def detect_sessions() -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
                     tty = parent["tty"]
                     break
                 walk_pid = parent["ppid"]
-        if not tty or tty == "??":
-            continue
-
         cwd = cwds.get(pid, "")
         project = os.path.basename(cwd) if cwd else ""
         if not project:
             continue
 
         host_app = _detect_host_app(pid, all_ps)
+
+        # Allow TTY-less sessions for IDE host apps (VS Code extension, PyCharm plugin).
+        # These spawn Claude as a direct subprocess without a terminal emulator.
+        if (not tty or tty == "??") and host_app not in (HostApp.VSCODE, HostApp.PYCHARM):
+            continue
         window_title = host_app.value
         window_id = None
 
