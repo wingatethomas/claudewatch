@@ -22,17 +22,20 @@ jobs:
         run: uv run pytest -v
 
       - name: Build .app bundle
-        run: uv run python build_app.py
+        run: |
+          uv run briefcase create macOS || true
+          uv run briefcase build macOS
+          uv run briefcase package macOS --no-sign
 
       - name: Zip the app
         run: |
-          cd dist
-          zip -r ClaudeWatch-${{ github.ref_name }}-arm64.zip ClaudeWatch.app
+          cd macOS/ClaudeWatch
+          zip -r ../../ClaudeWatch-${{ github.ref_name }}-arm64.zip ClaudeWatch.app
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ClaudeWatch-${{ github.ref_name }}-arm64.zip
+          files: ClaudeWatch-${{ github.ref_name }}-arm64.zip
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}

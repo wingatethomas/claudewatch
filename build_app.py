@@ -1,68 +1,38 @@
-"""Build ClaudeWatch.app using py2app."""
+"""Build ClaudeWatch.app using Briefcase.
+
+Usage: uv run python build_app.py
+Output: dist/ClaudeWatch.app
+"""
 
 import subprocess
 import sys
-from pathlib import Path
 
-# Ensure py2app is available
-subprocess.run([sys.executable, "-m", "pip", "install", "py2app"], check=True)
 
-from setuptools import setup  # noqa: E402
+def main() -> None:
+    """Build the macOS .app bundle."""
+    # Create the app scaffold (first time only)
+    subprocess.run(
+        [sys.executable, "-m", "briefcase", "create", "macOS"],
+        check=False,  # OK if already exists
+    )
 
-APP = ["claudewatch/__main__.py"]
-APP_NAME = "ClaudeWatch"
-VERSION = "0.1.0"
+    # Build the app
+    subprocess.run(
+        [sys.executable, "-m", "briefcase", "build", "macOS"],
+        check=True,
+    )
 
-OPTIONS = {
-    "argv_emulation": False,
-    "iconfile": None,  # TODO: add app icon
-    "plist": {
-        "CFBundleName": APP_NAME,
-        "CFBundleDisplayName": APP_NAME,
-        "CFBundleIdentifier": "com.claudewatch.app",
-        "CFBundleVersion": VERSION,
-        "CFBundleShortVersionString": VERSION,
-        "LSUIElement": True,  # No Dock icon — menu bar only
-        "LSMinimumSystemVersion": "13.0",
-        "NSAppleEventsUsageDescription": (
-            "ClaudeWatch needs automation access to read terminal windows and focus sessions."
-        ),
-        "NSUserNotificationAlertStyle": "alert",
-    },
-    "packages": ["claudewatch", "rumps"],
-    "includes": [
-        "Foundation",
-        "AppKit",
-        "Quartz",
-        "objc",
-    ],
-    "excludes": [
-        "pytest",
-        "ruff",
-        "pre_commit",
-        "setuptools",
-        "pip",
-    ],
-}
+    # Package as a standalone .app
+    subprocess.run(
+        [sys.executable, "-m", "briefcase", "package", "macOS", "--no-sign"],
+        check=True,
+    )
 
-# Clean previous build
-for d in ["build", "dist"]:
-    p = Path(d)
-    if p.exists():
-        import shutil
+    print("\n" + "=" * 50)
+    print("Built: macOS/ClaudeWatch/ClaudeWatch.app")
+    print("Run:   open macOS/ClaudeWatch/ClaudeWatch.app")
+    print("=" * 50)
 
-        shutil.rmtree(p)
 
-sys.argv = ["build_app.py", "py2app"]
-
-setup(
-    name=APP_NAME,
-    app=APP,
-    options={"py2app": OPTIONS},
-    setup_requires=["py2app"],
-)
-
-print(f"\n{'=' * 50}")
-print(f"Built: dist/{APP_NAME}.app")
-print(f"Run:   open dist/{APP_NAME}.app")
-print(f"{'=' * 50}")
+if __name__ == "__main__":
+    main()

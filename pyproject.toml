@@ -17,6 +17,7 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.9.0",
     "pre-commit>=4.0",
+    "briefcase>=0.3",
 ]
 
 [project.scripts]
@@ -28,3 +29,30 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["claudewatch"]
+
+# Briefcase app packaging
+[tool.briefcase]
+project_name = "ClaudeWatch"
+bundle = "com.claudewatch"
+version = "0.1.0"
+url = "https://github.com/wingatethomas/claudewatch"
+license.file = "LICENSE"
+author = "ClaudeWatch Contributors"
+
+[tool.briefcase.app.claudewatch]
+formal_name = "ClaudeWatch"
+description = "macOS menu bar app for monitoring Claude Code sessions"
+sources = ["claudewatch"]
+requires = [
+    "rumps==0.4.0",
+    "pyobjc-framework-Cocoa~=12.1",
+    "pyobjc-framework-Quartz~=12.1",
+]
+
+[tool.briefcase.app.claudewatch.macOS]
+requires = []
+system_requires = []
+
+[tool.briefcase.app.claudewatch.macOS.info]
+LSUIElement = true
+NSAppleEventsUsageDescription = "ClaudeWatch needs automation access to read terminal windows and focus sessions."
