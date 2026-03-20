@@ -12,12 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv sync --only-group dev
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
+      - run: uv pip install ruff --system
+      - run: ruff check .
+      - run: ruff format --check .
 
   test:
-    runs-on: macos-14  # ARM64 — matches target platform, has PyObjC support
+    runs-on: macos-14  # ARM64 — PyObjC requires macOS
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
