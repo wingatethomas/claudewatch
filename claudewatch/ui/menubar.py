@@ -55,8 +55,7 @@ from claudewatch.backend.services.summarize import (
     is_generating,
     track_session,
 )
-from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, get_session_model
-from claudewatch.backend.services.usage_stats import format_stats_line, get_month_stats, get_today_stats, get_week_stats
+from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, format_tokens, get_session_model, get_session_tokens
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
@@ -245,20 +244,22 @@ def _noop(_: rumps.MenuItem) -> None:
 
 
 def _add_summary_lines(menu_item: rumps.MenuItem, text: str) -> None:
-    """Split a summary into wrapped menu items with readable styling."""
+    """Split a summary into wrapped menu items — non-interactive, readable text."""
     _wrap = 55
     words = text.split()
     line = ""
     for word in words:
         if line and len(line) + 1 + len(word) > _wrap:
-            item = rumps.MenuItem(f"  {line}", callback=_noop)
+            item = rumps.MenuItem(f"  {line}")
+            item.set_callback(None)
             _style_summary_item(item)
             menu_item.add(item)
             line = word
         else:
             line = f"{line} {word}" if line else word
     if line:
-        item = rumps.MenuItem(f"  {line}", callback=_noop)
+        item = rumps.MenuItem(f"  {line}")
+        item.set_callback(None)
         _style_summary_item(item)
         menu_item.add(item)
 
@@ -432,15 +433,9 @@ class ClaudeWatchApp(rumps.App):
 
         self.menu.clear()
 
-        # App title + today's usage
+        # App title
         app_title = rumps.MenuItem("ClaudeWatch", callback=None)
         self.menu.add(app_title)
-        today = get_today_stats()
-        today_line = format_stats_line(today)
-        if today["messages"]:
-            today_item = rumps.MenuItem(f"  Today: {today_line}")
-            today_item.set_callback(None)
-            self.menu.add(today_item)
         self.menu.add(rumps.separator)
 
         # Show accessibility warning if needed
@@ -609,22 +604,6 @@ class ClaudeWatchApp(rumps.App):
                 track_session(cwd)  # background thread will generate summary
             self.menu.add(recent_menu)
 
-        # Usage stats submenu
-        week = get_week_stats()
-        month = get_month_stats()
-        if week["messages"] or month["messages"]:
-            self.menu.add(rumps.separator)
-            usage_menu = rumps.MenuItem("📊 Usage")
-            for label, stats in (("This week", week), ("Last 30 days", month)):
-                line = format_stats_line(stats)
-                header = rumps.MenuItem(f"  {label}")
-                header.set_callback(None)
-                usage_menu.add(header)
-                detail = rumps.MenuItem(f"    {line}")
-                detail.set_callback(None)
-                usage_menu.add(detail)
-            self.menu.add(usage_menu)
-
         self.menu.add(rumps.separator)
         self.menu.add(rumps.MenuItem("Preferences...", callback=self._open_preferences))
 
@@ -702,10 +681,11 @@ class ClaudeWatchApp(rumps.App):
                 item.add(rumps.MenuItem("Pin session...", callback=self._make_pin_handler(s)))
             item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
         self.menu.add(item)
-        # Detail line: status + model
+        # Detail line: status + model + tokens
         detail = s.detail_line
         model = get_session_model(s.cwd)
-        detail_parts = [p for p in [detail, model] if p]
+        tokens = format_tokens(get_session_tokens(s.cwd))
+        detail_parts = [p for p in [detail, model, tokens] if p]
         if detail_parts:
             detail_item = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
             detail_item.set_callback(None)
