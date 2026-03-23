@@ -1,9 +1,11 @@
-"""Read Claude Code usage statistics from ~/.claude/stats-cache.json."""
+"""Usage statistics from Claude's stats-cache and our own session history."""
 
 import json
 import logging
 import os
 from datetime import UTC, datetime, timedelta
+
+from claudewatch.backend.repositories.history import get_history
 
 log = logging.getLogger("claudewatch")
 
@@ -11,7 +13,7 @@ _STATS_PATH = os.path.expanduser("~/.claude/stats-cache.json")
 
 
 def _load_daily_activity() -> list[dict]:
-    """Load daily activity entries from the stats cache."""
+    """Load daily activity entries from Claude's stats cache."""
     try:
         with open(_STATS_PATH) as f:
             data = json.load(f)
@@ -37,10 +39,29 @@ def _sum_range(days: list[dict], start: str, end: str) -> dict[str, int]:
     return {"messages": messages, "sessions": sessions, "tools": tools}
 
 
+def _count_sessions_in_range(start: str, end: str) -> int:
+    """Count sessions from our history that ended in [start, end]."""
+    count = 0
+    for entry in get_history():
+        ended = entry.get("ended_at", "")[:10]
+        if start <= ended <= end:
+            count += 1
+    return count
+
+
+def _get_stats(start: str, end: str) -> dict[str, int]:
+    """Get stats for a date range, falling back to our history for session counts."""
+    stats = _sum_range(_load_daily_activity(), start, end)
+    # If Claude's cache has no data for this range, use our own session count
+    if not stats["sessions"]:
+        stats["sessions"] = _count_sessions_in_range(start, end)
+    return stats
+
+
 def get_today_stats() -> dict[str, int]:
     """Get today's usage stats."""
     today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
-    return _sum_range(_load_daily_activity(), today, today)
+    return _get_stats(today, today)
 
 
 def get_week_stats() -> dict[str, int]:
@@ -48,7 +69,7 @@ def get_week_stats() -> dict[str, int]:
     now = datetime.now(tz=UTC)
     start = (now - timedelta(days=6)).strftime("%Y-%m-%d")
     end = now.strftime("%Y-%m-%d")
-    return _sum_range(_load_daily_activity(), start, end)
+    return _get_stats(start, end)
 
 
 def get_month_stats() -> dict[str, int]:
@@ -56,7 +77,7 @@ def get_month_stats() -> dict[str, int]:
     now = datetime.now(tz=UTC)
     start = (now - timedelta(days=29)).strftime("%Y-%m-%d")
     end = now.strftime("%Y-%m-%d")
-    return _sum_range(_load_daily_activity(), start, end)
+    return _get_stats(start, end)
 
 
 def format_stats_line(stats: dict[str, int]) -> str:
