@@ -5,6 +5,7 @@ import os
 import re
 import signal
 import subprocess
+import threading
 import time
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -38,6 +39,7 @@ from claudewatch.backend.repositories.config import get_setting
 from claudewatch.backend.repositories.history import record_session
 from claudewatch.backend.services.detection import detect_sessions
 from claudewatch.backend.services.notifications import NotificationManager
+from claudewatch.backend.services.summarize import generate_summary
 from claudewatch.backend.services.usage import get_session_model
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
@@ -567,9 +569,20 @@ class ClaudeWatchApp(rumps.App):
                 alert.addButtonWithTitle_("Cancel")
                 text_field = NSTextField.alloc().initWithFrame_(((0, 0), (300, 24)))
                 text_field.setStringValue_("")
-                text_field.setPlaceholderString_("e.g. waiting on PR review")
+                text_field.setPlaceholderString_("Generating summary…")
                 alert.setAccessoryView_(text_field)
                 alert.window().setInitialFirstResponder_(text_field)
+
+                def _fill_summary() -> None:
+                    summary = generate_summary(cwd)
+                    if summary:
+                        text_field.performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "setStringValue:",
+                            summary,
+                            False,
+                        )
+
+                threading.Thread(target=_fill_summary, daemon=True).start()
 
                 if alert.runModal() == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
