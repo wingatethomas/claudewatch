@@ -47,20 +47,28 @@ def get_session_model(cwd: str) -> str:
     return MODEL_DISPLAY_NAMES.get(last_model, last_model)
 
 
-def get_session_tokens(cwd: str) -> dict[str, int]:
-    """Get total token usage for the most recent session at a CWD.
+_EMPTY_TOKENS: dict[str, int] = {
+    "input": 0,
+    "output": 0,
+    "cache_create": 0,
+    "cache_read": 0,
+}
 
-    Returns {"input": N, "output": N} summed across all messages.
+
+def get_session_tokens(cwd: str) -> dict[str, int]:
+    """Get token usage breakdown for the most recent session at a CWD.
+
+    Returns {input, output, cache_create, cache_read} summed across all messages.
     Cached by JSONL mtime — only re-reads when the file changes.
     """
     path = find_most_recent_jsonl(cwd)
     if not path:
-        return {"input": 0, "output": 0}
+        return dict(_EMPTY_TOKENS)
 
     try:
         mtime = os.path.getmtime(path)
     except OSError:
-        return {"input": 0, "output": 0}
+        return dict(_EMPTY_TOKENS)
 
     cached = _token_cache.get(cwd)
     if cached and cached[1] >= mtime:
@@ -69,6 +77,8 @@ def get_session_tokens(cwd: str) -> dict[str, int]:
     lines = read_jsonl_full(path)
     total_in = 0
     total_out = 0
+    total_cache_create = 0
+    total_cache_read = 0
     for line in lines:
         try:
             d = json.loads(line)
@@ -81,29 +91,55 @@ def get_session_tokens(cwd: str) -> dict[str, int]:
         if not isinstance(usage, dict):
             continue
         total_in += usage.get("input_tokens", 0)
-        total_in += usage.get("cache_creation_input_tokens", 0)
-        total_in += usage.get("cache_read_input_tokens", 0)
+        total_cache_create += usage.get("cache_creation_input_tokens", 0)
+        total_cache_read += usage.get("cache_read_input_tokens", 0)
         total_out += usage.get("output_tokens", 0)
 
-    result = {"input": total_in, "output": total_out}
+    result = {
+        "input": total_in,
+        "output": total_out,
+        "cache_create": total_cache_create,
+        "cache_read": total_cache_read,
+    }
     _token_cache[cwd] = (result, mtime)
     return result
 
 
+_M = 1_000_000
+_K = 1000
+
+
+def _fmt_tokens(n: int) -> str:
+    """Format a token count as compact string (e.g. 42K, 1.2M)."""
+    if n >= _M:
+        return f"{n / _M:.1f}M"
+    if n >= _K:
+        return f"{n / _K:.0f}K"
+    return str(n)
+
+
 def format_tokens(tokens: dict[str, int]) -> str:
-    """Format token counts as a compact string like '12K in · 3K out'."""
-    total = tokens["input"] + tokens["output"]
-    if total == 0:
+    """Compact one-line format for detail line: '42K in · 3K out'."""
+    total_in = tokens["input"] + tokens["cache_create"] + tokens["cache_read"]
+    total_out = tokens["output"]
+    if total_in + total_out == 0:
         return ""
+    return f"{_fmt_tokens(total_in)} in · {_fmt_tokens(total_out)} out"
 
-    _m = 1_000_000
-    _k = 1000
 
-    def _fmt(n: int) -> str:
-        if n >= _m:
-            return f"{n / _m:.1f}M"
-        if n >= _k:
-            return f"{n / _k:.0f}K"
-        return str(n)
-
-    return f"{_fmt(tokens['input'])} in · {_fmt(tokens['output'])} out"
+def format_tokens_breakdown(tokens: dict[str, int]) -> list[str]:
+    """Detailed breakdown lines for a submenu."""
+    total_in = tokens["input"] + tokens["cache_create"] + tokens["cache_read"]
+    total_out = tokens["output"]
+    if total_in + total_out == 0:
+        return []
+    lines = [
+        f"Input: {_fmt_tokens(tokens['input'])} tokens",
+        f"Output: {_fmt_tokens(total_out)} tokens",
+    ]
+    if tokens["cache_create"]:
+        lines.append(f"Cache write: {_fmt_tokens(tokens['cache_create'])} tokens")
+    if tokens["cache_read"]:
+        lines.append(f"Cache read: {_fmt_tokens(tokens['cache_read'])} tokens")
+    lines.append(f"Total: {_fmt_tokens(total_in + total_out)} tokens")
+    return lines
