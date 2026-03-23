@@ -23,13 +23,10 @@ _REFRESH_INTERVAL = 60  # seconds between background refresh cycles
 _STORE_PATH = os.path.expanduser("~/.claude/claudewatch-summaries.json")
 
 _PROMPT = (
-    "Summarize this Claude Code conversation in 3-4 sentences. "
-    "Cover: what the user was trying to accomplish, what was done, key files or areas touched, "
-    "and the current state (e.g. merged, in progress, blocked). "
-    "Do not use markdown. Do not start with 'The user' or 'This conversation'. "
-    "Example: 'Debugging auth middleware after session tokens were stored incorrectly. "
-    "Fixed token validation in auth.py, added integration tests, updated the migration. "
-    "PR #42 is merged to main.'\n\n"
+    "Summarize this Claude Code conversation in 1-2 short sentences. "
+    "Be concise — this appears in a menu bar dropdown. "
+    "State what was worked on and the outcome. No markdown. "
+    "Example: 'Fixed auth token storage in auth.py, added tests. PR merged.'\n\n"
 )
 
 # In-memory mirror of the persistent store: CWD → {"summary": str, "mtime": float}
