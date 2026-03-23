@@ -259,6 +259,7 @@ class ClaudeWatchApp(rumps.App):
         self._prev_status: dict[int, str] = {}
         self._prev_sessions: dict[int, ClaudeSession] = {}
         self._exiting_pids: dict[int, float] = {}  # PID → time of quit signal
+        self._has_polled = False
         self._check_accessibility()
         self.update_display()
 
@@ -336,6 +337,7 @@ class ClaudeWatchApp(rumps.App):
                 now = time.time()
                 self._exiting_pids = {p: t for p, t in self._exiting_pids.items() if now - t < _exit_grace}
                 self.sessions = [s for s in self.sessions if s.pid not in self._exiting_pids]
+                self._has_polled = True
                 self._log_changes()
                 self.update_display()
                 self.notifications.notify_if_needed(self.sessions)
@@ -390,7 +392,10 @@ class ClaudeWatchApp(rumps.App):
         active_cwds = {s.cwd for s in self.sessions}
 
         if not self.sessions:
-            self.menu.add(rumps.MenuItem("No running Claude sessions found", callback=None))
+            if self._has_polled:
+                self.menu.add(rumps.MenuItem("No running Claude sessions", callback=None))
+            else:
+                self.menu.add(rumps.MenuItem("Scanning for Claude sessions…", callback=None))
         else:
             # Build suffix map to disambiguate duplicate labels
             seen_labels: dict[str, int] = {}
