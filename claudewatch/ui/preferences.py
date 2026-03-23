@@ -291,6 +291,7 @@ def _build_notifications_content(cv: NSView, delegate: _PrefsDelegate) -> None:
         False,
     )
     sound_popup.setFont_(NSFont.systemFontOfSize_(12.0))
+    sound_popup.setToolTip_("System sounds from /System/Library/Sounds/")
     sound_popup.addItemsWithTitles_(list(get_available_sounds()))
     sound_popup.selectItemWithTitle_(str(get_setting("notification_sound")))
     sound_popup.setTarget_(delegate)
