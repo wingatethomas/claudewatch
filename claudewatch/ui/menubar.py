@@ -231,11 +231,18 @@ def _clean_exit_session(tty: str, pid: int, project: str, window_id: int | None 
         log.warning("session.exit failed project=%s pid=%d", project, pid)
         return False
 
-    # Close the terminal tab after Claude exits
+    # Close the terminal tab after Claude actually exits
     if window_id is not None:
         # window_id is always int — validated via isdigit() in detection.py
         def _close_tab() -> None:
-            time.sleep(3)  # wait for Claude to save and exit
+            # Poll until the process exits (max 10s, check every 0.5s)
+            _max_wait = 20
+            for _ in range(_max_wait):
+                time.sleep(0.5)
+                try:
+                    os.kill(pid, 0)  # 0 signal = check if alive
+                except OSError:
+                    break  # process has exited
             run_applescript(f"""
                 tell application "Terminal"
                     close window id {window_id} saving no
