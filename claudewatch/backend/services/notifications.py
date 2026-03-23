@@ -113,17 +113,19 @@ class NotificationManager:
                 f"claudewatch-{s.pid}",
             ]
 
-            bundle_id = _BUNDLE_IDS.get(s.host_app)
-            if bundle_id:
-                cmd.extend(["-activate", bundle_id])
             if s.host_app == HostApp.TERMINAL and s.window_id is not None:
+                # Raise only the specific window, not all Terminal windows.
                 # window_id is always int — validated via isdigit() in detection.py
-                cmd.extend(
-                    [
-                        "-execute",
-                        f"osascript -e 'tell application \"Terminal\" to set index of window id {s.window_id} to 1'",
-                    ]
+                script = (
+                    f'tell application "Terminal"\n'
+                    f"  set miniaturized of window id {s.window_id} to false\n"
+                    f"  set index of window id {s.window_id} to 1\n"
+                    f"  activate window id {s.window_id}\n"
+                    f"end tell"
                 )
+                cmd.extend(["-execute", f"osascript -e '{script}'"])
+            elif s.host_app in _BUNDLE_IDS:
+                cmd.extend(["-activate", _BUNDLE_IDS[s.host_app]])
 
             try:
                 subprocess.run(

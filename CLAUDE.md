@@ -36,7 +36,7 @@
 
 - Detection runs on a background thread (`ThreadPoolExecutor`). UI updates must happen on the main thread.
 - Terminal.app AppleScript must be guarded with `if application "Terminal" is running`.
-- For Terminal.app, use `NSRunningApplication.activateWithOptions_` or `AXRaise` instead of AppleScript `activate` to avoid raising all windows.
+- **Window focus must only raise the target window, never all windows of the app.** For Terminal.app, use `set index of window id X to 1` + `activateWithOptions_(1 << 1)` (without `NSApplicationActivateAllWindows`). Never use `-activate` with terminal-notifier for Terminal.app — use `-execute` with targeted AppleScript instead.
 - Always `NSImage.copy()` before calling `setSize_` on images from `NSWorkspace`.
 - Pair `NSImage.lockFocus()` with `unlockFocus()` in try/finally.
 - Check `AXIsProcessTrusted()` on launch and show a menu item if permission is missing.
