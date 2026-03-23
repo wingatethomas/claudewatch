@@ -43,6 +43,7 @@ from claudewatch.backend.services.summarize import (
     cache_summary,
     generate_and_cache_summary,
     get_cached_summary,
+    is_generating,
     track_session,
 )
 from claudewatch.backend.services.usage import get_session_model
@@ -226,19 +227,37 @@ def _clean_exit_session(tty: str, pid: int, project: str) -> bool:
             return False
 
 
+def _noop(_: rumps.MenuItem) -> None:
+    """No-op callback — keeps menu items enabled (not greyed out)."""
+
+
 def _add_summary_lines(menu_item: rumps.MenuItem, text: str) -> None:
-    """Split a summary into wrapped menu items."""
+    """Split a summary into wrapped menu items with readable styling."""
     _wrap = 55
     words = text.split()
     line = ""
     for word in words:
         if line and len(line) + 1 + len(word) > _wrap:
-            menu_item.add(rumps.MenuItem(f"  {line}", callback=None))
+            item = rumps.MenuItem(f"  {line}", callback=_noop)
+            _style_summary_item(item)
+            menu_item.add(item)
             line = word
         else:
             line = f"{line} {word}" if line else word
     if line:
-        menu_item.add(rumps.MenuItem(f"  {line}", callback=None))
+        item = rumps.MenuItem(f"  {line}", callback=_noop)
+        _style_summary_item(item)
+        menu_item.add(item)
+
+
+def _style_summary_item(item: rumps.MenuItem) -> None:
+    """Apply readable font styling to a summary menu item."""
+    text = item.title
+    attr = NSMutableAttributedString.alloc().initWithString_(text)
+    r = NSRange(0, len(text))
+    attr.addAttribute_value_range_("NSFont", NSFont.systemFontOfSize_(12.0), r)
+    attr.addAttribute_value_range_("NSColor", NSColor.labelColor(), r)
+    item._menuitem.setAttributedTitle_(attr)
 
 
 _MAX_ERRORS = 10
@@ -539,19 +558,19 @@ class ClaudeWatchApp(rumps.App):
         icon = _get_app_icon(s.host_app)
         if icon:
             item._menuitem.setImage_(icon)
-        # Summary submenu — always present as a hover submenu
+        # Summary submenu — auto-generates in background
         summary_item = rumps.MenuItem("Summary")
         cached = get_cached_summary(s.cwd)
         if cached:
             _add_summary_lines(summary_item, cached)
-            summary_item.add(rumps.separator)
-            summary_item.add(rumps.MenuItem("Refresh", callback=self._make_summary_handler(s.cwd)))
+        elif is_generating(s.cwd):
+            summary_item.add(rumps.MenuItem("Generating…", callback=None))
         else:
-            summary_item.add(rumps.MenuItem("  Click to generate", callback=self._make_summary_handler(s.cwd)))
+            summary_item.add(rumps.MenuItem("Pending…", callback=None))
         item.add(summary_item)
         item.add(rumps.separator)
         item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
-        # Track for background refresh
+        # Track for background refresh (auto-generates summaries)
         track_session(s.cwd)
         if pinned:
             item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(s.cwd)))
@@ -576,12 +595,6 @@ class ClaudeWatchApp(rumps.App):
 
         def handler(_: rumps.MenuItem) -> None:
             show_activity(project, cwd, session_active=True)
-
-        return handler
-
-    def _make_summary_handler(self, cwd: str):  # noqa: ANN202
-        def handler(_: rumps.MenuItem) -> None:
-            threading.Thread(target=generate_and_cache_summary, args=(cwd,), daemon=True).start()
 
         return handler
 

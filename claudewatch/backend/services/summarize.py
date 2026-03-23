@@ -99,6 +99,12 @@ def cache_summary(cwd: str, summary: str) -> None:
         _save_store()
 
 
+def is_generating(cwd: str) -> bool:
+    """Check if a summary is currently being generated for a CWD."""
+    with _in_progress_lock:
+        return cwd in _in_progress
+
+
 def generate_and_cache_summary(cwd: str) -> str:
     """Generate a summary via claude -p and persist it.
 
