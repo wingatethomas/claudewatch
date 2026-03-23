@@ -32,6 +32,8 @@ _W = 750
 _H = 500
 
 _windows: dict[str, NSWindow] = {}
+_text_views: dict[str, NSTextView] = {}
+_sort_state: dict[str, bool] = {}  # CWD → newest_first
 
 # Styles per entry kind
 _KIND_CONFIG = {
@@ -54,31 +56,30 @@ class _ActivityDelegate(NSObject):
     """Handle window close, resume, and sort actions."""
 
     _cwd: str = ""
-    _newest_first: bool = True
-    _text_view: objc.objc_object = None
 
     def windowWillClose_(self, notification: objc.objc_object) -> None:
         _windows.pop(self._cwd, None)
+        _text_views.pop(self._cwd, None)
+        _sort_state.pop(self._cwd, None)
 
     def openInFinder_(self, sender: objc.objc_object) -> None:
         if self._cwd and os.path.isdir(self._cwd):
             subprocess.run(["open", self._cwd], check=False)  # noqa: S603, S607
 
     def toggleSort_(self, sender: objc.objc_object) -> None:
-        self._newest_first = not self._newest_first
-        sender.setTitle_("↑ Oldest first" if self._newest_first else "↓ Newest first")
+        newest = not _sort_state.get(self._cwd, True)
+        _sort_state[self._cwd] = newest
+        sender.setTitle_("↑ Oldest first" if newest else "↓ Newest first")
         entries = parse_activity(self._cwd)
-        if not self._newest_first:
+        if not newest:
             entries = list(reversed(entries))
-        tv = self._text_view
+        tv = _text_views.get(self._cwd)
         if tv is not None:
             tv.textStorage().setAttributedString_(_render_timeline(entries))
-            # Scroll to appropriate end
-            if self._newest_first:
+            if newest:
                 tv.scrollRangeToVisible_(NSRange(len(tv.string()), 0))
             else:
-                tv.scrollToPoint_((0, 0))
-                tv.enclosingScrollView().reflectScrolledClipView_(tv.enclosingScrollView().contentView())
+                tv.scrollRangeToVisible_(NSRange(0, 0))
 
     def resumeSession_(self, sender: objc.objc_object) -> None:
         sid = _get_session_id(self._cwd)
@@ -224,7 +225,7 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
     text_view.setAutoresizingMask_(18)
     text_view.setTextContainerInset_(NSMakeSize(16, 16))
 
-    delegate._text_view = text_view
+    _text_views[cwd] = text_view
     entries = parse_activity(cwd)
     text_view.textStorage().setAttributedString_(_render_timeline(entries))
     text_view.scrollRangeToVisible_(NSRange(len(text_view.string()), 0))
