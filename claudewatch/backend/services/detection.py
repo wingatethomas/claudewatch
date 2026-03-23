@@ -36,6 +36,11 @@ _TEXT_MAX_LEN = 80
 _JSONL_MAX_AGE = 60
 _JSONL_MIN_AGE = 3
 _WIN_SPLIT_FIELDS = 3
+_TERMINAL_CACHE_TTL = 3  # seconds between AppleScript refreshes
+
+# Cached terminal window info to avoid expensive AppleScript every poll
+_terminal_cache: dict[str, tuple[str, int]] | None = None
+_terminal_cache_time: float = 0
 
 
 def _batch_ps_info(pids: list[int]) -> dict[int, dict]:
@@ -48,55 +53,43 @@ def _batch_lsof_cwds(pids: list[int]) -> dict[int, str]:
     return get_cwds(pids)
 
 
-def _get_terminal_windows_and_buffers(
-    tail_chars: int = 2000,
-) -> tuple[dict[str, tuple[str, int]], dict[int, str]]:
-    """Single AppleScript call: get all Terminal tab TTYs, titles, IDs, AND buffers.
-    Returns ({tty: (title, window_id)}, {window_id: buffer_tail})."""
-    result = run_applescript(f"""
-    set winOutput to ""
-    set bufOutput to ""
+def _get_terminal_windows() -> dict[str, tuple[str, int]]:
+    """Get Terminal.app tab TTYs, window titles, and IDs.
+
+    Cached for _TERMINAL_CACHE_TTL seconds to avoid expensive AppleScript on every poll.
+    Returns {tty: (title, window_id)}.
+    """
+    global _terminal_cache, _terminal_cache_time  # noqa: PLW0603
+
+    now = time.time()
+    if _terminal_cache is not None and now - _terminal_cache_time < _TERMINAL_CACHE_TTL:
+        return _terminal_cache
+
+    result = run_applescript("""
     if application "Terminal" is running then
         tell application "Terminal"
+            set output to ""
             repeat with w in windows
                 set wid to id of w
                 repeat with t in tabs of w
-                    set winOutput to winOutput & (tty of t) & "|" & wid & "|" & (name of w) & linefeed
+                    set output to output & (tty of t) & "|" & wid & "|" & (name of w) & linefeed
                 end repeat
-                try
-                    set t to selected tab of w
-                    set h to history of t
-                    set n to length of h
-                    if n > {tail_chars} then
-                        set h to text (n - {tail_chars}) thru n of h
-                    end if
-                    set bufOutput to bufOutput & wid & "|" & h & linefeed & "---ENDWIN---" & linefeed
-                end try
             end repeat
+            return output
         end tell
     end if
-    return winOutput & "===SPLIT===" & bufOutput
+    return ""
     """)
 
-    parts = result.split("===SPLIT===", 1)
-    win_raw = parts[0] if parts else ""
-    buf_raw = parts[1] if len(parts) > 1 else ""
-
-    windows = {}
-    for line in win_raw.splitlines():
+    windows: dict[str, tuple[str, int]] = {}
+    for line in result.splitlines():
         p = line.split("|", 2)
         if len(p) == _WIN_SPLIT_FIELDS and p[1].isdigit():
             windows[p[0]] = (p[2], int(p[1]))
 
-    buffers = {}
-    for raw_block in buf_raw.split("---ENDWIN---"):
-        block = raw_block.strip()
-        if "|" in block:
-            wid_str, content = block.split("|", 1)
-            if wid_str.strip().isdigit():
-                buffers[int(wid_str.strip())] = content
-
-    return windows, buffers
+    _terminal_cache = windows
+    _terminal_cache_time = now
+    return windows
 
 
 def _extract_last_output(buffer: str) -> str:
@@ -426,7 +419,6 @@ def detect_sessions() -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
     all_ps = _batch_ps_info(pids)
     cwds = _batch_lsof_cwds(pids)
     terminal_windows: dict[str, tuple[str, int]] | None = None
-    terminal_buffers: dict[int, str] | None = None
 
     # Evict stale cache entries
     live_pids = set(pids)
@@ -469,7 +461,7 @@ def detect_sessions() -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
 
         if host_app in (HostApp.TERMINAL, HostApp.TMUX, HostApp.OTHER):
             if terminal_windows is None:
-                terminal_windows, terminal_buffers = _get_terminal_windows_and_buffers()
+                terminal_windows = _get_terminal_windows()
             window_title, window_id, host_app = _match_terminal_window(
                 tty,
                 project,
@@ -493,34 +485,20 @@ def detect_sessions() -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
             )
         )
 
-    # Process terminal buffers (already fetched in the combined AppleScript call)
-    buffers = terminal_buffers or {}
-    if buffers:
-        for s in sessions:
-            if s.window_id in buffers:
-                buf = buffers[s.window_id]
-                # Extract latest output for all sessions
-                s.last_output = _extract_last_output(buf)
-                # Check for permission prompts in ALL sessions
-                lower = buf.lower()
-                if any(kw in lower for kw in PROMPT_KEYWORDS):
-                    s.status = SessionStatus.ATTENTION
-                    s.prompt_text, s.prompt_context = _extract_prompt_info(buf)
-
     # Determine terminal tab indices for IDE sessions
     _get_ide_tab_indices(sessions, all_ps)
 
-    # For sessions without window IDs (PyCharm, VS Code), determine status from JSONL
-    # since we can't read terminal window titles for these sessions
+    # Determine status from JSONL for all sessions (replaces buffer-based detection)
     checked_cwds: set[str] = set()
     for s in sessions:
-        if s.window_id is None and s.cwd and s.cwd not in checked_cwds:
+        if s.cwd and s.cwd not in checked_cwds:
             pending, one_line, context = _check_jsonl_for_pending_tool(s.cwd)
             if pending:
                 s.status = SessionStatus.ATTENTION
                 s.prompt_text = one_line
                 s.prompt_context = context
-            else:
+            elif s.status != SessionStatus.IDLE:
+                # Only override if not already idle from window title
                 s.status = _check_jsonl_for_idle(s.cwd)
             checked_cwds.add(s.cwd)
 
