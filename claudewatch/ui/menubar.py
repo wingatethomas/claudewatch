@@ -534,14 +534,16 @@ class ClaudeWatchApp(rumps.App):
         icon = _get_app_icon(s.host_app)
         if icon:
             item._menuitem.setImage_(icon)
-        # Sub-items: show cached summary or option to generate
+        # Summary submenu — always present as a hover submenu
+        summary_item = rumps.MenuItem("Summary")
         cached = get_cached_summary(s.cwd)
         if cached:
-            summary_item = rumps.MenuItem("Summary")
             _add_summary_lines(summary_item, cached)
-            item.add(summary_item)
+            summary_item.add(rumps.separator)
+            summary_item.add(rumps.MenuItem("Refresh", callback=self._make_summary_handler(s.cwd)))
         else:
-            item.add(rumps.MenuItem("Generate Summary", callback=self._make_summary_handler(s.cwd)))
+            summary_item.add(rumps.MenuItem("  Click to generate", callback=self._make_summary_handler(s.cwd)))
+        item.add(summary_item)
         item.add(rumps.separator)
         item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
         # Track for background refresh
