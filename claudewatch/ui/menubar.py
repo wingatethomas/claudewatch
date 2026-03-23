@@ -925,7 +925,7 @@ class ClaudeWatchApp(rumps.App):
         show_preferences()
 
     def _replay_tips(self, _: rumps.MenuItem) -> None:
-        replay_all_tips()
+        threading.Thread(target=replay_all_tips, daemon=True).start()
 
     def _open_github(self, _: rumps.MenuItem) -> None:
         webbrowser.open("https://github.com/wingatethomas/claudewatch")
