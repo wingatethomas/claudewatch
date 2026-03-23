@@ -24,6 +24,7 @@ from claudewatch.backend.services.procinfo import (
     get_single_process_info,
     list_all_processes,
 )
+from claudewatch.backend.services.summarize import get_our_pids
 
 log = logging.getLogger("claudewatch")
 
@@ -384,15 +385,9 @@ def detect_sessions() -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
     # which Claude Code rewrites from "node" to "claude"
     pids_out = _shell("pgrep -x claude")
     raw_pids = [int(p) for p in pids_out.splitlines() if p.strip().isdigit()]
-    # Filter out non-interactive claude processes (e.g. "claude -p" summary calls)
-    # by checking if args contain -p/--print which indicates a one-shot command
-    pids = []
-    for pid in raw_pids:
-        args = _shell(f"ps -o args= -p {pid}")
-        if " -p " in args or " --print " in args or args.strip().endswith(" -p"):
-            continue
-        pids.append(pid)
-    pids = pids[:_MAX_SESSIONS]
+    # Filter out ClaudeWatch's own summary subprocess PIDs
+    our_pids = get_our_pids()
+    pids = [p for p in raw_pids if p not in our_pids][:_MAX_SESSIONS]
     log.debug("detect: found %d claude processes", len(pids))
     if not pids:
         _host_app_cache.clear()

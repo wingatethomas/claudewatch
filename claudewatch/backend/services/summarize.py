@@ -42,6 +42,10 @@ _generating = threading.Lock()  # only 1 claude -p at a time
 _in_progress: set[str] = set()
 _in_progress_lock = threading.Lock()
 
+# PIDs of our own claude -p subprocesses (for detection filtering)
+_our_pids: set[int] = set()
+_our_pids_lock = threading.Lock()
+
 # Background thread
 _bg_thread: threading.Thread | None = None
 _tracked_cwds: set[str] = set()  # CWDs to periodically refresh
@@ -97,6 +101,12 @@ def cache_summary(cwd: str, summary: str) -> None:
         _load_store()
         _store[cwd] = {"summary": summary, "mtime": mtime}
         _save_store()
+
+
+def get_our_pids() -> set[int]:
+    """Return PIDs of our own claude -p subprocesses (for detection filtering)."""
+    with _our_pids_lock:
+        return set(_our_pids)
 
 
 def is_generating(cwd: str) -> bool:
@@ -250,18 +260,26 @@ def _call_claude(cwd: str) -> str:
         return ""
 
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             [claude_path, "-p", _PROMPT + conversation],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=_TIMEOUT_SECONDS,
-            check=False,
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-        log.warning("summarize: claude returned %d", result.returncode)
-    except subprocess.TimeoutExpired:
-        log.warning("summarize: claude timed out after %ds", _TIMEOUT_SECONDS)
+        with _our_pids_lock:
+            _our_pids.add(proc.pid)
+        try:
+            stdout, _ = proc.communicate(timeout=_TIMEOUT_SECONDS)
+            if proc.returncode == 0 and stdout.strip():
+                return stdout.strip()
+            log.warning("summarize: claude returned %d", proc.returncode)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            log.warning("summarize: claude timed out after %ds", _TIMEOUT_SECONDS)
+        finally:
+            with _our_pids_lock:
+                _our_pids.discard(proc.pid)
     except OSError as e:
         log.warning("summarize: failed to run claude: %s", e)
 
