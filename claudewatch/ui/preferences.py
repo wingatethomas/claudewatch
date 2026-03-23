@@ -46,7 +46,7 @@ from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
-_W = 600
+_W = 680
 _H = 500
 _PAD = 20
 _TOOLBAR_H = 36
