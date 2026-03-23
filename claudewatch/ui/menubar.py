@@ -218,8 +218,8 @@ def _is_accessibility_trusted() -> bool:
         return False
 
 
-def _clean_exit_session(tty: str, pid: int, project: str) -> bool:
-    """Send SIGINT to a Claude Code session for a clean exit.
+def _clean_exit_session(tty: str, pid: int, project: str, window_id: int | None = None) -> bool:
+    """Send SIGINT to exit Claude Code, then close the Terminal tab.
 
     Claude Code handles SIGINT gracefully — saves session state,
     making it resumable with --resume.
@@ -227,10 +227,32 @@ def _clean_exit_session(tty: str, pid: int, project: str) -> bool:
     try:
         os.kill(pid, signal.SIGINT)
         log.info("session.exit project=%s pid=%d tty=%s", project, pid, tty)
-        return True
     except OSError:
         log.warning("session.exit failed project=%s pid=%d", project, pid)
         return False
+
+    # Close the terminal tab after a short delay for Claude to finish
+    def _close_tab() -> None:
+        time.sleep(2)  # wait for Claude to exit
+        tty_path = f"/dev/{tty}" if not tty.startswith("/dev/") else tty
+        try:
+            # Send 'exit' to the shell to close the tab
+            fd = os.open(tty_path, os.O_WRONLY | os.O_NOCTTY)
+            try:
+                os.write(fd, b"exit\n")
+            finally:
+                os.close(fd)
+        except OSError:
+            # Fallback: close via AppleScript if we have a window ID
+            if window_id is not None:
+                run_applescript(f"""
+                    tell application "Terminal"
+                        close window id {window_id}
+                    end tell
+                """)
+
+    threading.Thread(target=_close_tab, daemon=True).start()
+    return True
 
 
 def _noop(_: rumps.MenuItem) -> None:
@@ -741,12 +763,13 @@ class ClaudeWatchApp(rumps.App):
 
         return handler
 
-    def _make_pin_handler(self, session: ClaudeSession) -> _MenuCallback:
+    def _make_pin_handler(self, session: ClaudeSession) -> _MenuCallback:  # noqa: PLR0915
         sid = session.session_id
         project = session.project
         cwd = session.cwd
         pid = session.pid
         tty = session.tty
+        wid = session.window_id
 
         def handler(_: rumps.MenuItem) -> None:
             self._modal_active = True
@@ -796,7 +819,7 @@ class ClaudeWatchApp(rumps.App):
                     quit_alert.addButtonWithTitle_("Quit Session")
                     quit_alert.addButtonWithTitle_("Keep Running")
                     if quit_alert.runModal() == NSAlertFirstButtonReturn:
-                        _clean_exit_session(tty, pid, project)
+                        _clean_exit_session(tty, pid, project, wid)
                         self._exiting_pids[pid] = time.time()
             finally:
                 self._modal_active = False
@@ -810,12 +833,13 @@ class ClaudeWatchApp(rumps.App):
         project = session.project
         cwd = session.cwd
         tty = session.tty
+        wid = session.window_id
         pinned = cwd in get_pinned_cwds()
 
         def handler(_: rumps.MenuItem) -> None:
             exited = False
             if pinned:
-                _clean_exit_session(tty, pid, project)
+                _clean_exit_session(tty, pid, project, wid)
                 self._exiting_pids[pid] = time.time()
                 exited = True
                 rumps.notification(
@@ -836,7 +860,7 @@ class ClaudeWatchApp(rumps.App):
                     alert.addButtonWithTitle_("Quit")
                     alert.addButtonWithTitle_("Cancel")
                     if alert.runModal() == NSAlertFirstButtonReturn:
-                        _clean_exit_session(tty, pid, project)
+                        _clean_exit_session(tty, pid, project, wid)
                         self._exiting_pids[pid] = time.time()
                         exited = True
                 finally:
