@@ -164,6 +164,15 @@ def _check_jsonl_for_idle(cwd: str) -> SessionStatus:
     if not path:
         return SessionStatus.WORKING
 
+    # If JSONL was modified in the last 5 seconds, assume still active
+    _active_threshold = 5
+    try:
+        age = time.time() - os.path.getmtime(path)
+        if age < _active_threshold:
+            return SessionStatus.WORKING
+    except OSError:
+        pass
+
     tail = read_jsonl_tail(path, tail_bytes=5120)
     if not tail:
         return SessionStatus.WORKING

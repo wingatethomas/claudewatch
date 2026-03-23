@@ -71,7 +71,10 @@ class TestGetStats:
         assert result["messages"] == 42
 
     def test_missing_file_returns_zeros(self, tmp_path):
-        with patch("claudewatch.backend.services.usage_stats._STATS_PATH", str(tmp_path / "nope.json")):
+        with (
+            patch("claudewatch.backend.services.usage_stats._STATS_PATH", str(tmp_path / "nope.json")),
+            patch("claudewatch.backend.services.usage_stats.get_history", return_value=[]),
+        ):
             result = get_today_stats()
         assert result == {"messages": 0, "sessions": 0, "tools": 0}
 
