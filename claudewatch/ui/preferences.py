@@ -1,4 +1,4 @@
-"""Sidebar-based preferences window using PyObjC."""
+"""System Settings-style preferences window using PyObjC."""
 
 import os
 import re
@@ -18,11 +18,11 @@ from AppKit import (
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
+    NSMenu,
+    NSMenuItem,
     NSMutableAttributedString,
     NSPopUpButton,
     NSSound,
-    NSTableColumn,
-    NSTableView,
     NSTextField,
     NSView,
     NSWindow,
@@ -42,6 +42,18 @@ from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
+_W = 500
+_H = 420
+_PAD = 20
+_CARD_PAD = 16
+_CARD_GAP = 12
+_CARD_RADIUS = 10.0
+_CONTENT_W = _W - _PAD * 2
+_ROW_H = 32
+
+_window: NSWindow | None = None
+_delegate: "_PrefsDelegate | None" = None
+
 
 class _FlippedView(NSView):
     """NSView subclass with flipped coordinates (y=0 at top)."""
@@ -50,23 +62,11 @@ class _FlippedView(NSView):
         return True
 
 
-_W = 680
-_H = 420
-_SIDEBAR_W = 150
-_CONTENT_W = _W - _SIDEBAR_W
-_PAD = 24
-
-_window: NSWindow | None = None
-_delegate: "_PrefsDelegate | None" = None
-_content_views: dict[str, NSView] = {}
-
-_SECTIONS = ["General", "History", "About"]
+# ── Delegate ──────────────────────────────────────────────────────────
 
 
 class _PrefsDelegate(NSObject):
-    """Handles preferences window actions and sidebar selection."""
-
-    _content_container = None
+    """Handles preferences window actions."""
 
     def notificationsToggled_(self, sender: objc.objc_object) -> None:
         set_setting("notifications_enabled", sender.state() == NSControlStateValueOn)
@@ -92,7 +92,6 @@ class _PrefsDelegate(NSObject):
         webbrowser.open(_REPO_URL)
 
     def deleteHistoryEntry_(self, sender: objc.objc_object) -> None:
-        """Delete a history entry — tag stores CWD."""
         cwd = str(sender.representedObject())
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         alert = NSAlert.alloc().init()
@@ -104,7 +103,6 @@ class _PrefsDelegate(NSObject):
             remove_history_entry(cwd)
 
     def resumeSession_(self, sender: objc.objc_object) -> None:
-        """Resume a session from history — tag stores 'session_id|cwd'."""
         data = str(sender.representedObject())
         if "|" not in data:
             return
@@ -121,7 +119,6 @@ class _PrefsDelegate(NSObject):
         ''')
 
     def viewActivity_(self, sender: objc.objc_object) -> None:
-        """Open activity for a history entry — tag stores 'project|cwd'."""
         data = str(sender.representedObject())
         if "|" not in data:
             return
@@ -132,263 +129,76 @@ class _PrefsDelegate(NSObject):
         global _window  # noqa: PLW0603
         _window = None
 
-    # NSTableView data source / delegate
-    def numberOfRowsInTableView_(self, table: objc.objc_object) -> int:
-        return len(_SECTIONS)
 
-    def tableView_viewForTableColumn_row_(
-        self,
-        table: objc.objc_object,
-        col: objc.objc_object,
-        row: int,
-    ) -> objc.objc_object:
-        cell = NSTextField.labelWithString_(_SECTIONS[row])
-        cell.setFont_(NSFont.systemFontOfSize_(13.0))
-        cell.setFrame_(NSMakeRect(12, 0, _SIDEBAR_W - 20, 36))
-        wrapper = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _SIDEBAR_W, 36))
-        wrapper.addSubview_(cell)
-        return wrapper
-
-    def tableViewSelectionDidChange_(self, notification: objc.objc_object) -> None:
-        table = notification.object()
-        row = table.selectedRow()
-        if row < 0:
-            return
-        section = _SECTIONS[row]
-        container = self._content_container
-        if container is None:
-            return
-        for sub in container.subviews():
-            sub.setHidden_(True)
-        view = _content_views.get(section)
-        if view:
-            view.setHidden_(False)
+# ── Card helpers ──────────────────────────────────────────────────────
 
 
-def _build_general_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
-    """Build the General settings pane."""
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W, _H))
-    y = _H - 40
-
-    header = NSTextField.labelWithString_("General")
-    header.setFrame_(NSMakeRect(_PAD, y, 200, 22))
-    header.setFont_(NSFont.boldSystemFontOfSize_(15.0))
-    view.addSubview_(header)
-
-    y -= 36
-
-    checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, y, _CONTENT_W - _PAD * 2, 20))
-    checkbox.setButtonType_(NSButtonTypeSwitch)
-    checkbox.setTitle_("Enable notifications")
-    checkbox.setFont_(NSFont.systemFontOfSize_(13.0))
-    checkbox.setState_(NSControlStateValueOn if get_setting("notifications_enabled") else NSControlStateValueOff)
-    checkbox.setTarget_(delegate)
-    checkbox.setAction_(objc.selector(delegate.notificationsToggled_, signature=b"v@:@"))
-    view.addSubview_(checkbox)
-
-    y -= 32
-
-    sound_label = NSTextField.labelWithString_("Alert sound")
-    sound_label.setFrame_(NSMakeRect(_PAD, y, 80, 20))
-    sound_label.setFont_(NSFont.systemFontOfSize_(13.0))
-    sound_label.setTextColor_(NSColor.secondaryLabelColor())
-    view.addSubview_(sound_label)
-
-    sound_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-        NSMakeRect(_PAD + 90, y - 2, _CONTENT_W - _PAD * 2 - 90, 24),
-        False,
-    )
-    sound_popup.setFont_(NSFont.systemFontOfSize_(12.0))
-    sound_popup.addItemsWithTitles_(list(get_available_sounds()))
-    sound_popup.selectItemWithTitle_(str(get_setting("notification_sound")))
-    sound_popup.setTarget_(delegate)
-    sound_popup.setAction_(objc.selector(delegate.soundChanged_, signature=b"v@:@"))
-    view.addSubview_(sound_popup)
-
-    y -= 36
-
-    expiry_label = NSTextField.labelWithString_("Pin expiry")
-    expiry_label.setFrame_(NSMakeRect(_PAD, y, 80, 20))
-    expiry_label.setFont_(NSFont.systemFontOfSize_(13.0))
-    expiry_label.setTextColor_(NSColor.secondaryLabelColor())
-    view.addSubview_(expiry_label)
-
-    expiry_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-        NSMakeRect(_PAD + 90, y - 2, _CONTENT_W - _PAD * 2 - 90, 24),
-        False,
-    )
-    expiry_popup.setFont_(NSFont.systemFontOfSize_(12.0))
-    options = ["Never", "7 days", "14 days", "30 days", "60 days", "90 days"]
-    expiry_popup.addItemsWithTitles_(options)
-    current = int(get_setting("pin_expiry_days") or 30)
-    if current <= 0:
-        expiry_popup.selectItemWithTitle_("Never")
-    else:
-        expiry_popup.selectItemWithTitle_(f"{current} days")
-    expiry_popup.setTarget_(delegate)
-    expiry_popup.setAction_(objc.selector(delegate.expiryChanged_, signature=b"v@:@"))
-    view.addSubview_(expiry_popup)
-
-    y -= 28
-
-    hint = NSTextField.labelWithString_("Pinned sessions expire after this period of inactivity.")
-    hint.setFrame_(NSMakeRect(_PAD, y, _CONTENT_W - _PAD * 2, 16))
-    hint.setFont_(NSFont.systemFontOfSize_(11.0))
-    hint.setTextColor_(NSColor.tertiaryLabelColor())
-    view.addSubview_(hint)
-
-    return view
+def _make_card(parent: NSView, y: float, height: float) -> NSBox:
+    """Create a rounded card and add it to parent. Returns the card."""
+    card = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y, _CONTENT_W, height))
+    card.setBoxType_(4)  # NSBoxCustom
+    card.setCornerRadius_(_CARD_RADIUS)
+    card.setBorderWidth_(0)
+    card.setFillColor_(NSColor.controlBackgroundColor())
+    card.setContentViewMargins_(NSMakeSize(0, 0))
+    parent.addSubview_(card)
+    return card
 
 
-def _build_about_view(delegate: _PrefsDelegate) -> NSView:
-    """Build the About pane."""
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W, _H))
-    y = _H - 40
-
-    # Title with version
-    name_field = NSTextField.labelWithString_("")
-    name_field.setFrame_(NSMakeRect(_PAD, y, _CONTENT_W - _PAD * 2, 22))
-    title_str = NSMutableAttributedString.alloc().initWithString_(f"✦ ClaudeWatch  v{__version__}")
-    bold_len = len("✦ ClaudeWatch  ")
-    ver_len = len(f"v{__version__}")
-    title_str.addAttribute_value_range_("NSFont", NSFont.boldSystemFontOfSize_(15.0), NSRange(0, bold_len))
-    title_str.addAttribute_value_range_("NSFont", NSFont.systemFontOfSize_(11.0), NSRange(bold_len, ver_len))
-    title_str.addAttribute_value_range_("NSColor", NSColor.tertiaryLabelColor(), NSRange(bold_len, ver_len))
-    name_field.setAttributedStringValue_(title_str)
-    view.addSubview_(name_field)
-
-    y -= 24
-
-    desc = NSTextField.labelWithString_("macOS menu bar app for monitoring Claude Code sessions.")
-    desc.setFrame_(NSMakeRect(_PAD, y, _CONTENT_W - _PAD * 2, 16))
-    desc.setFont_(NSFont.systemFontOfSize_(11.0))
-    desc.setTextColor_(NSColor.secondaryLabelColor())
-    view.addSubview_(desc)
-
-    y -= 36
-
-    log_button = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, y, 110, 28))
-    log_button.setTitle_("Audit Log")
-    log_button.setBezelStyle_(1)
-    log_button.setTarget_(delegate)
-    log_button.setAction_(objc.selector(delegate.viewAuditLog_, signature=b"v@:@"))
-    view.addSubview_(log_button)
-
-    repo_button = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 120, y, 90, 28))
-    repo_button.setTitle_("GitHub")
-    repo_button.setBezelStyle_(1)
-    repo_button.setTarget_(delegate)
-    repo_button.setAction_(objc.selector(delegate.openRepo_, signature=b"v@:@"))
-    view.addSubview_(repo_button)
-
-    return view
+def _make_section_header(parent: NSView, text: str, y: float) -> None:
+    """Add an uppercase section header label."""
+    label = NSTextField.labelWithString_(text.upper())
+    label.setFrame_(NSMakeRect(_PAD + 4, y, 200, 14))
+    label.setFont_(NSFont.systemFontOfSize_weight_(11.0, 0.6))
+    label.setTextColor_(NSColor.secondaryLabelColor())
+    parent.addSubview_(label)
 
 
-def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
-    """Build the History pane with a list of ended sessions."""
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W, _H))
-    y = _H - 40
-
-    header = NSTextField.labelWithString_("History")
-    header.setFrame_(NSMakeRect(_PAD, y, 200, 22))
-    header.setFont_(NSFont.boldSystemFontOfSize_(15.0))
-    view.addSubview_(header)
-
-    y -= 28
-
-    history = get_history()
-    if not history:
-        empty = NSTextField.labelWithString_("No session history yet.")
-        empty.setFrame_(NSMakeRect(_PAD, y, _CONTENT_W - _PAD * 2, 16))
-        empty.setFont_(NSFont.systemFontOfSize_(12.0))
-        empty.setTextColor_(NSColor.secondaryLabelColor())
-        view.addSubview_(empty)
-        return view
-
-    scroll_h = y - 10
-    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_PAD, 10, _CONTENT_W - _PAD * 2, scroll_h))
-    scroll.setHasVerticalScroller_(True)
-    scroll.setDrawsBackground_(False)
-
-    _entry_h = 56
-    entry_w = _CONTENT_W - _PAD * 2 - 16
-    list_h = max(len(history) * _entry_h, scroll_h)
-    list_view = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, entry_w, list_h))
-
-    pinned_cwds = get_pinned_cwds()
-    ey = 4  # top padding (flipped: y=0 is top)
-
-    for entry in history:
-        proj = entry.get("project", "unknown")
-        raw_model = entry.get("model", "")
-        model = MODEL_DISPLAY_NAMES.get(raw_model, raw_model)
-        ended = entry.get("ended_at", "")[:16].replace("T", " ")
-        sid = entry.get("session_id", "")
-        cwd = entry.get("cwd", "")
-        pin_mark = " ★" if cwd in pinned_cwds else ""
-
-        label = NSTextField.labelWithString_(f"{proj}{pin_mark}")
-        label.setFrame_(NSMakeRect(0, ey, entry_w - 230, 18))
-        label.setFont_(NSFont.systemFontOfSize_(13.0))
-        list_view.addSubview_(label)
-
-        meta_line = f"Last active: {ended}"
-        if model:
-            meta_line += f"  ·  Model: {model}"
-        meta_label = NSTextField.labelWithString_(meta_line)
-        meta_label.setFrame_(NSMakeRect(0, ey + 20, entry_w - 230, 14))
-        meta_label.setFont_(NSFont.systemFontOfSize_(10.0))
-        meta_label.setTextColor_(NSColor.tertiaryLabelColor())
-        list_view.addSubview_(meta_label)
-
-        _btn_w = 70
-        _btn_gap = 6
-        _btn_y = ey + 6
-        bx = entry_w
-
-        bx -= _btn_w
-        delete_btn = NSButton.alloc().initWithFrame_(NSMakeRect(bx, _btn_y, _btn_w, 24))
-        delete_btn.setTitle_("Delete")
-        delete_btn.setBezelStyle_(1)
-        delete_btn.setFont_(NSFont.systemFontOfSize_(11.0))
-        delete_btn.setTarget_(delegate)
-        delete_btn.setAction_(objc.selector(delegate.deleteHistoryEntry_, signature=b"v@:@"))
-        delete_btn.setRepresentedObject_(cwd)
-        list_view.addSubview_(delete_btn)
-
-        bx -= _btn_w + _btn_gap
-        activity_btn = NSButton.alloc().initWithFrame_(NSMakeRect(bx, _btn_y, _btn_w, 24))
-        activity_btn.setTitle_("Activity")
-        activity_btn.setBezelStyle_(1)
-        activity_btn.setFont_(NSFont.systemFontOfSize_(11.0))
-        activity_btn.setTarget_(delegate)
-        activity_btn.setAction_(objc.selector(delegate.viewActivity_, signature=b"v@:@"))
-        activity_btn.setRepresentedObject_(f"{proj}|{cwd}")
-        list_view.addSubview_(activity_btn)
-
-        bx -= _btn_w + _btn_gap
-        resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(bx, _btn_y, _btn_w, 24))
-        resume_btn.setTitle_("Resume")
-        resume_btn.setBezelStyle_(1)
-        resume_btn.setFont_(NSFont.systemFontOfSize_(11.0))
-        resume_btn.setTarget_(delegate)
-        resume_btn.setAction_(objc.selector(delegate.resumeSession_, signature=b"v@:@"))
-        resume_btn.setRepresentedObject_(f"{sid}|{cwd}")
-        list_view.addSubview_(resume_btn)
-
-        ey += _entry_h
-
-        sep_line = NSBox.alloc().initWithFrame_(NSMakeRect(0, ey - 8, entry_w, 1))
-        sep_line.setBoxType_(2)
-        list_view.addSubview_(sep_line)
-
-    scroll.setDocumentView_(list_view)
-    view.addSubview_(scroll)
-
-    return view
+def _make_row_label(text: str, x: float, y: float, w: float) -> NSTextField:
+    label = NSTextField.labelWithString_(text)
+    label.setFrame_(NSMakeRect(x, y, w, 18))
+    label.setFont_(NSFont.systemFontOfSize_(13.0))
+    return label
 
 
-def show_preferences() -> None:  # noqa: PLR0915
+def _make_hint(text: str, x: float, y: float, w: float) -> NSTextField:
+    label = NSTextField.labelWithString_(text)
+    label.setFrame_(NSMakeRect(x, y, w, 14))
+    label.setFont_(NSFont.systemFontOfSize_(11.0))
+    label.setTextColor_(NSColor.tertiaryLabelColor())
+    return label
+
+
+def _make_separator(x: float, y: float, w: float) -> NSBox:
+    sep = NSBox.alloc().initWithFrame_(NSMakeRect(x, y, w, 1))
+    sep.setBoxType_(2)
+    return sep
+
+
+def _make_link_button(
+    text: str,
+    x: float,
+    y: float,
+    target: object,
+    action: objc.selector,
+) -> NSButton:
+    btn = NSButton.alloc().initWithFrame_(NSMakeRect(x, y, len(text) * 7 + 16, 18))
+    btn.setBezelStyle_(0)
+    btn.setBordered_(False)
+    attr = NSMutableAttributedString.alloc().initWithString_(text)
+    r = NSRange(0, len(text))
+    attr.addAttribute_value_range_("NSFont", NSFont.systemFontOfSize_(11.0), r)
+    attr.addAttribute_value_range_("NSColor", NSColor.systemBlueColor(), r)
+    btn.setAttributedTitle_(attr)
+    btn.setTarget_(target)
+    btn.setAction_(action)
+    return btn
+
+
+# ── Public API ────────────────────────────────────────────────────────
+
+
+def show_preferences() -> None:
     """Show (or bring to front) the preferences window."""
     global _window, _delegate  # noqa: PLW0603
 
@@ -408,65 +218,248 @@ def show_preferences() -> None:  # noqa: PLR0915
         2,
         False,
     )
-    window.setTitle_("Preferences")
+    window.setTitle_("ClaudeWatch")
     window.setDelegate_(_delegate)
     window.setReleasedWhenClosed_(False)
 
-    root = window.contentView()
+    # Scrollable content area
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, _H))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setDrawsBackground_(False)
 
-    # Sidebar background
-    sidebar_bg = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _SIDEBAR_W, _H))
-    sidebar_bg.setWantsLayer_(True)
-    sidebar_bg.layer().setBackgroundColor_(NSColor.controlBackgroundColor().CGColor())
-    root.addSubview_(sidebar_bg)
+    # Calculate total content height
+    _total_h = 20 + (80 + 20) + _CARD_GAP + (60 + 20) + _CARD_GAP + (220 + 20) + _CARD_GAP + (100 + 20) + 20
+    content = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, max(_total_h, _H)))
 
-    # Sidebar table
-    sidebar_scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, _SIDEBAR_W, _H))
-    sidebar_scroll.setHasVerticalScroller_(False)
-    sidebar_scroll.setDrawsBackground_(False)
+    # Build cards top-down (flipped view: y increases downward)
+    y = 10
+    _make_section_header(content, "Notifications", y)
+    y += 18
+    notifications_card = _make_card(content, y, 80)
+    _build_notifications_content(notifications_card.contentView(), _delegate)
+    y += 80 + _CARD_GAP
 
-    table = NSTableView.alloc().initWithFrame_(NSMakeRect(0, 0, _SIDEBAR_W, _H))
-    col = NSTableColumn.alloc().initWithIdentifier_("name")
-    col.setWidth_(_SIDEBAR_W - 8)
-    table.addTableColumn_(col)
-    table.setHeaderView_(None)
-    table.setDataSource_(_delegate)
-    table.setDelegate_(_delegate)
-    table.setRowHeight_(36)
-    table.setBackgroundColor_(NSColor.clearColor())
-    table.setIntercellSpacing_(NSMakeSize(0, 2))
+    _make_section_header(content, "Sessions", y)
+    y += 18
+    sessions_card = _make_card(content, y, 60)
+    _build_sessions_content(sessions_card.contentView(), _delegate)
+    y += 60 + _CARD_GAP
 
-    sidebar_scroll.setDocumentView_(table)
-    root.addSubview_(sidebar_scroll)
+    _make_section_header(content, "Recent Sessions", y)
+    y += 18
+    history_card = _make_card(content, y, 220)
+    _build_history_content(history_card.contentView(), _delegate)
+    y += 220 + _CARD_GAP
 
-    # Separator
-    sep = NSBox.alloc().initWithFrame_(NSMakeRect(_SIDEBAR_W, 0, 1, _H))
-    sep.setBoxType_(2)
-    root.addSubview_(sep)
+    _make_section_header(content, "About", y)
+    y += 18
+    about_card = _make_card(content, y, 100)
+    _build_about_content(about_card.contentView(), _delegate)
 
-    # Content area
-    content_container = NSView.alloc().initWithFrame_(NSMakeRect(_SIDEBAR_W, 0, _CONTENT_W, _H))
-    _delegate._content_container = content_container
-    root.addSubview_(content_container)
-
-    # Build panes
-    _content_views.clear()
-    _content_views["General"] = _build_general_view(_delegate)
-    _content_views["History"] = _build_history_view(_delegate)
-    _content_views["About"] = _build_about_view(_delegate)
-
-    for name, pane in _content_views.items():
-        pane.setFrame_(NSMakeRect(0, 0, _CONTENT_W, _H))
-        pane.setHidden_(name != "General")
-        content_container.addSubview_(pane)
-
-    # Select first row
-    table.selectRowIndexes_byExtendingSelection_(
-        __import__("Foundation").NSIndexSet.indexSetWithIndex_(0),
-        False,
-    )
+    scroll.setDocumentView_(content)
+    window.setContentView_(scroll)
 
     _window = window
     window.center()
     window.makeKeyAndOrderFront_(None)
     NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+
+
+# ── Card content builders (operate on card.contentView()) ─────────────
+
+
+def _build_notifications_content(cv: NSView, delegate: _PrefsDelegate) -> None:
+    inner_w = _CONTENT_W - _CARD_PAD * 2
+    ry = 12
+
+    toggle = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, ry, inner_w, 20))
+    toggle.setButtonType_(NSButtonTypeSwitch)
+    toggle.setTitle_("Enable notifications")
+    toggle.setFont_(NSFont.systemFontOfSize_(13.0))
+    toggle.setState_(NSControlStateValueOn if get_setting("notifications_enabled") else NSControlStateValueOff)
+    toggle.setTarget_(delegate)
+    toggle.setAction_(objc.selector(delegate.notificationsToggled_, signature=b"v@:@"))
+    cv.addSubview_(toggle)
+
+    ry += _ROW_H
+    cv.addSubview_(_make_separator(_CARD_PAD, ry, inner_w))
+    ry += 8
+
+    cv.addSubview_(_make_row_label("Alert sound", _CARD_PAD, ry, 80))
+    sound_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+        NSMakeRect(_CARD_PAD + 90, ry - 2, inner_w - 90, 22),
+        False,
+    )
+    sound_popup.setFont_(NSFont.systemFontOfSize_(12.0))
+    sound_popup.addItemsWithTitles_(list(get_available_sounds()))
+    sound_popup.selectItemWithTitle_(str(get_setting("notification_sound")))
+    sound_popup.setTarget_(delegate)
+    sound_popup.setAction_(objc.selector(delegate.soundChanged_, signature=b"v@:@"))
+    cv.addSubview_(sound_popup)
+
+
+def _build_sessions_content(cv: NSView, delegate: _PrefsDelegate) -> None:
+    inner_w = _CONTENT_W - _CARD_PAD * 2
+    ry = 10
+
+    cv.addSubview_(_make_row_label("Pin expiry", _CARD_PAD, ry + 2, 80))
+    expiry_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+        NSMakeRect(_CARD_PAD + 90, ry, inner_w - 90, 22),
+        False,
+    )
+    expiry_popup.setFont_(NSFont.systemFontOfSize_(12.0))
+    options = ["Never", "7 days", "14 days", "30 days", "60 days", "90 days"]
+    expiry_popup.addItemsWithTitles_(options)
+    current = int(get_setting("pin_expiry_days") or 30)
+    if current <= 0:
+        expiry_popup.selectItemWithTitle_("Never")
+    else:
+        expiry_popup.selectItemWithTitle_(f"{current} days")
+    expiry_popup.setTarget_(delegate)
+    expiry_popup.setAction_(objc.selector(delegate.expiryChanged_, signature=b"v@:@"))
+    cv.addSubview_(expiry_popup)
+
+    ry += 26
+    cv.addSubview_(_make_hint("Pinned sessions expire after this period of inactivity.", _CARD_PAD, ry, inner_w))
+
+
+def _build_history_content(cv: NSView, delegate: _PrefsDelegate) -> None:  # noqa: PLR0915
+    inner_w = _CONTENT_W - _CARD_PAD * 2
+    card_h = 220
+    history = get_history()
+
+    if not history:
+        cv.addSubview_(_make_hint("No session history yet.", _CARD_PAD, card_h // 2, inner_w))
+        return
+
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, 0, inner_w, card_h))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setDrawsBackground_(False)
+
+    _entry_h = 44
+    entry_w = inner_w - 16
+    list_h = max(len(history) * _entry_h, card_h)
+    list_view = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, entry_w, list_h))
+
+    pinned_cwds = get_pinned_cwds()
+    ey = 4
+
+    for entry in history:
+        proj = entry.get("project", "unknown")
+        raw_model = entry.get("model", "")
+        model = MODEL_DISPLAY_NAMES.get(raw_model, raw_model)
+        ended = entry.get("ended_at", "")[:16].replace("T", " ")
+        sid = entry.get("session_id", "")
+        cwd = entry.get("cwd", "")
+        pin_mark = " ★" if cwd in pinned_cwds else ""
+
+        row = NSView.alloc().initWithFrame_(NSMakeRect(0, ey, entry_w, _entry_h - 4))
+
+        name_label = NSTextField.labelWithString_(f"{proj}{pin_mark}")
+        name_label.setFrame_(NSMakeRect(0, 2, entry_w - 140, 18))
+        name_label.setFont_(NSFont.systemFontOfSize_(13.0))
+        row.addSubview_(name_label)
+
+        meta_text = ended
+        if model:
+            meta_text += f"  ·  {model}"
+        meta_label = NSTextField.labelWithString_(meta_text)
+        meta_label.setFrame_(NSMakeRect(0, 20, entry_w - 140, 14))
+        meta_label.setFont_(NSFont.systemFontOfSize_(10.0))
+        meta_label.setTextColor_(NSColor.tertiaryLabelColor())
+        row.addSubview_(meta_label)
+
+        bx = entry_w - 60
+        resume_link = _make_link_button(
+            "Resume",
+            bx,
+            6,
+            delegate,
+            objc.selector(delegate.resumeSession_, signature=b"v@:@"),
+        )
+        resume_link.setRepresentedObject_(f"{sid}|{cwd}")
+        row.addSubview_(resume_link)
+
+        bx -= 56
+        activity_link = _make_link_button(
+            "Activity",
+            bx,
+            6,
+            delegate,
+            objc.selector(delegate.viewActivity_, signature=b"v@:@"),
+        )
+        activity_link.setRepresentedObject_(f"{proj}|{cwd}")
+        row.addSubview_(activity_link)
+
+        # Right-click context menu
+        menu = NSMenu.alloc().init()
+        resume_mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Resume", "resumeSession:", "")
+        resume_mi.setTarget_(delegate)
+        resume_mi.setRepresentedObject_(f"{sid}|{cwd}")
+        menu.addItem_(resume_mi)
+
+        activity_mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Activity", "viewActivity:", "")
+        activity_mi.setTarget_(delegate)
+        activity_mi.setRepresentedObject_(f"{proj}|{cwd}")
+        menu.addItem_(activity_mi)
+
+        menu.addItem_(NSMenuItem.separatorItem())
+
+        delete_mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Delete", "deleteHistoryEntry:", "")
+        delete_mi.setTarget_(delegate)
+        delete_mi.setRepresentedObject_(cwd)
+        delete_attr = NSMutableAttributedString.alloc().initWithString_("Delete")
+        delete_attr.addAttribute_value_range_("NSColor", NSColor.systemRedColor(), NSRange(0, 6))
+        delete_mi.setAttributedTitle_(delete_attr)
+        menu.addItem_(delete_mi)
+
+        row.setMenu_(menu)
+        list_view.addSubview_(row)
+
+        ey += _entry_h
+        if ey < list_h:
+            list_view.addSubview_(_make_separator(0, ey - 4, entry_w))
+
+    scroll.setDocumentView_(list_view)
+    cv.addSubview_(scroll)
+
+
+def _build_about_content(cv: NSView, delegate: _PrefsDelegate) -> None:
+    inner_w = _CONTENT_W - _CARD_PAD * 2
+    ry = 10
+
+    cv.addSubview_(_make_row_label("Version", _CARD_PAD, ry, 100))
+    ver = NSTextField.labelWithString_(f"v{__version__}")
+    ver.setFrame_(NSMakeRect(inner_w - 60, ry, 76, 18))
+    ver.setFont_(NSFont.systemFontOfSize_(13.0))
+    ver.setTextColor_(NSColor.secondaryLabelColor())
+    ver.setAlignment_(2)  # NSTextAlignmentRight
+    cv.addSubview_(ver)
+
+    ry += 24
+    cv.addSubview_(_make_separator(_CARD_PAD, ry, inner_w))
+    ry += 8
+
+    cv.addSubview_(_make_row_label("Audit Log", _CARD_PAD, ry, 100))
+    log_link = _make_link_button(
+        "Open in Console ›",
+        inner_w - 100,
+        ry,
+        delegate,
+        objc.selector(delegate.viewAuditLog_, signature=b"v@:@"),
+    )
+    cv.addSubview_(log_link)
+
+    ry += 24
+    cv.addSubview_(_make_separator(_CARD_PAD, ry, inner_w))
+    ry += 8
+
+    cv.addSubview_(_make_row_label("Source Code", _CARD_PAD, ry, 100))
+    repo_link = _make_link_button(
+        "GitHub ›",
+        inner_w - 40,
+        ry,
+        delegate,
+        objc.selector(delegate.openRepo_, signature=b"v@:@"),
+    )
+    cv.addSubview_(repo_link)
