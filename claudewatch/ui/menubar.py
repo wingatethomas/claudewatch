@@ -219,29 +219,18 @@ def _is_accessibility_trusted() -> bool:
 
 
 def _clean_exit_session(tty: str, pid: int, project: str) -> bool:
-    """Send EOF (Ctrl+D) to a session's TTY for a clean Claude Code exit.
+    """Send SIGINT to a Claude Code session for a clean exit.
 
-    Claude Code saves the session on EOF, making it resumable with --resume.
-    Falls back to SIGINT if TTY write fails.
+    Claude Code handles SIGINT gracefully — saves session state,
+    making it resumable with --resume.
     """
-    tty_path = f"/dev/{tty}" if not tty.startswith("/dev/") else tty
     try:
-        fd = os.open(tty_path, os.O_WRONLY | os.O_NOCTTY)
-        try:
-            os.write(fd, b"\x04")  # EOF / Ctrl+D
-        finally:
-            os.close(fd)
-        log.info("session.exit project=%s tty=%s pid=%d method=eof", project, tty, pid)
+        os.kill(pid, signal.SIGINT)
+        log.info("session.exit project=%s pid=%d tty=%s", project, pid, tty)
         return True
     except OSError:
-        # Fallback to SIGINT if TTY isn't writable
-        try:
-            os.kill(pid, signal.SIGINT)
-            log.info("session.exit project=%s pid=%d method=sigint", project, pid)
-            return True
-        except OSError:
-            log.warning("session.exit failed project=%s pid=%d", project, pid)
-            return False
+        log.warning("session.exit failed project=%s pid=%d", project, pid)
+        return False
 
 
 def _noop(_: rumps.MenuItem) -> None:
