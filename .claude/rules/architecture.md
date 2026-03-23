@@ -1,0 +1,10 @@
+- **Layered structure:** `backend/services/` (business logic), `backend/repositories/` (persistence), `ui/` (views).
+- **backend/** has no UI imports. Never import from `ui/` in backend code.
+- **helpers.py** — shared AppleScript runner, escaping, shell utilities.
+- **models.py** — data structures, enums, and path mapping (`cwd_to_proj_key()` / `proj_key_to_cwd()`).
+- **jsonl.py** — all JSONL discovery, symlink validation, and reading. Never do inline JSONL file discovery — use `find_most_recent_jsonl()`, `read_jsonl_tail()`, `is_safe_jsonl_path()`.
+- **summarize.py** — conversation summaries via `claude -p`. Subprocess calls must use `Popen` with PID tracking (never `shell=True`). Summaries persist to `~/.claude/claudewatch-summaries.json`. Background thread refreshes every 60s. Max 1 concurrent `claude -p`. Own PIDs tracked in `_our_pids` set and filtered from detection.
+- **onboarding.py** — feature discovery tips via terminal-notifier. Tracks shown tips and session count in config. One tip per poll cycle.
+- `detect_sessions()` runs on a background thread. Results are collected on the main thread via `Future.result()`. All `self.sessions` access happens on the main thread.
+- Set `_modal_active = True` during any modal dialog to pause polling. Reset in `finally`.
+- Never generate summaries or do I/O during menu build — only read from caches. Background threads handle generation.
