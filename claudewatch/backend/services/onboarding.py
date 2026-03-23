@@ -7,6 +7,7 @@ key features. Each tip is shown at most once; shown tip IDs are persisted in
 
 import logging
 import subprocess
+import time
 
 from claudewatch.backend.repositories.config import get_setting, set_setting
 from claudewatch.backend.services.notifications import TERMINAL_NOTIFIER
@@ -110,10 +111,11 @@ def reset_tips() -> None:
 
 
 def replay_all_tips() -> None:
-    """Reset and immediately deliver all tips."""
+    """Reset and deliver all tips with a small delay between each."""
     reset_tips()
     for tip_id in TIPS:
         show_tip(tip_id)
+        time.sleep(0.5)
 
 
 def increment_session_count(n: int = 1) -> int:
