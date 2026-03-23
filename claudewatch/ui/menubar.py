@@ -375,7 +375,7 @@ class ClaudeWatchApp(rumps.App):
         active_cwds = {s.cwd for s in self.sessions}
 
         if not self.sessions:
-            self.menu.add(rumps.MenuItem("No active Claude sessions", callback=None))
+            self.menu.add(rumps.MenuItem("No running Claude sessions found", callback=None))
         else:
             # Build suffix map to disambiguate duplicate labels
             seen_labels: dict[str, int] = {}
