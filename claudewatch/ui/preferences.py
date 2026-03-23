@@ -304,7 +304,7 @@ def _build_sessions_pane(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
     bar.addSubview_(activity_btn)
 
     delete_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 68, 6, 28, 24))
-    delete_btn.setTitle_("⛔")
+    delete_btn.setTitle_("⊘")
     delete_btn.setBezelStyle_(1)
     delete_btn.setToolTip_("Delete from history")
     delete_btn.setTarget_(delegate)
