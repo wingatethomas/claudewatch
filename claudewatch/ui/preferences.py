@@ -161,6 +161,8 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         if col_id == "model":
             raw = entry.get("model", "")
             return MODEL_DISPLAY_NAMES.get(raw, raw)
+        if col_id == "actions":
+            return "⋯"
         return ""
 
     def tableView_sortDescriptorsDidChange_(
@@ -178,6 +180,22 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         sort_key = col_map.get(key, "ended_at")
         _history_data.sort(key=lambda e: e.get(sort_key, ""), reverse=not ascending)
         table.reloadData()
+
+    # ── Table click handler ──
+
+    def tableViewSelectionDidChange_(self, notification: objc.objc_object) -> None:
+        table = notification.object()
+        row = table.selectedRow()
+        col = table.clickedColumn()
+        if row < 0 or row >= len(_history_data):
+            return
+        # Check if clicked on the actions column
+        columns = table.tableColumns()
+        if col >= 0 and col < len(columns) and str(columns[col].identifier()) == "actions":
+            entry = _history_data[row]
+            menu = _make_context_menu(self, entry)
+            cell_rect = table.frameOfCellAtColumn_row_(col, row)
+            menu.popUpMenuPositioningItem_atLocation_inView_(None, cell_rect.origin, table)
 
     # ── Window close ──
 
@@ -270,6 +288,11 @@ def _build_sessions_pane(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
     col_model.setWidth_(100)
     col_model.setSortDescriptorPrototype_(NSSortDescriptor.alloc().initWithKey_ascending_("model", True))
     table.addTableColumn_(col_model)
+
+    col_actions = NSTableColumn.alloc().initWithIdentifier_("actions")
+    col_actions.headerCell().setStringValue_("")
+    col_actions.setWidth_(30)
+    table.addTableColumn_(col_actions)
 
     table.setDataSource_(delegate)
     table.setDelegate_(delegate)
