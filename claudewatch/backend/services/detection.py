@@ -161,6 +161,36 @@ def _extract_prompt_info(buffer: str) -> tuple[str, str]:
     return one_line, full_context
 
 
+def _check_jsonl_for_idle(cwd: str) -> SessionStatus:
+    """Determine idle/working status from JSONL for sessions without window titles.
+
+    If the last meaningful message is from the assistant (no pending tool_use),
+    the session is idle — Claude finished and is waiting for user input.
+    """
+    path = find_most_recent_jsonl(cwd)
+    if not path:
+        return SessionStatus.WORKING
+
+    tail = read_jsonl_tail(path, tail_bytes=5120)
+    if not tail:
+        return SessionStatus.WORKING
+
+    last_type = ""
+    for line in tail.strip().splitlines():
+        try:
+            d = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        dtype = d.get("type", "")
+        if dtype in ("user", "assistant"):
+            last_type = dtype
+
+    # If the last message is from the assistant, Claude is done — session is idle
+    if last_type == "assistant":
+        return SessionStatus.IDLE
+    return SessionStatus.WORKING
+
+
 def _get_session_id(cwd: str) -> str:
     """Get the most recent session ID for a CWD from the JSONL filename."""
     path = find_most_recent_jsonl(cwd)
@@ -480,8 +510,8 @@ def detect_sessions() -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
     # Determine terminal tab indices for IDE sessions
     _get_ide_tab_indices(sessions, all_ps)
 
-    # For sessions without window IDs (PyCharm, VS Code), check JSONL logs
-    # Only flag one session per CWD (we can't tell which PID owns which JSONL)
+    # For sessions without window IDs (PyCharm, VS Code), determine status from JSONL
+    # since we can't read terminal window titles for these sessions
     checked_cwds: set[str] = set()
     for s in sessions:
         if s.window_id is None and s.cwd and s.cwd not in checked_cwds:
@@ -490,6 +520,8 @@ def detect_sessions() -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
                 s.status = SessionStatus.ATTENTION
                 s.prompt_text = one_line
                 s.prompt_context = context
+            else:
+                s.status = _check_jsonl_for_idle(s.cwd)
             checked_cwds.add(s.cwd)
 
     return sessions
