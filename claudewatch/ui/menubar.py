@@ -680,18 +680,19 @@ class ClaudeWatchApp(rumps.App):
         else:
             summary_item.add(rumps.MenuItem("Pending…", callback=None))
         item.add(summary_item)
-        # Usage submenu with token breakdown
+        # Usage submenu with token breakdown + Activity link
         token_data = get_session_tokens(s.cwd)
         breakdown = format_tokens_breakdown(token_data)
+        usage_item = rumps.MenuItem("Usage")
         if breakdown:
-            usage_item = rumps.MenuItem("Usage")
             for line in breakdown:
                 entry = rumps.MenuItem(f"  {line}")
                 entry.set_callback(None)
                 usage_item.add(entry)
-            item.add(usage_item)
+            usage_item.add(rumps.separator)
+        usage_item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
+        item.add(usage_item)
         item.add(rumps.separator)
-        item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
         # Track for background refresh (auto-generates summaries)
         track_session(s.cwd)
         if pinned:
