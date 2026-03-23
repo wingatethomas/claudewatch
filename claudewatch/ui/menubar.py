@@ -525,8 +525,9 @@ class ClaudeWatchApp(rumps.App):
         if cached:
             self._add_summary_lines(summary_item, cached)
         else:
-            summary_item.add(rumps.MenuItem("Loading...", callback=None))
-            self._async_fill_summary(summary_item, s.cwd)
+            summary_item.add(rumps.MenuItem("  Loading…", callback=None))
+            # Generate in background — next menu rebuild (1s) will show it
+            threading.Thread(target=generate_and_cache_summary, args=(s.cwd,), daemon=True).start()
         item.add(summary_item)
         item.add(rumps.separator)
         item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
@@ -562,19 +563,6 @@ class ClaudeWatchApp(rumps.App):
                 line = f"{line} {word}" if line else word
         if line:
             menu_item.add(rumps.MenuItem(f"  {line}", callback=None))
-
-    def _async_fill_summary(self, menu_item: rumps.MenuItem, cwd: str) -> None:
-        """Generate summary in background and update the submenu."""
-
-        def _fill() -> None:
-            summary = generate_and_cache_summary(cwd)
-            if summary:
-                self._add_summary_lines(menu_item, summary)
-            else:
-                menu_item.clear()
-                menu_item.add(rumps.MenuItem("  No summary available", callback=None))
-
-        threading.Thread(target=_fill, daemon=True).start()
 
     def _make_activity_handler(self, session: ClaudeSession):  # noqa: ANN202
         project = session.project
