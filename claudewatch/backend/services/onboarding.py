@@ -82,7 +82,7 @@ def show_tip(tip_id: str) -> bool:
         "-group",
         f"claudewatch-onboarding-{tip_id}",
         "-sender",
-        "com.claudewatch",
+        "com.apple.Terminal",
     ]
     try:
         subprocess.run(  # noqa: S603
