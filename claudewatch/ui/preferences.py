@@ -169,8 +169,6 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         if col_id == "model":
             raw = entry.get("model", "")
             return MODEL_DISPLAY_NAMES.get(raw, raw)
-        if col_id == "actions":
-            return "⋯"
         return ""
 
     def tableView_sortDescriptorsDidChange_(
@@ -189,21 +187,37 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         _history_data.sort(key=lambda e: e.get(sort_key, ""), reverse=not ascending)
         table.reloadData()
 
-    # ── Table click handler ──
+    # ── History toolbar actions (act on selected row) ──
 
-    def tableViewSelectionDidChange_(self, notification: objc.objc_object) -> None:
-        table = notification.object()
+    def _selected_entry(self) -> dict | None:
+        table = self._history_table
+        if table is None:
+            return None
         row = table.selectedRow()
-        col = table.clickedColumn()
         if row < 0 or row >= len(_history_data):
+            return None
+        return _history_data[row]
+
+    def resumeSelected_(self, sender: objc.objc_object) -> None:
+        entry = self._selected_entry()
+        if not entry:
             return
-        # Check if clicked on the actions column
-        columns = table.tableColumns()
-        if col >= 0 and col < len(columns) and str(columns[col].identifier()) == "actions":
-            entry = _history_data[row]
-            menu = _make_context_menu(self, entry)
-            cell_rect = table.frameOfCellAtColumn_row_(col, row)
-            menu.popUpMenuPositioningItem_atLocation_inView_(None, cell_rect.origin, table)
+        sender.setRepresentedObject_(f"{entry.get('session_id', '')}|{entry.get('cwd', '')}")
+        self.resumeSession_(sender)
+
+    def activitySelected_(self, sender: objc.objc_object) -> None:
+        entry = self._selected_entry()
+        if not entry:
+            return
+        sender.setRepresentedObject_(f"{entry.get('project', '')}|{entry.get('cwd', '')}")
+        self.viewActivity_(sender)
+
+    def deleteSelected_(self, sender: objc.objc_object) -> None:
+        entry = self._selected_entry()
+        if not entry:
+            return
+        sender.setRepresentedObject_(entry.get("cwd", ""))
+        self.deleteHistoryEntry_(sender)
 
     # ── Window close ──
 
@@ -269,46 +283,73 @@ def _build_sessions_pane(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         view.addSubview_(empty)
         return view
 
-    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, content_h))
+    # Bottom toolbar with action buttons
+    _bar_h = 36
+    bar = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, _bar_h))
+
+    resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, 6, 28, 24))
+    resume_btn.setTitle_("▶")
+    resume_btn.setBezelStyle_(1)
+    resume_btn.setToolTip_("Resume session")
+    resume_btn.setTarget_(delegate)
+    resume_btn.setAction_(objc.selector(delegate.resumeSelected_, signature=b"v@:@"))
+    bar.addSubview_(resume_btn)
+
+    activity_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 34, 6, 28, 24))
+    activity_btn.setTitle_("ℹ")
+    activity_btn.setBezelStyle_(1)
+    activity_btn.setToolTip_("View session activity log")
+    activity_btn.setTarget_(delegate)
+    activity_btn.setAction_(objc.selector(delegate.activitySelected_, signature=b"v@:@"))
+    bar.addSubview_(activity_btn)
+
+    delete_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 68, 6, 28, 24))
+    delete_btn.setTitle_("⛔")
+    delete_btn.setBezelStyle_(1)
+    delete_btn.setToolTip_("Delete from history")
+    delete_btn.setTarget_(delegate)
+    delete_btn.setAction_(objc.selector(delegate.deleteSelected_, signature=b"v@:@"))
+    bar.addSubview_(delete_btn)
+
+    sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, _bar_h - 1, _W, 1))
+    sep.setBoxType_(2)
+    bar.addSubview_(sep)
+    view.addSubview_(bar)
+
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, _bar_h, _W, content_h - _bar_h))
     scroll.setHasVerticalScroller_(True)
     scroll.setDrawsBackground_(False)
 
-    table = NSTableView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, content_h))
+    table = NSTableView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, content_h - _bar_h))
     table.setUsesAlternatingRowBackgroundColors_(True)
     table.setRowHeight_(24)
     table.setGridStyleMask_(1)  # horizontal grid lines
 
-    # Columns
+    # Columns (all non-editable)
     col_project = NSTableColumn.alloc().initWithIdentifier_("project")
     col_project.headerCell().setStringValue_("Project")
-    col_project.setWidth_(200)
+    col_project.setWidth_(220)
+    col_project.setEditable_(False)
     col_project.setSortDescriptorPrototype_(NSSortDescriptor.alloc().initWithKey_ascending_("project", True))
     table.addTableColumn_(col_project)
 
     col_date = NSTableColumn.alloc().initWithIdentifier_("date")
     col_date.headerCell().setStringValue_("Last Active")
     col_date.setWidth_(150)
+    col_date.setEditable_(False)
     col_date.setSortDescriptorPrototype_(NSSortDescriptor.alloc().initWithKey_ascending_("date", False))
     table.addTableColumn_(col_date)
 
     col_model = NSTableColumn.alloc().initWithIdentifier_("model")
     col_model.headerCell().setStringValue_("Model")
-    col_model.setWidth_(100)
+    col_model.setWidth_(120)
+    col_model.setEditable_(False)
     col_model.setSortDescriptorPrototype_(NSSortDescriptor.alloc().initWithKey_ascending_("model", True))
     table.addTableColumn_(col_model)
-
-    col_actions = NSTableColumn.alloc().initWithIdentifier_("actions")
-    col_actions.headerCell().setStringValue_("")
-    col_actions.setWidth_(30)
-    table.addTableColumn_(col_actions)
 
     table.setDataSource_(delegate)
     table.setDelegate_(delegate)
     delegate._history_table = table
-
-    # Right-click menu (built dynamically per row via menu override)
-    # We'll use a single menu and update it on right-click
-    table.setMenu_(_make_context_menu(delegate, _history_data[0]) if _history_data else NSMenu.alloc().init())
 
     scroll.setDocumentView_(table)
     view.addSubview_(scroll)
