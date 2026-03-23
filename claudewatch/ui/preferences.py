@@ -51,7 +51,7 @@ _window: NSWindow | None = None
 _delegate: "_PrefsDelegate | None" = None
 _content_views: dict[str, NSView] = {}
 
-_SECTIONS = ["General", "Sessions", "History", "About"]
+_SECTIONS = ["General", "History", "About"]
 
 
 class _PrefsDelegate(NSObject):
@@ -151,7 +151,7 @@ class _PrefsDelegate(NSObject):
             view.setHidden_(False)
 
 
-def _build_general_view(delegate: _PrefsDelegate) -> NSView:
+def _build_general_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
     """Build the General settings pane."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W, _H))
     y = _H - 40
@@ -190,19 +190,6 @@ def _build_general_view(delegate: _PrefsDelegate) -> NSView:
     sound_popup.setTarget_(delegate)
     sound_popup.setAction_(objc.selector(delegate.soundChanged_, signature=b"v@:@"))
     view.addSubview_(sound_popup)
-
-    return view
-
-
-def _build_sessions_view(delegate: _PrefsDelegate) -> NSView:
-    """Build the Sessions settings pane."""
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W, _H))
-    y = _H - 40
-
-    header = NSTextField.labelWithString_("Sessions")
-    header.setFrame_(NSMakeRect(_PAD, y, 200, 22))
-    header.setFont_(NSFont.boldSystemFontOfSize_(15.0))
-    view.addSubview_(header)
 
     y -= 36
 
@@ -448,7 +435,6 @@ def show_preferences() -> None:  # noqa: PLR0915
     # Build panes
     _content_views.clear()
     _content_views["General"] = _build_general_view(_delegate)
-    _content_views["Sessions"] = _build_sessions_view(_delegate)
     _content_views["History"] = _build_history_view(_delegate)
     _content_views["About"] = _build_about_view(_delegate)
 

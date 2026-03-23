@@ -135,33 +135,6 @@ def _dev_to_tty(dev: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def list_pids_by_name(name: str) -> list[int]:
-    """Return PIDs whose executable basename exactly matches *name*.
-
-    Uses proc_pidpath (full path) and checks the basename, since proc_name
-    can return the binary's internal name (e.g. 'node' for claude).
-    Replacement for ``pgrep -x <name>``.
-    """
-    all_pids = _list_all_pids()
-    matched: list[int] = []
-    path_buf = ctypes.create_string_buffer(MAXPATHLEN)
-    name_buf = ctypes.create_string_buffer(_PROC_NAME_BUF)
-    for pid in all_pids:
-        # Try proc_pidpath first (more reliable — gives actual executable name)
-        ret = _libproc.proc_pidpath(pid, path_buf, MAXPATHLEN)
-        if ret > 0:
-            path = path_buf.value.decode("utf-8", errors="replace")
-            basename = path.rsplit("/", 1)[-1] if "/" in path else path
-            if basename == name:
-                matched.append(pid)
-                continue
-        # Fallback to proc_name
-        ret = _libproc.proc_name(pid, name_buf, _PROC_NAME_BUF)
-        if ret > 0 and name_buf.value.decode("utf-8", errors="replace") == name:
-            matched.append(pid)
-    return matched
-
-
 def get_process_info(pids: list[int]) -> dict[int, dict]:
     """Get tty, ppid, and full executable path for a list of PIDs.
 
