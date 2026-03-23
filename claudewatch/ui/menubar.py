@@ -55,7 +55,13 @@ from claudewatch.backend.services.summarize import (
     is_generating,
     track_session,
 )
-from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, format_tokens, get_session_model, get_session_tokens
+from claudewatch.backend.services.usage import (
+    MODEL_DISPLAY_NAMES,
+    format_tokens,
+    format_tokens_breakdown,
+    get_session_model,
+    get_session_tokens,
+)
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
@@ -669,6 +675,16 @@ class ClaudeWatchApp(rumps.App):
         else:
             summary_item.add(rumps.MenuItem("Pending…", callback=None))
         item.add(summary_item)
+        # Usage submenu with token breakdown
+        token_data = get_session_tokens(s.cwd)
+        breakdown = format_tokens_breakdown(token_data)
+        if breakdown:
+            usage_item = rumps.MenuItem("Usage")
+            for line in breakdown:
+                entry = rumps.MenuItem(f"  {line}")
+                entry.set_callback(None)
+                usage_item.add(entry)
+            item.add(usage_item)
         item.add(rumps.separator)
         item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
         # Track for background refresh (auto-generates summaries)
