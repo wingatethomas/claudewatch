@@ -141,8 +141,8 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     def tabChanged_(self, sender: objc.objc_object) -> None:
         idx = sender.selectedSegment()
         if self._sessions_view and self._settings_view:
-            self._sessions_view.setHidden_(idx != 0)
-            self._settings_view.setHidden_(idx != 1)
+            self._settings_view.setHidden_(idx != 0)
+            self._sessions_view.setHidden_(idx != 1)
 
     # ── NSTableView data source ──
 
@@ -318,9 +318,9 @@ def _build_sessions_pane(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
 
 def _add_section_header(view: NSView, text: str, y: float) -> None:
     header = NSTextField.labelWithString_(text)
-    header.setFrame_(NSMakeRect(_PAD, y, 200, 14))
-    header.setFont_(NSFont.systemFontOfSize_weight_(11.0, 0.6))
-    header.setTextColor_(NSColor.secondaryLabelColor())
+    header.setFrame_(NSMakeRect(_PAD, y, 300, 14))
+    header.setFont_(NSFont.systemFontOfSize_(11.0))
+    header.setTextColor_(NSColor.tertiaryLabelColor())
     view.addSubview_(header)
 
 
@@ -347,14 +347,13 @@ def _add_notifications_section(view: NSView, delegate: _PrefsDelegate, y: float)
     sound_label = NSTextField.labelWithString_("Alert sound")
     sound_label.setFrame_(NSMakeRect(_PAD, y, 80, 20))
     sound_label.setFont_(NSFont.systemFontOfSize_(13.0))
-    sound_label.setTextColor_(NSColor.secondaryLabelColor())
     view.addSubview_(sound_label)
 
     sound_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
         NSMakeRect(_PAD + 90, y - 2, 200, 22),
         False,
     )
-    sound_popup.setFont_(NSFont.systemFontOfSize_(12.0))
+    sound_popup.setFont_(NSFont.systemFontOfSize_(13.0))
     sound_popup.setToolTip_("System sounds from /System/Library/Sounds/")
     sound_popup.addItemsWithTitles_(list(get_available_sounds()))
     sound_popup.selectItemWithTitle_(str(get_setting("notification_sound")))
@@ -372,14 +371,13 @@ def _add_sessions_section(view: NSView, delegate: _PrefsDelegate, y: float) -> f
     expiry_label = NSTextField.labelWithString_("Pin expiry")
     expiry_label.setFrame_(NSMakeRect(_PAD, y, 80, 20))
     expiry_label.setFont_(NSFont.systemFontOfSize_(13.0))
-    expiry_label.setTextColor_(NSColor.secondaryLabelColor())
     view.addSubview_(expiry_label)
 
     expiry_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
         NSMakeRect(_PAD + 90, y - 2, 200, 22),
         False,
     )
-    expiry_popup.setFont_(NSFont.systemFontOfSize_(12.0))
+    expiry_popup.setFont_(NSFont.systemFontOfSize_(13.0))
     options = ["Never", "7 days", "14 days", "30 days", "60 days", "90 days"]
     expiry_popup.addItemsWithTitles_(options)
     current = int(get_setting("pin_expiry_days") or 30)
@@ -502,8 +500,8 @@ def show_preferences() -> None:
         NSMakeRect((_W - 240) // 2, _H - _TOOLBAR_H, 240, 28),
     )
     seg.setSegmentCount_(2)
-    seg.setLabel_forSegment_("Sessions", 0)
-    seg.setLabel_forSegment_("Settings", 1)
+    seg.setLabel_forSegment_("Preferences", 0)
+    seg.setLabel_forSegment_("History", 1)
     seg.setWidth_forSegment_(115, 0)
     seg.setWidth_forSegment_(115, 1)
     seg.setSegmentStyle_(NSSegmentStyleTexturedRounded)
@@ -521,17 +519,17 @@ def show_preferences() -> None:
     content_y = 0
     content_h = _H - _TOOLBAR_H - 2
 
-    sessions_view = _build_sessions_pane(_delegate)
-    sessions_view.setFrame_(NSMakeRect(0, content_y, _W, content_h))
-    sessions_view.setHidden_(False)
-    root.addSubview_(sessions_view)
-    _delegate._sessions_view = sessions_view
-
     settings_view = _build_settings_pane(_delegate)
     settings_view.setFrame_(NSMakeRect(0, content_y, _W, content_h))
-    settings_view.setHidden_(True)
+    settings_view.setHidden_(False)
     root.addSubview_(settings_view)
     _delegate._settings_view = settings_view
+
+    sessions_view = _build_sessions_pane(_delegate)
+    sessions_view.setFrame_(NSMakeRect(0, content_y, _W, content_h))
+    sessions_view.setHidden_(True)
+    root.addSubview_(sessions_view)
+    _delegate._sessions_view = sessions_view
 
     _window = window
     window.center()
