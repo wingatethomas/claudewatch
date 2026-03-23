@@ -128,7 +128,7 @@ def _render_timeline(entries: list[ActivityEntry]) -> NSMutableAttributedString:
     return result
 
 
-def show_activity(project: str, cwd: str) -> None:  # noqa: PLR0915
+def show_activity(project: str, cwd: str, *, session_active: bool = False) -> None:  # noqa: PLR0915
     """Show (or bring to front) the activity window for a session."""
     if cwd in _windows:
         _windows[cwd].makeKeyAndOrderFront_(None)
@@ -177,13 +177,14 @@ def show_activity(project: str, cwd: str) -> None:  # noqa: PLR0915
     finder_btn.setAutoresizingMask_(4)
     bar.addSubview_(finder_btn)
 
-    resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - 100, 8, 85, 24))
-    resume_btn.setTitle_("Resume")
-    resume_btn.setBezelStyle_(1)
-    resume_btn.setTarget_(delegate)
-    resume_btn.setAction_(objc.selector(delegate.resumeSession_, signature=b"v@:@"))
-    resume_btn.setAutoresizingMask_(4)
-    bar.addSubview_(resume_btn)
+    if not session_active:
+        resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - 100, 8, 85, 24))
+        resume_btn.setTitle_("Resume")
+        resume_btn.setBezelStyle_(1)
+        resume_btn.setTarget_(delegate)
+        resume_btn.setAction_(objc.selector(delegate.resumeSession_, signature=b"v@:@"))
+        resume_btn.setAutoresizingMask_(4)
+        bar.addSubview_(resume_btn)
 
     root.addSubview_(bar)
 

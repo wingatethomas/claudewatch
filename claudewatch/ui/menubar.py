@@ -532,7 +532,7 @@ class ClaudeWatchApp(rumps.App):
         cwd = session.cwd
 
         def handler(_: rumps.MenuItem) -> None:
-            show_activity(project, cwd)
+            show_activity(project, cwd, session_active=True)
 
         return handler
 
