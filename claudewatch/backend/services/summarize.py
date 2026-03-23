@@ -2,8 +2,10 @@
 
 import json
 import logging
+import os
 import shutil
 import subprocess
+import threading
 import time
 
 from claudewatch.backend.services.jsonl import find_most_recent_jsonl, read_jsonl_tail
@@ -12,10 +14,13 @@ log = logging.getLogger("claudewatch")
 
 _MAX_CONTEXT_CHARS = 8000
 _TIMEOUT_SECONDS = 15
-_CACHE_TTL = 300  # 5 minutes
+_MAX_CONCURRENT = 2  # max simultaneous claude -p calls
 
-# CWD → (summary, timestamp)
+# CWD → (summary, jsonl_mtime) — only regenerate when JSONL changes
 _summary_cache: dict[str, tuple[str, float]] = {}
+_semaphore = threading.Semaphore(_MAX_CONCURRENT)
+_in_progress: set[str] = set()  # CWDs currently being summarized
+_in_progress_lock = threading.Lock()
 _PROMPT = (
     "Summarize this Claude Code conversation in 3-4 sentences. "
     "Cover: what the user was trying to accomplish, what was done, key files or areas touched, "
@@ -154,28 +159,61 @@ def quick_summary(cwd: str, max_len: int = 60) -> str:
 
 
 def get_cached_summary(cwd: str) -> str | None:
-    """Return cached rich summary if available and fresh, else None."""
+    """Return cached summary if JSONL hasn't changed since it was generated."""
     entry = _summary_cache.get(cwd)
-    if entry and time.time() - entry[1] < _CACHE_TTL:
-        return entry[0]
+    if not entry:
+        return None
+    summary, cached_mtime = entry
+    current_mtime = _get_jsonl_mtime(cwd)
+    if current_mtime and current_mtime <= cached_mtime:
+        return summary
     return None
 
 
 def cache_summary(cwd: str, summary: str) -> None:
-    """Store a rich summary in the cache."""
-    _summary_cache[cwd] = (summary, time.time())
+    """Store a summary keyed to the current JSONL mtime."""
+    mtime = _get_jsonl_mtime(cwd) or time.time()
+    _summary_cache[cwd] = (summary, mtime)
+
+
+def _get_jsonl_mtime(cwd: str) -> float:
+    """Get the modification time of the most recent JSONL for a CWD."""
+    path = find_most_recent_jsonl(cwd)
+    if path:
+        try:
+            return os.path.getmtime(path)
+        except OSError:
+            pass
+    return 0.0
 
 
 def generate_and_cache_summary(cwd: str) -> str:
-    """Generate a rich summary via claude -p and cache it."""
+    """Generate a rich summary via claude -p and cache it.
+
+    Limits concurrency to _MAX_CONCURRENT and deduplicates in-flight requests.
+    """
     cached = get_cached_summary(cwd)
     if cached is not None:
         return cached
 
-    summary = generate_summary(cwd)
-    if summary:
-        cache_summary(cwd, summary)
-    return summary
+    with _in_progress_lock:
+        if cwd in _in_progress:
+            return ""  # another thread is already generating for this CWD
+        _in_progress.add(cwd)
+
+    try:
+        if not _semaphore.acquire(timeout=1):
+            return ""  # too many concurrent summaries
+        try:
+            summary = generate_summary(cwd)
+            if summary:
+                cache_summary(cwd, summary)
+            return summary
+        finally:
+            _semaphore.release()
+    finally:
+        with _in_progress_lock:
+            _in_progress.discard(cwd)
 
 
 def invalidate_cache(cwd: str) -> None:

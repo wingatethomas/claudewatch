@@ -383,7 +383,16 @@ def detect_sessions() -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
     # Use pgrep for PID discovery — proc_name/proc_pidpath can't match argv[0]
     # which Claude Code rewrites from "node" to "claude"
     pids_out = _shell("pgrep -x claude")
-    pids = [int(p) for p in pids_out.splitlines() if p.strip().isdigit()][:_MAX_SESSIONS]
+    raw_pids = [int(p) for p in pids_out.splitlines() if p.strip().isdigit()]
+    # Filter out non-interactive claude processes (e.g. "claude -p" summary calls)
+    # by checking if args contain -p/--print which indicates a one-shot command
+    pids = []
+    for pid in raw_pids:
+        args = _shell(f"ps -o args= -p {pid}")
+        if " -p " in args or " --print " in args or args.strip().endswith(" -p"):
+            continue
+        pids.append(pid)
+    pids = pids[:_MAX_SESSIONS]
     log.debug("detect: found %d claude processes", len(pids))
     if not pids:
         _host_app_cache.clear()
