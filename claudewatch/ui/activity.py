@@ -110,8 +110,11 @@ def _render_timeline(entries: list[ActivityEntry]) -> NSMutableAttributedString:
         # Icon + label
         _append(result, f"{cfg['icon']} ", _MONO_BOLD, cfg["color"])
 
-        # Summary
-        _append(result, f"{entry.summary}\n", _MONO, NSColor.labelColor())
+        # Content: use full detail for user/assistant, summary for tools
+        if entry.kind in ("user", "assistant"):
+            _append(result, f"{entry.detail}\n", _MONO, NSColor.labelColor())
+        else:
+            _append(result, f"{entry.summary}\n", _MONO, NSColor.labelColor())
 
         # Detail line for tools (show the full command/path)
         if entry.kind == "tool" and entry.detail and entry.detail != entry.summary:
