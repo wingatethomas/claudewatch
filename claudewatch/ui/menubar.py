@@ -231,27 +231,18 @@ def _clean_exit_session(tty: str, pid: int, project: str, window_id: int | None 
         log.warning("session.exit failed project=%s pid=%d", project, pid)
         return False
 
-    # Close the terminal tab after a short delay for Claude to finish
-    def _close_tab() -> None:
-        time.sleep(2)  # wait for Claude to exit
-        tty_path = f"/dev/{tty}" if not tty.startswith("/dev/") else tty
-        try:
-            # Send 'exit' to the shell to close the tab
-            fd = os.open(tty_path, os.O_WRONLY | os.O_NOCTTY)
-            try:
-                os.write(fd, b"exit\n")
-            finally:
-                os.close(fd)
-        except OSError:
-            # Fallback: close via AppleScript if we have a window ID
-            if window_id is not None:
-                run_applescript(f"""
-                    tell application "Terminal"
-                        close window id {window_id}
-                    end tell
-                """)
+    # Close the terminal tab after Claude exits
+    if window_id is not None:
+        # window_id is always int — validated via isdigit() in detection.py
+        def _close_tab() -> None:
+            time.sleep(3)  # wait for Claude to save and exit
+            run_applescript(f"""
+                tell application "Terminal"
+                    close window id {window_id} saving no
+                end tell
+            """)
 
-    threading.Thread(target=_close_tab, daemon=True).start()
+        threading.Thread(target=_close_tab, daemon=True).start()
     return True
 
 
