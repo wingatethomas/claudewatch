@@ -12,10 +12,13 @@ log = logging.getLogger("claudewatch")
 _MAX_CONTEXT_CHARS = 8000
 _TIMEOUT_SECONDS = 15
 _PROMPT = (
-    "Summarize this Claude Code conversation in 1-2 concise sentences. "
-    "Focus on what the user was trying to accomplish and the current state. "
+    "Summarize this Claude Code conversation in 3-4 sentences. "
+    "Cover: what the user was trying to accomplish, what was done, key files or areas touched, "
+    "and the current state (e.g. merged, in progress, blocked). "
     "Do not use markdown. Do not start with 'The user' or 'This conversation'. "
-    "Example: 'Debugging auth middleware — fixed session token storage, added tests, PR ready for review.'\n\n"
+    "Example: 'Debugging auth middleware after session tokens were stored incorrectly. "
+    "Fixed token validation in auth.py, added integration tests, updated the migration. "
+    "PR #42 is merged to main.'\n\n"
 )
 
 
