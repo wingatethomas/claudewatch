@@ -127,13 +127,18 @@ class _PrefsDelegate(NSObject):
     def numberOfRowsInTableView_(self, table: objc.objc_object) -> int:
         return len(_SECTIONS)
 
-    def tableView_objectValueForTableColumn_row_(
+    def tableView_viewForTableColumn_row_(
         self,
         table: objc.objc_object,
         col: objc.objc_object,
         row: int,
-    ) -> str:
-        return _SECTIONS[row]
+    ) -> objc.objc_object:
+        cell = NSTextField.labelWithString_(_SECTIONS[row])
+        cell.setFont_(NSFont.systemFontOfSize_(13.0))
+        cell.setFrame_(NSMakeRect(12, 0, _SIDEBAR_W - 20, 36))
+        wrapper = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _SIDEBAR_W, 36))
+        wrapper.addSubview_(cell)
+        return wrapper
 
     def tableViewSelectionDidChange_(self, notification: objc.objc_object) -> None:
         table = notification.object()
@@ -296,9 +301,12 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
     scroll.setHasVerticalScroller_(True)
     scroll.setDrawsBackground_(False)
 
-    list_view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W - _PAD * 2 - 16, len(history) * 50))
+    _entry_h = 50
+    _top_pad = 8
+    list_h = len(history) * _entry_h + _top_pad
+    list_view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W - _PAD * 2 - 16, list_h))
     entry_w = _CONTENT_W - _PAD * 2 - 16
-    ey = len(history) * 50 - 10
+    ey = list_h - _top_pad - 10
 
     pinned_cwds = get_pinned_cwds()
 
@@ -363,7 +371,12 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         resume_btn.setRepresentedObject_(f"{sid}|{cwd}")
         list_view.addSubview_(resume_btn)
 
-        ey -= 50
+        # Separator line
+        sep_line = NSBox.alloc().initWithFrame_(NSMakeRect(0, ey - 16, entry_w, 1))
+        sep_line.setBoxType_(2)
+        list_view.addSubview_(sep_line)
+
+        ey -= _entry_h
 
     scroll.setDocumentView_(list_view)
     view.addSubview_(scroll)

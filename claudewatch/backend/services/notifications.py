@@ -14,8 +14,14 @@ import subprocess
 import time
 
 from claudewatch.backend.helpers import run_applescript
-from claudewatch.backend.models import ClaudeSession
+from claudewatch.backend.models import ClaudeSession, HostApp
 from claudewatch.backend.repositories.config import get_setting
+
+_BUNDLE_IDS: dict[HostApp, str] = {
+    HostApp.TERMINAL: "com.apple.Terminal",
+    HostApp.VSCODE: "com.microsoft.VSCode",
+    HostApp.PYCHARM: "com.jetbrains.pycharm",
+}
 
 log = logging.getLogger("claudewatch")
 
@@ -93,21 +99,35 @@ class NotificationManager:
                 s.pid,
             )
 
+            cmd = [
+                TERMINAL_NOTIFIER,
+                "-title",
+                title,
+                "-message",
+                message[:200],
+                "-subtitle",
+                subtitle,
+                "-sound",
+                str(get_setting("notification_sound")),
+                "-group",
+                f"claudewatch-{s.pid}",
+            ]
+
+            bundle_id = _BUNDLE_IDS.get(s.host_app)
+            if bundle_id:
+                cmd.extend(["-activate", bundle_id])
+            if s.host_app == HostApp.TERMINAL and s.window_id is not None:
+                # window_id is always int — validated via isdigit() in detection.py
+                cmd.extend(
+                    [
+                        "-execute",
+                        f"osascript -e 'tell application \"Terminal\" to set index of window id {s.window_id} to 1'",
+                    ]
+                )
+
             try:
                 subprocess.run(
-                    [
-                        TERMINAL_NOTIFIER,
-                        "-title",
-                        title,
-                        "-message",
-                        message[:200],
-                        "-subtitle",
-                        subtitle,
-                        "-sound",
-                        str(get_setting("notification_sound")),
-                        "-group",
-                        f"claudewatch-{s.pid}",
-                    ],
+                    cmd,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=5,
