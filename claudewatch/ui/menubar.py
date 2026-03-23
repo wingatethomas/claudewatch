@@ -44,6 +44,7 @@ from claudewatch.backend.services.onboarding import (
     get_session_count,
     increment_session_count,
     is_tip_shown,
+    replay_all_tips,
     show_tip,
 )
 from claudewatch.backend.services.summarize import (
@@ -638,6 +639,7 @@ class ClaudeWatchApp(rumps.App):
         legend._menuitem.setAttributedTitle_(legend_text)
         help_menu.add(legend)
         help_menu.add(rumps.separator)
+        help_menu.add(rumps.MenuItem("Show Tips", callback=self._replay_tips))
         help_menu.add(rumps.MenuItem("GitHub", callback=self._open_github))
         self.menu.add(help_menu)
 
@@ -874,6 +876,9 @@ class ClaudeWatchApp(rumps.App):
 
     def _open_preferences(self, _: rumps.MenuItem) -> None:
         show_preferences()
+
+    def _replay_tips(self, _: rumps.MenuItem) -> None:
+        replay_all_tips()
 
     def _open_github(self, _: rumps.MenuItem) -> None:
         webbrowser.open("https://github.com/wingatethomas/claudewatch")

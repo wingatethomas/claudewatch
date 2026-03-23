@@ -103,6 +103,19 @@ def get_session_count() -> int:
     return int(count) if isinstance(count, (int, float)) else 0
 
 
+def reset_tips() -> None:
+    """Clear all shown tips so they can be replayed."""
+    set_setting("onboarding_tips_shown", [])
+    log.info("onboarding.tips_reset")
+
+
+def replay_all_tips() -> None:
+    """Reset and immediately deliver all tips."""
+    reset_tips()
+    for tip_id in TIPS:
+        show_tip(tip_id)
+
+
 def increment_session_count(n: int = 1) -> int:
     """Add *n* to the cumulative session counter and return the new total."""
     current = get_session_count()
