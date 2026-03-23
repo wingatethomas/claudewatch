@@ -8,3 +8,4 @@
 - `detect_sessions()` runs on a background thread. Results are collected on the main thread via `Future.result()`. All `self.sessions` access happens on the main thread.
 - Set `_modal_active = True` during any modal dialog to pause polling. Reset in `finally`.
 - Never generate summaries or do I/O during menu build — only read from caches. Background threads handle generation.
+- **Session status rule:** Only mark a session IDLE if there is NO action required from the user. If Claude is waiting for tool approval, input, or any response — that's ATTENTION, not IDLE.
