@@ -573,18 +573,22 @@ class ClaudeWatchApp(rumps.App):
                 alert.setAccessoryView_(text_field)
                 alert.window().setInitialFirstResponder_(text_field)
 
+                modal_dismissed = threading.Event()
+
                 def _fill_summary() -> None:
                     summary = generate_summary(cwd)
-                    if summary:
+                    if summary and not modal_dismissed.is_set():
                         text_field.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setStringValue:",
                             summary,
-                            False,
+                            True,
                         )
 
                 threading.Thread(target=_fill_summary, daemon=True).start()
 
-                if alert.runModal() == NSAlertFirstButtonReturn:
+                result = alert.runModal()
+                modal_dismissed.set()
+                if result == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
                     pin_session(sid, project, cwd, note)
 

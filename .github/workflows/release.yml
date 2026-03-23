@@ -30,17 +30,20 @@ jobs:
       - name: Zip the app
         run: |
           cd build/claudewatch/macos/app
-          zip -r ../../../../ClaudeWatch-${{ github.ref_name }}-arm64.zip ClaudeWatch.app
+          zip -r "../../../../ClaudeWatch-${TAG}-arm64.zip" ClaudeWatch.app
+        env:
+          TAG: ${{ github.ref_name }}
 
       - name: Create GitHub Release
         run: |
           PRERELEASE=""
-          if echo "${{ github.ref_name }}" | grep -q '-'; then
+          if echo "$TAG" | grep -q '-'; then
             PRERELEASE="--prerelease"
           fi
-          gh release create "${{ github.ref_name }}" \
-            ClaudeWatch-${{ github.ref_name }}-arm64.zip \
+          gh release create "$TAG" \
+            "ClaudeWatch-${TAG}-arm64.zip" \
             --generate-notes \
             $PRERELEASE
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}

@@ -6,7 +6,7 @@ import os
 from datetime import UTC, datetime
 
 from claudewatch.backend.models import CLAUDE_PROJECTS_DIR, proj_key_to_cwd
-from claudewatch.backend.services.jsonl import read_jsonl_tail
+from claudewatch.backend.services.jsonl import is_safe_jsonl_path, read_jsonl_tail
 
 log = logging.getLogger("claudewatch")
 
@@ -90,6 +90,8 @@ def _seed_from_jsonl() -> list[dict]:
             # Get model from last few lines
             model = ""
             jsonl_path = os.path.join(proj_dir, jsonls[0])
+            if not is_safe_jsonl_path(jsonl_path):
+                continue
             tail = read_jsonl_tail(jsonl_path, tail_bytes=5120)
             for line in tail.strip().splitlines():
                 try:

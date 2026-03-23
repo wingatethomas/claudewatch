@@ -27,13 +27,20 @@ def find_most_recent_jsonl(cwd: str) -> str | None:
     if not jsonls:
         return None
 
-    # Validate resolved path stays within projects dir (prevent symlink traversal)
-    real_proj_dir = os.path.realpath(CLAUDE_PROJECTS_DIR)
-    real_jsonl = os.path.realpath(jsonls[0])
-    if not real_jsonl.startswith(real_proj_dir + os.sep):
+    if not is_safe_jsonl_path(jsonls[0]):
         return None
 
     return jsonls[0]
+
+
+def is_safe_jsonl_path(path: str) -> bool:
+    """Check that a JSONL path resolves to within CLAUDE_PROJECTS_DIR.
+
+    Prevents symlink traversal attacks.
+    """
+    real_proj_dir = os.path.realpath(CLAUDE_PROJECTS_DIR)
+    real_path = os.path.realpath(path)
+    return real_path.startswith(real_proj_dir + os.sep)
 
 
 def read_jsonl_tail(path: str, tail_bytes: int = 10240) -> str:

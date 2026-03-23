@@ -79,6 +79,7 @@ class TestGetHistory:
         with (
             patch.object(history, "_PATH", fake_path),
             patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
             result = history.get_history()
 
@@ -118,6 +119,7 @@ class TestSeedFromJsonl:
         with (
             patch.object(history, "_PATH", fake_path),
             patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
         ):
             result = history._seed_from_jsonl()
 
@@ -138,6 +140,7 @@ class TestSeedFromJsonl:
         with (
             patch.object(history, "_PATH", fake_path),
             patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
         ):
             result = history._seed_from_jsonl()
 
@@ -160,6 +163,7 @@ class TestSeedFromJsonl:
         with (
             patch.object(history, "_PATH", fake_path),
             patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
         ):
             result = history._seed_from_jsonl()
 
@@ -175,6 +179,7 @@ class TestSeedFromJsonl:
         with (
             patch.object(history, "_PATH", fake_path),
             patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
         ):
             history._seed_from_jsonl()
 
