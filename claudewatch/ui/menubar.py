@@ -346,9 +346,7 @@ class ClaudeWatchApp(rumps.App):
             return  # one tip per cycle
 
         # Attention — first time a session needs attention
-        if not is_tip_shown("attention") and any(
-            s.status == SessionStatus.ATTENTION for s in self.sessions
-        ):
+        if not is_tip_shown("attention") and any(s.status == SessionStatus.ATTENTION for s in self.sessions):
             show_tip("attention")
             return
 
@@ -593,9 +591,7 @@ class ClaudeWatchApp(rumps.App):
                 item.add(rumps.separator)
                 item.add(rumps.MenuItem("Activity", callback=self._make_history_activity_handler(proj, cwd)))
                 item.add(rumps.MenuItem("Resume", callback=self._make_resume_handler(sid, cwd)))
-                item.add(
-                    rumps.MenuItem("Remove from history", callback=self._make_remove_history_handler(cwd))
-                )
+                item.add(rumps.MenuItem("Remove from history", callback=self._make_remove_history_handler(cwd)))
                 self.menu.add(item)
                 # Detail line: ended_at date · model
                 detail_parts = []
