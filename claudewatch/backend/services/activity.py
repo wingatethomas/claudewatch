@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 
-from claudewatch.backend.models import CLAUDE_PROJECTS_DIR
+from claudewatch.backend.services.jsonl import find_most_recent_jsonl, read_jsonl_full
 
 
 @dataclass
@@ -22,33 +22,12 @@ def parse_activity(cwd: str, max_entries: int = 100) -> list[ActivityEntry]:  # 
 
     Returns newest-first list of ActivityEntry objects.
     """
-    proj_key = cwd.replace("/", "-")
-    proj_dir = os.path.join(CLAUDE_PROJECTS_DIR, proj_key)
-    if not os.path.isdir(proj_dir):
+    path = find_most_recent_jsonl(cwd)
+    if not path:
         return []
 
-    try:
-        jsonls = sorted(
-            [os.path.join(proj_dir, f) for f in os.listdir(proj_dir) if f.endswith(".jsonl")],
-            key=os.path.getmtime,
-            reverse=True,
-        )
-    except OSError:
-        return []
-
-    if not jsonls:
-        return []
-
-    # Validate symlink traversal
-    real_proj_dir = os.path.realpath(CLAUDE_PROJECTS_DIR)
-    real_jsonl = os.path.realpath(jsonls[0])
-    if not real_jsonl.startswith(real_proj_dir + os.sep):
-        return []
-
-    try:
-        with open(jsonls[0]) as f:
-            lines = f.readlines()
-    except OSError:
+    lines = read_jsonl_full(path)
+    if not lines:
         return []
 
     entries: list[ActivityEntry] = []
@@ -67,12 +46,14 @@ def parse_activity(cwd: str, max_entries: int = 100) -> list[ActivityEntry]:  # 
         if dtype == "user":
             content = msg.get("content", "")
             if isinstance(content, str) and content.strip():
-                entries.append(ActivityEntry(
-                    kind="user",
-                    summary=_truncate(content.strip(), 80),
-                    detail=content.strip(),
-                    timestamp=ts,
-                ))
+                entries.append(
+                    ActivityEntry(
+                        kind="user",
+                        summary=_truncate(content.strip(), 80),
+                        detail=content.strip(),
+                        timestamp=ts,
+                    )
+                )
 
         elif dtype in ("assistant", "progress"):
             if dtype == "progress":
@@ -91,12 +72,14 @@ def parse_activity(cwd: str, max_entries: int = 100) -> list[ActivityEntry]:  # 
                 elif bt == "text":
                     text = block.get("text", "").strip()
                     if text:
-                        entries.append(ActivityEntry(
-                            kind="assistant",
-                            summary=_truncate(text, 80),
-                            detail=text,
-                            timestamp=ts,
-                        ))
+                        entries.append(
+                            ActivityEntry(
+                                kind="assistant",
+                                summary=_truncate(text, 80),
+                                detail=text,
+                                timestamp=ts,
+                            )
+                        )
 
     # Return newest first, capped
     return list(reversed(entries[-max_entries:]))

@@ -1,9 +1,8 @@
 """Parse session metadata from Claude Code JSONL session logs."""
 
 import json
-import os
 
-from claudewatch.backend.models import CLAUDE_PROJECTS_DIR
+from claudewatch.backend.services.jsonl import find_most_recent_jsonl, read_jsonl_tail
 
 # Model display names — keep factual
 MODEL_DISPLAY_NAMES: dict[str, str] = {
@@ -21,37 +20,12 @@ def get_session_model(cwd: str) -> str:
     Reads the last assistant message from the JSONL to find the model.
     Returns a display name like 'opus 4.6' or empty string if unavailable.
     """
-    proj_key = cwd.replace("/", "-")
-    proj_dir = os.path.join(CLAUDE_PROJECTS_DIR, proj_key)
-    if not os.path.isdir(proj_dir):
+    path = find_most_recent_jsonl(cwd)
+    if not path:
         return ""
 
-    try:
-        jsonls = sorted(
-            [os.path.join(proj_dir, f) for f in os.listdir(proj_dir) if f.endswith(".jsonl")],
-            key=os.path.getmtime,
-            reverse=True,
-        )
-    except OSError:
-        return ""
-
-    if not jsonls:
-        return ""
-
-    # Validate symlink traversal
-    real_proj_dir = os.path.realpath(CLAUDE_PROJECTS_DIR)
-    real_jsonl = os.path.realpath(jsonls[0])
-    if not real_jsonl.startswith(real_proj_dir + os.sep):
-        return ""
-
-    # Read last ~10KB — model is in every assistant message
-    try:
-        with open(jsonls[0], "rb") as f:
-            f.seek(0, 2)
-            size = f.tell()
-            f.seek(max(0, size - 10240))
-            tail = f.read().decode("utf-8", errors="replace")
-    except OSError:
+    tail = read_jsonl_tail(path)
+    if not tail:
         return ""
 
     last_model = ""
