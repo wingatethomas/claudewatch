@@ -90,6 +90,14 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     def openRepo_(self, sender: objc.objc_object) -> None:
         webbrowser.open(_REPO_URL)
 
+    def viewUsageStats_(self, sender: objc.objc_object) -> None:
+        run_applescript("""
+            tell application "Terminal"
+                activate
+                do script "claude"
+            end tell
+        """)
+
     # ── History actions ──
 
     def deleteHistoryEntry_(self, sender: objc.objc_object) -> None:
@@ -392,6 +400,27 @@ def _add_sessions_section(view: NSView, delegate: _PrefsDelegate, y: float) -> f
     return y
 
 
+def _add_usage_section(view: NSView, delegate: _PrefsDelegate, y: float) -> float:
+    _add_section_separator(view, y + 10)
+    _add_section_header(view, "USAGE", y - 10)
+    y -= 36
+
+    usage_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, y, 200, 28))
+    usage_btn.setTitle_("View Usage Statistics")
+    usage_btn.setBezelStyle_(1)
+    usage_btn.setTarget_(delegate)
+    usage_btn.setAction_(objc.selector(delegate.viewUsageStats_, signature=b"v@:@"))
+    view.addSubview_(usage_btn)
+
+    y -= 20
+    hint = NSTextField.labelWithString_("Opens Claude Code usage in Terminal")
+    hint.setFrame_(NSMakeRect(_PAD, y, _W - _PAD * 2, 14))
+    hint.setFont_(NSFont.systemFontOfSize_(11.0))
+    hint.setTextColor_(NSColor.tertiaryLabelColor())
+    view.addSubview_(hint)
+    return y
+
+
 def _add_about_section(view: NSView, delegate: _PrefsDelegate, y: float) -> float:
     _add_section_separator(view, y + 10)
     _add_section_header(view, "ABOUT", y - 10)
@@ -423,11 +452,16 @@ def _build_settings_pane(delegate: _PrefsDelegate) -> NSView:
     """Build the Settings pane with all preferences."""
     content_h = _H - _TOOLBAR_H
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, content_h))
-    y = content_h - 40
+
+    # Vertically center the content (~320px of settings in ~464px pane)
+    _content_height = 340
+    y = (content_h + _content_height) // 2
 
     y = _add_notifications_section(view, delegate, y)
     y -= 44
     y = _add_sessions_section(view, delegate, y)
+    y -= 34
+    y = _add_usage_section(view, delegate, y)
     y -= 34
     _add_about_section(view, delegate, y)
 
