@@ -238,6 +238,7 @@ class ClaudeWatchApp(rumps.App):
         self._prev_pids: set[int] = set()
         self._prev_status: dict[int, str] = {}
         self._prev_sessions: dict[int, ClaudeSession] = {}
+        self._exiting_pids: dict[int, float] = {}  # PID → time of quit signal
         self._check_accessibility()
         self.update_display()
 
@@ -310,6 +311,11 @@ class ClaudeWatchApp(rumps.App):
                 return  # previous detection still running
             try:
                 self.sessions = self._future.result()
+                # Filter out sessions we've sent a quit signal to (grace period)
+                _exit_grace = 10  # seconds
+                now = time.time()
+                self._exiting_pids = {p: t for p, t in self._exiting_pids.items() if now - t < _exit_grace}
+                self.sessions = [s for s in self.sessions if s.pid not in self._exiting_pids]
                 self._log_changes()
                 self.update_display()
                 self.notifications.notify_if_needed(self.sessions)
@@ -601,6 +607,7 @@ class ClaudeWatchApp(rumps.App):
                     quit_alert.addButtonWithTitle_("Keep Running")
                     if quit_alert.runModal() == NSAlertFirstButtonReturn:
                         _clean_exit_session(tty, pid, project)
+                        self._exiting_pids[pid] = time.time()
             finally:
                 self._modal_active = False
                 self._last_menu_key = ""
@@ -618,6 +625,7 @@ class ClaudeWatchApp(rumps.App):
         def handler(_: rumps.MenuItem) -> None:
             if pinned:
                 _clean_exit_session(tty, pid, project)
+                self._exiting_pids[pid] = time.time()
                 rumps.notification(
                     title="Session paused",
                     subtitle=project,
@@ -637,6 +645,7 @@ class ClaudeWatchApp(rumps.App):
                     alert.addButtonWithTitle_("Cancel")
                     if alert.runModal() == NSAlertFirstButtonReturn:
                         _clean_exit_session(tty, pid, project)
+                        self._exiting_pids[pid] = time.time()
                 finally:
                     self._modal_active = False
             self._last_menu_key = ""

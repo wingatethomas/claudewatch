@@ -2,7 +2,6 @@
 
 import os
 import re
-import subprocess
 
 import objc
 from AppKit import (
@@ -21,8 +20,9 @@ from AppKit import (
     NSWindowStyleMaskMiniaturizable,
     NSWindowStyleMaskResizable,
     NSWindowStyleMaskTitled,
+    NSWorkspace,
 )
-from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
+from Foundation import NSURL, NSMakeRect, NSMakeSize, NSObject, NSRange
 
 from claudewatch.backend.helpers import escape_applescript, run_applescript
 from claudewatch.backend.services.activity import ActivityEntry, parse_activity
@@ -60,7 +60,7 @@ class _ActivityDelegate(NSObject):
 
     def openInFinder_(self, sender: objc.objc_object) -> None:
         if os.path.isdir(self._cwd):
-            subprocess.run(["open", self._cwd], check=False)  # noqa: S603, S607
+            NSWorkspace.sharedWorkspace().openURL_(NSURL.fileURLWithPath_(self._cwd))
 
     def resumeSession_(self, sender: objc.objc_object) -> None:
         sid = _get_session_id(self._cwd)
