@@ -39,7 +39,12 @@ from claudewatch.backend.repositories.config import get_setting
 from claudewatch.backend.repositories.history import record_session
 from claudewatch.backend.services.detection import detect_sessions
 from claudewatch.backend.services.notifications import NotificationManager
-from claudewatch.backend.services.summarize import generate_summary
+from claudewatch.backend.services.summarize import (
+    generate_and_cache_summary,
+    generate_summary,
+    get_cached_summary,
+    quick_summary,
+)
 from claudewatch.backend.services.usage import get_session_model
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
@@ -514,7 +519,16 @@ class ClaudeWatchApp(rumps.App):
         icon = _get_app_icon(s.host_app)
         if icon:
             item._menuitem.setImage_(icon)
-        # Sub-items
+        # Sub-items: summary first, then actions
+        summary_item = rumps.MenuItem("Summary")
+        cached = get_cached_summary(s.cwd)
+        if cached:
+            self._add_summary_lines(summary_item, cached)
+        else:
+            summary_item.add(rumps.MenuItem("Loading...", callback=None))
+            self._async_fill_summary(summary_item, s.cwd)
+        item.add(summary_item)
+        item.add(rumps.separator)
         item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
         if pinned:
             item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(s.cwd)))
@@ -524,14 +538,43 @@ class ClaudeWatchApp(rumps.App):
                 item.add(rumps.MenuItem("Pin session...", callback=self._make_pin_handler(s)))
             item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
         self.menu.add(item)
-        # Detail line: status text + model name
-        detail = s.detail_line
+        # Detail line: heuristic summary or status, plus model
+        hint = quick_summary(s.cwd, max_len=40) or s.detail_line
         model = get_session_model(s.cwd)
-        detail_parts = [p for p in [detail, model] if p]
+        detail_parts = [p for p in [hint, model] if p]
         if detail_parts:
             detail_item = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
             detail_item.set_callback(None)
             self.menu.add(detail_item)
+
+    @staticmethod
+    def _add_summary_lines(menu_item: rumps.MenuItem, text: str) -> None:
+        """Split a summary into wrapped menu items."""
+        menu_item.clear()
+        _wrap = 55
+        words = text.split()
+        line = ""
+        for word in words:
+            if line and len(line) + 1 + len(word) > _wrap:
+                menu_item.add(rumps.MenuItem(f"  {line}", callback=None))
+                line = word
+            else:
+                line = f"{line} {word}" if line else word
+        if line:
+            menu_item.add(rumps.MenuItem(f"  {line}", callback=None))
+
+    def _async_fill_summary(self, menu_item: rumps.MenuItem, cwd: str) -> None:
+        """Generate summary in background and update the submenu."""
+
+        def _fill() -> None:
+            summary = generate_and_cache_summary(cwd)
+            if summary:
+                self._add_summary_lines(menu_item, summary)
+            else:
+                menu_item.clear()
+                menu_item.add(rumps.MenuItem("  No summary available", callback=None))
+
+        threading.Thread(target=_fill, daemon=True).start()
 
     def _make_activity_handler(self, session: ClaudeSession):  # noqa: ANN202
         project = session.project
