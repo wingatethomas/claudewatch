@@ -56,6 +56,7 @@ from claudewatch.backend.services.summarize import (
     track_session,
 )
 from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, get_session_model
+from claudewatch.backend.services.usage_stats import format_stats_line, get_month_stats, get_today_stats, get_week_stats
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
@@ -431,9 +432,15 @@ class ClaudeWatchApp(rumps.App):
 
         self.menu.clear()
 
-        # App title
+        # App title + today's usage
         app_title = rumps.MenuItem("ClaudeWatch", callback=None)
         self.menu.add(app_title)
+        today = get_today_stats()
+        today_line = format_stats_line(today)
+        if today["messages"]:
+            today_item = rumps.MenuItem(f"  Today: {today_line}")
+            today_item.set_callback(None)
+            self.menu.add(today_item)
         self.menu.add(rumps.separator)
 
         # Show accessibility warning if needed
@@ -601,6 +608,22 @@ class ClaudeWatchApp(rumps.App):
                 recent_menu.add(item)
                 track_session(cwd)  # background thread will generate summary
             self.menu.add(recent_menu)
+
+        # Usage stats submenu
+        week = get_week_stats()
+        month = get_month_stats()
+        if week["messages"] or month["messages"]:
+            self.menu.add(rumps.separator)
+            usage_menu = rumps.MenuItem("📊 Usage")
+            for label, stats in (("This week", week), ("Last 30 days", month)):
+                line = format_stats_line(stats)
+                header = rumps.MenuItem(f"  {label}")
+                header.set_callback(None)
+                usage_menu.add(header)
+                detail = rumps.MenuItem(f"    {line}")
+                detail.set_callback(None)
+                usage_menu.add(detail)
+            self.menu.add(usage_menu)
 
         self.menu.add(rumps.separator)
         self.menu.add(rumps.MenuItem("Preferences...", callback=self._open_preferences))
