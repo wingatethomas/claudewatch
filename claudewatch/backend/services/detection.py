@@ -33,8 +33,8 @@ _host_app_cache: dict[int, HostApp] = {}
 
 _MAX_SESSIONS = 50
 _TEXT_MAX_LEN = 80
-_JSONL_MAX_AGE = 60
-_JSONL_MIN_AGE = 3
+_JSONL_MAX_AGE = 300  # 5 min — Claude can wait for approval a long time
+_JSONL_MIN_AGE = 1
 _WIN_SPLIT_FIELDS = 3
 _TERMINAL_CACHE_TTL = 3  # seconds between AppleScript refreshes
 

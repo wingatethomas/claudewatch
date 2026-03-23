@@ -23,11 +23,8 @@ _REFRESH_INTERVAL = 60  # seconds between background refresh cycles
 _STORE_PATH = os.path.expanduser("~/.claude/claudewatch-summaries.json")
 
 _PROMPT = (
-    "Write a one-line summary of this Claude Code conversation (max 60 characters). "
-    "Start with an action verb. No markdown, no periods. "
-    "Examples: 'Debugging auth middleware, fixed token storage' or "
-    "'Added CI pipeline with coverage enforcement' or "
-    "'Refactoring preferences UI to System Settings style'\n\n"
+    "Summarize in under 50 characters. Action verb, no fluff. "
+    "Examples: 'Fix auth token storage' / 'Add CI coverage' / 'Refactor prefs UI'\n\n"
 )
 
 # In-memory mirror of the persistent store: CWD → {"summary": str, "mtime": float}

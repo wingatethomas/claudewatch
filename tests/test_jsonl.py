@@ -107,7 +107,7 @@ class TestCheckJsonlForPendingTool:
                 },
             ],
         )
-        os.utime(jsonl, (time.time() - 120, time.time() - 120))
+        os.utime(jsonl, (time.time() - 600, time.time() - 600))  # beyond _JSONL_MAX_AGE (300s)
 
         with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
@@ -130,8 +130,8 @@ class TestCheckJsonlForPendingTool:
                 },
             ],
         )
-        # File is 1 second old — below _JSONL_MIN_AGE
-        os.utime(jsonl, (time.time() - 1, time.time() - 1))
+        # File is 0 seconds old — below _JSONL_MIN_AGE (1s)
+        os.utime(jsonl, (time.time(), time.time()))
 
         with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
