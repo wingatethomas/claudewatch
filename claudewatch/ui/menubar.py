@@ -43,7 +43,6 @@ from claudewatch.backend.services.summarize import (
     cache_summary,
     generate_and_cache_summary,
     get_cached_summary,
-    quick_summary,
 )
 from claudewatch.backend.services.usage import get_session_model
 from claudewatch.ui.activity import show_activity
@@ -224,6 +223,21 @@ def _clean_exit_session(tty: str, pid: int, project: str) -> bool:
         except OSError:
             log.warning("session.exit failed project=%s pid=%d", project, pid)
             return False
+
+
+def _add_summary_lines(menu_item: rumps.MenuItem, text: str) -> None:
+    """Split a summary into wrapped menu items."""
+    _wrap = 55
+    words = text.split()
+    line = ""
+    for word in words:
+        if line and len(line) + 1 + len(word) > _wrap:
+            menu_item.add(rumps.MenuItem(f"  {line}", callback=None))
+            line = word
+        else:
+            line = f"{line} {word}" if line else word
+    if line:
+        menu_item.add(rumps.MenuItem(f"  {line}", callback=None))
 
 
 _MAX_ERRORS = 10
@@ -519,17 +533,13 @@ class ClaudeWatchApp(rumps.App):
         icon = _get_app_icon(s.host_app)
         if icon:
             item._menuitem.setImage_(icon)
-        # Sub-items: summary first, then actions
-        summary_item = rumps.MenuItem("Summary")
+        # Sub-items: show cached summary if available, then actions
         cached = get_cached_summary(s.cwd)
         if cached:
-            self._add_summary_lines(summary_item, cached)
-        else:
-            summary_item.add(rumps.MenuItem("  Loading…", callback=None))
-            # Generate in background — next menu rebuild (1s) will show it
-            threading.Thread(target=generate_and_cache_summary, args=(s.cwd,), daemon=True).start()
-        item.add(summary_item)
-        item.add(rumps.separator)
+            summary_item = rumps.MenuItem("Summary")
+            _add_summary_lines(summary_item, cached)
+            item.add(summary_item)
+            item.add(rumps.separator)
         item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
         if pinned:
             item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(s.cwd)))
@@ -539,30 +549,14 @@ class ClaudeWatchApp(rumps.App):
                 item.add(rumps.MenuItem("Pin session...", callback=self._make_pin_handler(s)))
             item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
         self.menu.add(item)
-        # Detail line: heuristic summary or status, plus model
-        hint = quick_summary(s.cwd, max_len=40) or s.detail_line
+        # Detail line: status + model
+        detail = s.detail_line
         model = get_session_model(s.cwd)
-        detail_parts = [p for p in [hint, model] if p]
+        detail_parts = [p for p in [detail, model] if p]
         if detail_parts:
             detail_item = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
             detail_item.set_callback(None)
             self.menu.add(detail_item)
-
-    @staticmethod
-    def _add_summary_lines(menu_item: rumps.MenuItem, text: str) -> None:
-        """Split a summary into wrapped menu items."""
-        menu_item.clear()
-        _wrap = 55
-        words = text.split()
-        line = ""
-        for word in words:
-            if line and len(line) + 1 + len(word) > _wrap:
-                menu_item.add(rumps.MenuItem(f"  {line}", callback=None))
-                line = word
-            else:
-                line = f"{line} {word}" if line else word
-        if line:
-            menu_item.add(rumps.MenuItem(f"  {line}", callback=None))
 
     def _make_activity_handler(self, session: ClaudeSession):  # noqa: ANN202
         project = session.project
