@@ -781,10 +781,11 @@ class ClaudeWatchApp(rumps.App):
                 alert.setMessageText_("Pin Session")
                 alert.setInformativeText_(f"Add a note for {project}:")
                 alert.addButtonWithTitle_("Pin")
+                alert.addButtonWithTitle_("Generate Summary")
                 alert.addButtonWithTitle_("Cancel")
                 text_field = NSTextField.alloc().initWithFrame_(((0, 0), (350, 60)))
                 text_field.setStringValue_("")
-                text_field.setPlaceholderString_("Generating summary…")
+                text_field.setPlaceholderString_("Add a note…")
                 text_field.setLineBreakMode_(0)  # NSLineBreakByWordWrapping
                 text_field.setUsesSingleLineMode_(False)
                 alert.setAccessoryView_(text_field)
@@ -801,9 +802,15 @@ class ClaudeWatchApp(rumps.App):
                             True,
                         )
 
-                threading.Thread(target=_fill_summary, daemon=True).start()
+                _second_btn = 1001
 
                 result = alert.runModal()
+                if result == _second_btn:
+                    # Generate Summary clicked — fill and re-show
+                    text_field.setStringValue_("Generating…")
+                    threading.Thread(target=_fill_summary, daemon=True).start()
+                    result = alert.runModal()
+
                 modal_dismissed.set()
                 if result == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
