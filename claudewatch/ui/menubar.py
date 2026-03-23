@@ -40,8 +40,8 @@ from claudewatch.backend.repositories.history import record_session
 from claudewatch.backend.services.detection import detect_sessions
 from claudewatch.backend.services.notifications import NotificationManager
 from claudewatch.backend.services.summarize import (
+    cache_summary,
     generate_and_cache_summary,
-    generate_summary,
     get_cached_summary,
     quick_summary,
 )
@@ -627,7 +627,7 @@ class ClaudeWatchApp(rumps.App):
                 modal_dismissed = threading.Event()
 
                 def _fill_summary() -> None:
-                    summary = generate_summary(cwd)
+                    summary = generate_and_cache_summary(cwd)
                     if summary and not modal_dismissed.is_set():
                         text_field.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setStringValue:",
@@ -642,6 +642,8 @@ class ClaudeWatchApp(rumps.App):
                 if result == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
                     pin_session(sid, project, cwd, note)
+                    if note:
+                        cache_summary(cwd, note)
 
                     quit_alert = NSAlert.alloc().init()
                     quit_alert.setMessageText_("Quit this session?")
@@ -666,9 +668,11 @@ class ClaudeWatchApp(rumps.App):
         pinned = cwd in get_pinned_cwds()
 
         def handler(_: rumps.MenuItem) -> None:
+            exited = False
             if pinned:
                 _clean_exit_session(tty, pid, project)
                 self._exiting_pids[pid] = time.time()
+                exited = True
                 rumps.notification(
                     title="Session paused",
                     subtitle=project,
@@ -689,8 +693,11 @@ class ClaudeWatchApp(rumps.App):
                     if alert.runModal() == NSAlertFirstButtonReturn:
                         _clean_exit_session(tty, pid, project)
                         self._exiting_pids[pid] = time.time()
+                        exited = True
                 finally:
                     self._modal_active = False
+            if exited:
+                threading.Thread(target=generate_and_cache_summary, args=(cwd,), daemon=True).start()
             self._last_menu_key = ""
             self.update_display()
 
