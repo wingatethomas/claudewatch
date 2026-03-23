@@ -11,9 +11,9 @@ jobs:
   build:
     runs-on: macos-14  # ARM64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
 
       - name: Install dependencies
         run: uv sync
@@ -30,12 +30,20 @@ jobs:
       - name: Zip the app
         run: |
           cd build/claudewatch/macos/app
-          zip -r ../../../../ClaudeWatch-${{ github.ref_name }}-arm64.zip ClaudeWatch.app
+          zip -r "../../../../ClaudeWatch-${TAG}-arm64.zip" ClaudeWatch.app
+        env:
+          TAG: ${{ github.ref_name }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ClaudeWatch-${{ github.ref_name }}-arm64.zip
-          generate_release_notes: true
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+        run: |
+          PRERELEASE=""
+          if echo "$TAG" | grep -q '-'; then
+            PRERELEASE="--prerelease"
+          fi
+          gh release create "$TAG" \
+            "ClaudeWatch-${TAG}-arm64.zip" \
+            --generate-notes \
+            $PRERELEASE
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}

@@ -5,6 +5,7 @@ import os
 import re
 import signal
 import subprocess
+import threading
 import time
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -38,6 +39,7 @@ from claudewatch.backend.repositories.config import get_setting
 from claudewatch.backend.repositories.history import record_session
 from claudewatch.backend.services.detection import detect_sessions
 from claudewatch.backend.services.notifications import NotificationManager
+from claudewatch.backend.services.summarize import generate_summary
 from claudewatch.backend.services.usage import get_session_model
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
@@ -480,10 +482,14 @@ class ClaudeWatchApp(rumps.App):
             seg.addAttribute_value_range_("NSFont", _legend_font, r)
             dot_end = label.index("●") + 1
             seg.addAttribute_value_range_(
-                "NSColor", _STATUS_COLORS[status], NSRange(label.index("●"), 1),
+                "NSColor",
+                _STATUS_COLORS[status],
+                NSRange(label.index("●"), 1),
             )
             seg.addAttribute_value_range_(
-                "NSColor", NSColor.secondaryLabelColor(), NSRange(dot_end, len(label) - dot_end),
+                "NSColor",
+                NSColor.secondaryLabelColor(),
+                NSRange(dot_end, len(label) - dot_end),
             )
             legend_text.appendAttributedString_(seg)
         legend._menuitem.setAttributedTitle_(legend_text)
@@ -526,10 +532,9 @@ class ClaudeWatchApp(rumps.App):
         cwd = session.cwd
 
         def handler(_: rumps.MenuItem) -> None:
-            show_activity(project, cwd)
+            show_activity(project, cwd, session_active=True)
 
         return handler
-
 
     def _make_click_handler(self, session: ClaudeSession):  # noqa: ANN202
         pid = session.pid
@@ -564,20 +569,32 @@ class ClaudeWatchApp(rumps.App):
                 alert.addButtonWithTitle_("Cancel")
                 text_field = NSTextField.alloc().initWithFrame_(((0, 0), (300, 24)))
                 text_field.setStringValue_("")
-                text_field.setPlaceholderString_("e.g. waiting on PR review")
+                text_field.setPlaceholderString_("Generating summary…")
                 alert.setAccessoryView_(text_field)
                 alert.window().setInitialFirstResponder_(text_field)
 
-                if alert.runModal() == NSAlertFirstButtonReturn:
+                modal_dismissed = threading.Event()
+
+                def _fill_summary() -> None:
+                    summary = generate_summary(cwd)
+                    if summary and not modal_dismissed.is_set():
+                        text_field.performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "setStringValue:",
+                            summary,
+                            True,
+                        )
+
+                threading.Thread(target=_fill_summary, daemon=True).start()
+
+                result = alert.runModal()
+                modal_dismissed.set()
+                if result == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
                     pin_session(sid, project, cwd, note)
 
                     quit_alert = NSAlert.alloc().init()
                     quit_alert.setMessageText_("Quit this session?")
-                    quit_alert.setInformativeText_(
-                        f"Cleanly exit {project}?\n"
-                        f"Resume later from the Pinned section."
-                    )
+                    quit_alert.setInformativeText_(f"Cleanly exit {project}?\nResume later from the Pinned section.")
                     quit_alert.addButtonWithTitle_("Quit Session")
                     quit_alert.addButtonWithTitle_("Keep Running")
                     if quit_alert.runModal() == NSAlertFirstButtonReturn:
@@ -654,7 +671,7 @@ class ClaudeWatchApp(rumps.App):
                 return
             # Open a new Terminal tab, cd to the project dir, and resume
             safe_cwd = escape_applescript(cwd) if cwd else ""
-            cd_cmd = f"cd \\\"{safe_cwd}\\\" && " if safe_cwd else ""
+            cd_cmd = f'cd \\"{safe_cwd}\\" && ' if safe_cwd else ""
             run_applescript(f"""
                 tell application "Terminal"
                     activate
@@ -700,10 +717,12 @@ def main() -> None:
             maxBytes=1_000_000,
             backupCount=3,
         )
-        file_handler.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)s %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
-        ))
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)s %(message)s",
+                datefmt="%Y-%m-%dT%H:%M:%S%z",
+            )
+        )
         logger.addHandler(file_handler)
 
     ClaudeWatchApp().run()

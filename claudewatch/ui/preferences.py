@@ -103,7 +103,7 @@ class _PrefsDelegate(NSObject):
         if not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", sid):
             return
         safe_cwd = escape_applescript(cwd) if cwd else ""
-        cd_cmd = f"cd \\\"{safe_cwd}\\\" && " if safe_cwd else ""
+        cd_cmd = f'cd \\"{safe_cwd}\\" && ' if safe_cwd else ""
         run_applescript(f'''
             tell application "Terminal"
                 activate
@@ -128,7 +128,10 @@ class _PrefsDelegate(NSObject):
         return len(_SECTIONS)
 
     def tableView_objectValueForTableColumn_row_(
-        self, table: objc.objc_object, col: objc.objc_object, row: int,
+        self,
+        table: objc.objc_object,
+        col: objc.objc_object,
+        row: int,
     ) -> str:
         return _SECTIONS[row]
 
@@ -178,7 +181,8 @@ def _build_general_view(delegate: _PrefsDelegate) -> NSView:
     view.addSubview_(sound_label)
 
     sound_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-        NSMakeRect(_PAD + 90, y - 2, _CONTENT_W - _PAD * 2 - 90, 24), False,
+        NSMakeRect(_PAD + 90, y - 2, _CONTENT_W - _PAD * 2 - 90, 24),
+        False,
     )
     sound_popup.setFont_(NSFont.systemFontOfSize_(12.0))
     sound_popup.addItemsWithTitles_(list(get_available_sounds()))
@@ -209,7 +213,8 @@ def _build_sessions_view(delegate: _PrefsDelegate) -> NSView:
     view.addSubview_(expiry_label)
 
     expiry_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-        NSMakeRect(_PAD + 90, y - 2, _CONTENT_W - _PAD * 2 - 90, 24), False,
+        NSMakeRect(_PAD + 90, y - 2, _CONTENT_W - _PAD * 2 - 90, 24),
+        False,
     )
     expiry_popup.setFont_(NSFont.systemFontOfSize_(12.0))
     options = ["Never", "7 days", "14 days", "30 days", "60 days", "90 days"]
@@ -454,7 +459,8 @@ def show_preferences() -> None:  # noqa: PLR0915
 
     # Select first row
     table.selectRowIndexes_byExtendingSelection_(
-        __import__("Foundation").NSIndexSet.indexSetWithIndex_(0), False,
+        __import__("Foundation").NSIndexSet.indexSetWithIndex_(0),
+        False,
     )
 
     _window = window
