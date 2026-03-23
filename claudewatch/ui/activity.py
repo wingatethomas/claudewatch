@@ -51,9 +51,11 @@ def _get_session_id(cwd: str) -> str:
 
 
 class _ActivityDelegate(NSObject):
-    """Handle window close and resume action."""
+    """Handle window close, resume, and sort actions."""
 
     _cwd: str = ""
+    _newest_first: bool = True
+    _text_view: objc.objc_object = None
 
     def windowWillClose_(self, notification: objc.objc_object) -> None:
         _windows.pop(self._cwd, None)
@@ -61,6 +63,19 @@ class _ActivityDelegate(NSObject):
     def openInFinder_(self, sender: objc.objc_object) -> None:
         if os.path.isdir(self._cwd):
             NSWorkspace.sharedWorkspace().openURL_(NSURL.fileURLWithPath_(self._cwd))
+
+    def toggleSort_(self, sender: objc.objc_object) -> None:
+        self._newest_first = not self._newest_first
+        sender.setTitle_("↑ Oldest" if self._newest_first else "↓ Newest")
+        entries = parse_activity(self._cwd)
+        if not self._newest_first:
+            entries = list(reversed(entries))
+        if self._text_view:
+            self._text_view.textStorage().setAttributedString_(_render_timeline(entries))
+            if self._newest_first:
+                self._text_view.scrollRangeToVisible_(NSRange(len(self._text_view.string()), 0))
+            else:
+                self._text_view.scrollRangeToVisible_(NSRange(0, 0))
 
     def resumeSession_(self, sender: objc.objc_object) -> None:
         sid = _get_session_id(self._cwd)
@@ -169,6 +184,13 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
     sep.setBoxType_(2)
     bar.addSubview_(sep)
 
+    sort_btn = NSButton.alloc().initWithFrame_(NSMakeRect(12, 8, 80, 24))
+    sort_btn.setTitle_("↑ Oldest")
+    sort_btn.setBezelStyle_(1)
+    sort_btn.setTarget_(delegate)
+    sort_btn.setAction_(objc.selector(delegate.toggleSort_, signature=b"v@:@"))
+    bar.addSubview_(sort_btn)
+
     finder_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - 205, 8, 95, 24))
     finder_btn.setTitle_("Open Folder")
     finder_btn.setBezelStyle_(1)
@@ -199,6 +221,7 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
     text_view.setAutoresizingMask_(18)
     text_view.setTextContainerInset_(NSMakeSize(16, 16))
 
+    delegate._text_view = text_view
     entries = parse_activity(cwd)
     text_view.textStorage().setAttributedString_(_render_timeline(entries))
     text_view.scrollRangeToVisible_(NSRange(len(text_view.string()), 0))
