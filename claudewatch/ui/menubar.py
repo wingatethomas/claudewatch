@@ -684,7 +684,7 @@ class ClaudeWatchApp(rumps.App):
 
         self.menu.add(rumps.MenuItem("Quit", callback=self._quit))
 
-    def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:
+    def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:  # noqa: PLR0912
         """Add a session entry + detail line to the menu."""
         pin_mark = " ★" if pinned else ""
         label = s.menu_label + suffix + pin_mark
@@ -725,15 +725,16 @@ class ClaudeWatchApp(rumps.App):
                 item.add(rumps.MenuItem("Pin session...", callback=self._make_pin_handler(s)))
             item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
         self.menu.add(item)
-        # Detail line: model + conversation context one-liner
+        # Detail line: model + summary (or status as fallback)
         model = get_session_model(s.cwd)
         cached = get_cached_summary(s.cwd)
         _max_oneliner = 40
-        oneliner = ""
         if cached:
             oneliner = cached.replace("\n", " ").strip()
             if len(oneliner) > _max_oneliner:
                 oneliner = oneliner[: _max_oneliner - 1] + "…"
+        else:
+            oneliner = s.detail_line
         detail_parts = [p for p in [model, oneliner] if p]
         if detail_parts:
             detail_item = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
