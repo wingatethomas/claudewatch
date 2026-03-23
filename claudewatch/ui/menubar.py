@@ -8,6 +8,7 @@ import subprocess
 import threading
 import time
 import webbrowser
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
@@ -58,6 +59,9 @@ from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, get_session_
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
+
+# Type alias for rumps menu item click handlers
+_MenuCallback = Callable[[rumps.MenuItem], None]
 
 log = logging.getLogger("claudewatch")
 
@@ -684,7 +688,7 @@ class ClaudeWatchApp(rumps.App):
             detail_item.set_callback(None)
             self.menu.add(detail_item)
 
-    def _make_activity_handler(self, session: ClaudeSession):  # noqa: ANN202
+    def _make_activity_handler(self, session: ClaudeSession) -> _MenuCallback:
         project = session.project
         cwd = session.cwd
 
@@ -693,7 +697,7 @@ class ClaudeWatchApp(rumps.App):
 
         return handler
 
-    def _make_click_handler(self, session: ClaudeSession):  # noqa: ANN202
+    def _make_click_handler(self, session: ClaudeSession) -> _MenuCallback:
         pid = session.pid
 
         def handler(_: rumps.MenuItem) -> None:
@@ -705,7 +709,7 @@ class ClaudeWatchApp(rumps.App):
 
         return handler
 
-    def _make_pin_handler(self, session: ClaudeSession):  # noqa: ANN202
+    def _make_pin_handler(self, session: ClaudeSession) -> _MenuCallback:
         sid = session.session_id
         project = session.project
         cwd = session.cwd
@@ -769,7 +773,7 @@ class ClaudeWatchApp(rumps.App):
 
         return handler
 
-    def _make_quit_handler(self, session: ClaudeSession):  # noqa: ANN202
+    def _make_quit_handler(self, session: ClaudeSession) -> _MenuCallback:
         pid = session.pid
         project = session.project
         cwd = session.cwd
@@ -812,7 +816,7 @@ class ClaudeWatchApp(rumps.App):
 
         return handler
 
-    def _make_unpin_handler(self, cwd: str):  # noqa: ANN202
+    def _make_unpin_handler(self, cwd: str) -> _MenuCallback:
         def handler(_: rumps.MenuItem) -> None:
             self._modal_active = True
             try:
@@ -833,7 +837,7 @@ class ClaudeWatchApp(rumps.App):
 
         return handler
 
-    def _make_resume_handler(self, session_id: str, cwd: str = ""):  # noqa: ANN202
+    def _make_resume_handler(self, session_id: str, cwd: str = "") -> _MenuCallback:
         def handler(_: rumps.MenuItem) -> None:
             # Validate session ID is a UUID to prevent command injection
             if not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", session_id):
@@ -852,13 +856,13 @@ class ClaudeWatchApp(rumps.App):
 
         return handler
 
-    def _make_history_activity_handler(self, project: str, cwd: str):  # noqa: ANN202
+    def _make_history_activity_handler(self, project: str, cwd: str) -> _MenuCallback:
         def handler(_: rumps.MenuItem) -> None:
             show_activity(project, cwd)
 
         return handler
 
-    def _make_remove_history_handler(self, cwd: str):  # noqa: ANN202
+    def _make_remove_history_handler(self, cwd: str) -> _MenuCallback:
         def handler(_: rumps.MenuItem) -> None:
             remove_history_entry(cwd)
             self._last_menu_key = ""
