@@ -616,7 +616,9 @@ class ClaudeWatchApp(rumps.App):
                         uentry.set_callback(None)
                         usage_item.add(uentry)
                     usage_item.add(rumps.separator)
-                usage_item.add(rumps.MenuItem("Activity", callback=self._make_history_activity_handler(proj, cwd)))
+                usage_item.add(
+                    rumps.MenuItem("View session activity log", callback=self._make_history_activity_handler(proj, cwd))
+                )
                 item.add(usage_item)
                 item.add(rumps.separator)
                 if sid:
@@ -701,7 +703,7 @@ class ClaudeWatchApp(rumps.App):
                 entry.set_callback(None)
                 usage_item.add(entry)
             usage_item.add(rumps.separator)
-        usage_item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
+        usage_item.add(rumps.MenuItem("View session activity log", callback=self._make_activity_handler(s)))
         item.add(usage_item)
         item.add(rumps.separator)
         # Track for background refresh (auto-generates summaries)

@@ -2,6 +2,7 @@
 
 import os
 import re
+import subprocess
 
 import objc
 from AppKit import (
@@ -20,9 +21,8 @@ from AppKit import (
     NSWindowStyleMaskMiniaturizable,
     NSWindowStyleMaskResizable,
     NSWindowStyleMaskTitled,
-    NSWorkspace,
 )
-from Foundation import NSURL, NSMakeRect, NSMakeSize, NSObject, NSRange
+from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
 
 from claudewatch.backend.helpers import escape_applescript, run_applescript
 from claudewatch.backend.services.activity import ActivityEntry, parse_activity
@@ -61,21 +61,24 @@ class _ActivityDelegate(NSObject):
         _windows.pop(self._cwd, None)
 
     def openInFinder_(self, sender: objc.objc_object) -> None:
-        if os.path.isdir(self._cwd):
-            NSWorkspace.sharedWorkspace().openURL_(NSURL.fileURLWithPath_(self._cwd))
+        if self._cwd and os.path.isdir(self._cwd):
+            subprocess.run(["open", self._cwd], check=False)  # noqa: S603, S607
 
     def toggleSort_(self, sender: objc.objc_object) -> None:
         self._newest_first = not self._newest_first
-        sender.setTitle_("↑ Oldest" if self._newest_first else "↓ Newest")
+        sender.setTitle_("↑ Oldest first" if self._newest_first else "↓ Newest first")
         entries = parse_activity(self._cwd)
         if not self._newest_first:
             entries = list(reversed(entries))
-        if self._text_view:
-            self._text_view.textStorage().setAttributedString_(_render_timeline(entries))
+        tv = self._text_view
+        if tv is not None:
+            tv.textStorage().setAttributedString_(_render_timeline(entries))
+            # Scroll to appropriate end
             if self._newest_first:
-                self._text_view.scrollRangeToVisible_(NSRange(len(self._text_view.string()), 0))
+                tv.scrollRangeToVisible_(NSRange(len(tv.string()), 0))
             else:
-                self._text_view.scrollRangeToVisible_(NSRange(0, 0))
+                tv.scrollToPoint_((0, 0))
+                tv.enclosingScrollView().reflectScrolledClipView_(tv.enclosingScrollView().contentView())
 
     def resumeSession_(self, sender: objc.objc_object) -> None:
         sid = _get_session_id(self._cwd)
@@ -185,7 +188,7 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
     bar.addSubview_(sep)
 
     sort_btn = NSButton.alloc().initWithFrame_(NSMakeRect(12, 8, 80, 24))
-    sort_btn.setTitle_("↑ Oldest")
+    sort_btn.setTitle_("↑ Oldest first")
     sort_btn.setBezelStyle_(1)
     sort_btn.setTarget_(delegate)
     sort_btn.setAction_(objc.selector(delegate.toggleSort_, signature=b"v@:@"))
