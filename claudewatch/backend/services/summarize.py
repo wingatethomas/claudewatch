@@ -48,6 +48,8 @@ _our_pids_lock = threading.Lock()
 _bg_thread: threading.Thread | None = None
 _tracked_cwds: set[str] = set()  # CWDs to periodically refresh
 _tracked_lock = threading.Lock()
+_priority_queue: list[str] = []  # CWDs needing immediate summary generation
+_priority_lock = threading.Lock()
 
 
 # ── Persistent store ──────────────────────────────────────────────────
@@ -154,10 +156,23 @@ def invalidate_cache(cwd: str) -> None:
 
 
 def track_session(cwd: str) -> None:
-    """Register a CWD for periodic background summary refresh."""
+    """Register a CWD for periodic background summary refresh.
+
+    If no summary exists yet, queues it for immediate generation.
+    """
     with _tracked_lock:
         _tracked_cwds.add(cwd)
+    if get_cached_summary(cwd) is None:
+        with _priority_lock:
+            if cwd not in _priority_queue:
+                _priority_queue.append(cwd)
     _ensure_bg_thread()
+
+
+def pending_summary_count() -> int:
+    """Return the number of sessions queued for summary generation."""
+    with _priority_lock:
+        return len(_priority_queue)
 
 
 def untrack_session(cwd: str) -> None:
@@ -175,8 +190,21 @@ def _ensure_bg_thread() -> None:
 
 
 def _bg_refresh_loop() -> None:
-    """Periodically check tracked sessions and regenerate stale summaries."""
+    """Process priority queue first, then periodically refresh stale summaries."""
     while True:
+        # Process priority queue (new sessions needing summaries)
+        cwd = None
+        with _priority_lock:
+            if _priority_queue:
+                cwd = _priority_queue.pop(0)
+        if cwd:
+            if get_cached_summary(cwd) is None:
+                log.debug("bg_priority: generating summary for %s", cwd)
+                generate_and_cache_summary(cwd)
+            time.sleep(2)  # short pause between priority items
+            continue
+
+        # Normal refresh cycle
         time.sleep(_REFRESH_INTERVAL)
         with _tracked_lock:
             cwds = list(_tracked_cwds)
