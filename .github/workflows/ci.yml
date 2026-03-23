@@ -31,5 +31,5 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
       - name: Audit dependencies for known vulnerabilities
         run: |
-          uv export --no-hashes | grep -v pyobjc > requirements.txt
+          uv export --no-hashes | grep -vi -e pyobjc -e rumps > requirements.txt
           uvx pip-audit -r requirements.txt
