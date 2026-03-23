@@ -39,7 +39,13 @@ from claudewatch.backend.repositories.config import get_setting
 from claudewatch.backend.repositories.history import record_session
 from claudewatch.backend.services.detection import detect_sessions
 from claudewatch.backend.services.notifications import NotificationManager
-from claudewatch.backend.services.summarize import generate_summary
+from claudewatch.backend.services.summarize import (
+    cache_summary,
+    generate_and_cache_summary,
+    get_cached_summary,
+    is_generating,
+    track_session,
+)
 from claudewatch.backend.services.usage import get_session_model
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
@@ -221,6 +227,39 @@ def _clean_exit_session(tty: str, pid: int, project: str) -> bool:
             return False
 
 
+def _noop(_: rumps.MenuItem) -> None:
+    """No-op callback — keeps menu items enabled (not greyed out)."""
+
+
+def _add_summary_lines(menu_item: rumps.MenuItem, text: str) -> None:
+    """Split a summary into wrapped menu items with readable styling."""
+    _wrap = 55
+    words = text.split()
+    line = ""
+    for word in words:
+        if line and len(line) + 1 + len(word) > _wrap:
+            item = rumps.MenuItem(f"  {line}", callback=_noop)
+            _style_summary_item(item)
+            menu_item.add(item)
+            line = word
+        else:
+            line = f"{line} {word}" if line else word
+    if line:
+        item = rumps.MenuItem(f"  {line}", callback=_noop)
+        _style_summary_item(item)
+        menu_item.add(item)
+
+
+def _style_summary_item(item: rumps.MenuItem) -> None:
+    """Apply readable font styling to a summary menu item."""
+    text = item.title
+    attr = NSMutableAttributedString.alloc().initWithString_(text)
+    r = NSRange(0, len(text))
+    attr.addAttribute_value_range_("NSFont", NSFont.systemFontOfSize_(12.0), r)
+    attr.addAttribute_value_range_("NSColor", NSColor.labelColor(), r)
+    item._menuitem.setAttributedTitle_(attr)
+
+
 _MAX_ERRORS = 10
 
 
@@ -239,6 +278,7 @@ class ClaudeWatchApp(rumps.App):
         self._prev_status: dict[int, str] = {}
         self._prev_sessions: dict[int, ClaudeSession] = {}
         self._exiting_pids: dict[int, float] = {}  # PID → time of quit signal
+        self._has_polled = False
         self._check_accessibility()
         self.update_display()
 
@@ -316,6 +356,7 @@ class ClaudeWatchApp(rumps.App):
                 now = time.time()
                 self._exiting_pids = {p: t for p, t in self._exiting_pids.items() if now - t < _exit_grace}
                 self.sessions = [s for s in self.sessions if s.pid not in self._exiting_pids]
+                self._has_polled = True
                 self._log_changes()
                 self.update_display()
                 self.notifications.notify_if_needed(self.sessions)
@@ -370,7 +411,10 @@ class ClaudeWatchApp(rumps.App):
         active_cwds = {s.cwd for s in self.sessions}
 
         if not self.sessions:
-            self.menu.add(rumps.MenuItem("No active Claude sessions", callback=None))
+            if self._has_polled:
+                self.menu.add(rumps.MenuItem("No running Claude sessions", callback=None))
+            else:
+                self.menu.add(rumps.MenuItem("Scanning for Claude sessions…", callback=None))
         else:
             # Build suffix map to disambiguate duplicate labels
             seen_labels: dict[str, int] = {}
@@ -514,8 +558,20 @@ class ClaudeWatchApp(rumps.App):
         icon = _get_app_icon(s.host_app)
         if icon:
             item._menuitem.setImage_(icon)
-        # Sub-items
+        # Summary submenu — auto-generates in background
+        summary_item = rumps.MenuItem("Summary")
+        cached = get_cached_summary(s.cwd)
+        if cached:
+            _add_summary_lines(summary_item, cached)
+        elif is_generating(s.cwd):
+            summary_item.add(rumps.MenuItem("Generating…", callback=None))
+        else:
+            summary_item.add(rumps.MenuItem("Pending…", callback=None))
+        item.add(summary_item)
+        item.add(rumps.separator)
         item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
+        # Track for background refresh (auto-generates summaries)
+        track_session(s.cwd)
         if pinned:
             item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(s.cwd)))
             item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
@@ -524,7 +580,7 @@ class ClaudeWatchApp(rumps.App):
                 item.add(rumps.MenuItem("Pin session...", callback=self._make_pin_handler(s)))
             item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
         self.menu.add(item)
-        # Detail line: status text + model name
+        # Detail line: status + model
         detail = s.detail_line
         model = get_session_model(s.cwd)
         detail_parts = [p for p in [detail, model] if p]
@@ -584,7 +640,7 @@ class ClaudeWatchApp(rumps.App):
                 modal_dismissed = threading.Event()
 
                 def _fill_summary() -> None:
-                    summary = generate_summary(cwd)
+                    summary = generate_and_cache_summary(cwd)
                     if summary and not modal_dismissed.is_set():
                         text_field.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setStringValue:",
@@ -599,6 +655,8 @@ class ClaudeWatchApp(rumps.App):
                 if result == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
                     pin_session(sid, project, cwd, note)
+                    if note:
+                        cache_summary(cwd, note)
 
                     quit_alert = NSAlert.alloc().init()
                     quit_alert.setMessageText_("Quit this session?")
@@ -623,9 +681,11 @@ class ClaudeWatchApp(rumps.App):
         pinned = cwd in get_pinned_cwds()
 
         def handler(_: rumps.MenuItem) -> None:
+            exited = False
             if pinned:
                 _clean_exit_session(tty, pid, project)
                 self._exiting_pids[pid] = time.time()
+                exited = True
                 rumps.notification(
                     title="Session paused",
                     subtitle=project,
@@ -646,8 +706,11 @@ class ClaudeWatchApp(rumps.App):
                     if alert.runModal() == NSAlertFirstButtonReturn:
                         _clean_exit_session(tty, pid, project)
                         self._exiting_pids[pid] = time.time()
+                        exited = True
                 finally:
                     self._modal_active = False
+            if exited:
+                threading.Thread(target=generate_and_cache_summary, args=(cwd,), daemon=True).start()
             self._last_menu_key = ""
             self.update_display()
 
