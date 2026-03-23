@@ -9,6 +9,7 @@ import threading
 import time
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 
 import rumps
 from AppKit import (
@@ -36,9 +37,15 @@ from claudewatch.backend.models import (
 )
 from claudewatch.backend.repositories.bookmarks import get_pinned_cwds, get_pins, pin_session, unpin_session
 from claudewatch.backend.repositories.config import get_setting
-from claudewatch.backend.repositories.history import record_session
+from claudewatch.backend.repositories.history import get_history, record_session, remove_history_entry
 from claudewatch.backend.services.detection import detect_sessions
 from claudewatch.backend.services.notifications import NotificationManager
+from claudewatch.backend.services.onboarding import (
+    get_session_count,
+    increment_session_count,
+    is_tip_shown,
+    show_tip,
+)
 from claudewatch.backend.services.summarize import (
     cache_summary,
     generate_and_cache_summary,
@@ -46,7 +53,7 @@ from claudewatch.backend.services.summarize import (
     is_generating,
     track_session,
 )
-from claudewatch.backend.services.usage import get_session_model
+from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, get_session_model
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
@@ -293,8 +300,9 @@ class ClaudeWatchApp(rumps.App):
         session_map = {s.pid: s for s in self.sessions}
 
         # New sessions (skip on first poll — don't log all existing sessions as "started")
+        new_pids = current_pids - self._prev_pids
         if self._prev_pids:  # not first poll
-            for pid in current_pids - self._prev_pids:
+            for pid in new_pids:
                 s = session_map[pid]
                 model = get_session_model(s.cwd)
                 log.info(
@@ -304,6 +312,10 @@ class ClaudeWatchApp(rumps.App):
                     model or "unknown",
                     pid,
                 )
+
+        # Track cumulative session count for onboarding "hover" tip
+        if new_pids and not is_tip_shown("hover"):
+            increment_session_count(len(new_pids))
 
         # Ended sessions — record to history
         for pid in self._prev_pids - current_pids:
@@ -325,6 +337,23 @@ class ClaudeWatchApp(rumps.App):
         self._prev_pids = current_pids
         self._prev_status = current_status
         self._prev_sessions = session_map
+
+    def _check_onboarding_tips(self) -> None:
+        """Fire one-time onboarding tips based on current state."""
+        # Welcome — first successful poll
+        if not is_tip_shown("welcome"):
+            show_tip("welcome")
+            return  # one tip per cycle
+
+        # Attention — first time a session needs attention
+        if not is_tip_shown("attention") and any(s.status == SessionStatus.ATTENTION for s in self.sessions):
+            show_tip("attention")
+            return
+
+        # Hover — after 5 cumulative unique sessions observed
+        _hover_threshold = 5
+        if not is_tip_shown("hover") and get_session_count() >= _hover_threshold:
+            show_tip("hover")
 
     def _check_accessibility(self) -> None:
         """Show a warning if Accessibility permissions are not granted."""
@@ -360,6 +389,7 @@ class ClaudeWatchApp(rumps.App):
                 self._log_changes()
                 self.update_display()
                 self.notifications.notify_if_needed(self.sessions)
+                self._check_onboarding_tips()
                 self._consecutive_errors = 0
             except Exception:
                 self._consecutive_errors += 1
@@ -489,6 +519,17 @@ class ClaudeWatchApp(rumps.App):
                     short_note = note[:_max_note] + "…" if len(note) > _max_note else note
                     label += f" — {short_note}"
                 item = rumps.MenuItem(label, callback=self._make_resume_handler(sid, cwd))
+                # Summary submenu — use cached summary or fall back to pin note
+                summary_item = rumps.MenuItem("Summary")
+                cached = get_cached_summary(cwd)
+                if cached:
+                    _add_summary_lines(summary_item, cached)
+                elif note:
+                    _add_summary_lines(summary_item, note)
+                else:
+                    summary_item.add(rumps.MenuItem("No summary available", callback=None))
+                item.add(summary_item)
+                item.add(rumps.separator)
                 item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(cwd)))
                 self.menu.add(item)
                 # Date + model
@@ -497,6 +538,65 @@ class ClaudeWatchApp(rumps.App):
                 if ts:
                     detail_parts.append(ts[:10])
                 model = get_session_model(cwd)
+                if model:
+                    detail_parts.append(model)
+                if detail_parts:
+                    detail = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
+                    detail.set_callback(None)
+                    self.menu.add(detail)
+
+        # Recent sessions (last 3 days, not active, not pinned)
+        _recent_days = 3
+        _recent_limit = 10
+        cutoff = datetime.now(tz=UTC) - timedelta(days=_recent_days)
+        history = get_history()  # newest-first
+        recent_entries = []
+        for entry in history:
+            if len(recent_entries) >= _recent_limit:
+                break
+            cwd = entry.get("cwd", "")
+            ended_at = entry.get("ended_at", "")
+            if cwd in active_cwds or cwd in pinned_cwds:
+                continue
+            try:
+                ended_dt = datetime.fromisoformat(ended_at)
+                if ended_dt < cutoff:
+                    continue
+            except (ValueError, TypeError):
+                continue
+            recent_entries.append(entry)
+
+        if recent_entries:
+            self.menu.add(rumps.separator)
+            recent_header = rumps.MenuItem(f"⏱ Recent ({len(recent_entries)})")
+            recent_header.set_callback(None)
+            self.menu.add(recent_header)
+            for entry in recent_entries:
+                sid = entry.get("session_id", "")
+                proj = entry.get("project", "unknown")
+                cwd = entry.get("cwd", "")
+                raw_model = entry.get("model", "")
+                model = MODEL_DISPLAY_NAMES.get(raw_model, raw_model)
+                ended_at = entry.get("ended_at", "")
+
+                item = rumps.MenuItem(f"  {proj}", callback=_noop)
+                # Summary submenu
+                summary_item = rumps.MenuItem("Summary")
+                cached = get_cached_summary(cwd)
+                if cached:
+                    _add_summary_lines(summary_item, cached)
+                else:
+                    summary_item.add(rumps.MenuItem("No summary", callback=None))
+                item.add(summary_item)
+                item.add(rumps.separator)
+                item.add(rumps.MenuItem("Activity", callback=self._make_history_activity_handler(proj, cwd)))
+                item.add(rumps.MenuItem("Resume", callback=self._make_resume_handler(sid, cwd)))
+                item.add(rumps.MenuItem("Remove from history", callback=self._make_remove_history_handler(cwd)))
+                self.menu.add(item)
+                # Detail line: ended_at date · model
+                detail_parts = []
+                if ended_at:
+                    detail_parts.append(ended_at[:10])
                 if model:
                     detail_parts.append(model)
                 if detail_parts:
@@ -655,6 +755,7 @@ class ClaudeWatchApp(rumps.App):
                 if result == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
                     pin_session(sid, project, cwd, note)
+                    show_tip("pin")
                     if note:
                         cache_summary(cwd, note)
 
@@ -753,6 +854,20 @@ class ClaudeWatchApp(rumps.App):
                 end tell
             """)
             log.info("session resumed: %s", session_id[:8])
+
+        return handler
+
+    def _make_history_activity_handler(self, project: str, cwd: str):  # noqa: ANN202
+        def handler(_: rumps.MenuItem) -> None:
+            show_activity(project, cwd)
+
+        return handler
+
+    def _make_remove_history_handler(self, cwd: str):  # noqa: ANN202
+        def handler(_: rumps.MenuItem) -> None:
+            remove_history_entry(cwd)
+            self._last_menu_key = ""
+            self.update_display()
 
         return handler
 
