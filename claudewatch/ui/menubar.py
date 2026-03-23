@@ -594,6 +594,7 @@ class ClaudeWatchApp(rumps.App):
                     item.add(rumps.MenuItem("Resume", callback=self._make_resume_handler(sid, cwd)))
                 item.add(rumps.MenuItem("Remove", callback=self._make_remove_history_handler(cwd)))
                 recent_menu.add(item)
+                track_session(cwd)  # background thread will generate summary
             self.menu.add(recent_menu)
 
         self.menu.add(rumps.separator)
