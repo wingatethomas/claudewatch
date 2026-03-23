@@ -41,6 +41,15 @@ from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES
 from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
+
+
+class _FlippedView(NSView):
+    """NSView subclass with flipped coordinates (y=0 at top)."""
+
+    def isFlipped(self) -> bool:  # noqa: N802
+        return True
+
+
 _W = 680
 _H = 420
 _SIDEBAR_W = 150
@@ -51,7 +60,7 @@ _window: NSWindow | None = None
 _delegate: "_PrefsDelegate | None" = None
 _content_views: dict[str, NSView] = {}
 
-_SECTIONS = ["General", "Sessions", "History", "About"]
+_SECTIONS = ["General", "History", "About"]
 
 
 class _PrefsDelegate(NSObject):
@@ -127,13 +136,18 @@ class _PrefsDelegate(NSObject):
     def numberOfRowsInTableView_(self, table: objc.objc_object) -> int:
         return len(_SECTIONS)
 
-    def tableView_objectValueForTableColumn_row_(
+    def tableView_viewForTableColumn_row_(
         self,
         table: objc.objc_object,
         col: objc.objc_object,
         row: int,
-    ) -> str:
-        return _SECTIONS[row]
+    ) -> objc.objc_object:
+        cell = NSTextField.labelWithString_(_SECTIONS[row])
+        cell.setFont_(NSFont.systemFontOfSize_(13.0))
+        cell.setFrame_(NSMakeRect(12, 0, _SIDEBAR_W - 20, 36))
+        wrapper = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _SIDEBAR_W, 36))
+        wrapper.addSubview_(cell)
+        return wrapper
 
     def tableViewSelectionDidChange_(self, notification: objc.objc_object) -> None:
         table = notification.object()
@@ -151,7 +165,7 @@ class _PrefsDelegate(NSObject):
             view.setHidden_(False)
 
 
-def _build_general_view(delegate: _PrefsDelegate) -> NSView:
+def _build_general_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
     """Build the General settings pane."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W, _H))
     y = _H - 40
@@ -190,19 +204,6 @@ def _build_general_view(delegate: _PrefsDelegate) -> NSView:
     sound_popup.setTarget_(delegate)
     sound_popup.setAction_(objc.selector(delegate.soundChanged_, signature=b"v@:@"))
     view.addSubview_(sound_popup)
-
-    return view
-
-
-def _build_sessions_view(delegate: _PrefsDelegate) -> NSView:
-    """Build the Sessions settings pane."""
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W, _H))
-    y = _H - 40
-
-    header = NSTextField.labelWithString_("Sessions")
-    header.setFrame_(NSMakeRect(_PAD, y, 200, 22))
-    header.setFont_(NSFont.boldSystemFontOfSize_(15.0))
-    view.addSubview_(header)
 
     y -= 36
 
@@ -304,16 +305,18 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         view.addSubview_(empty)
         return view
 
-    # Scrollable list of history entries
-    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_PAD, 10, _CONTENT_W - _PAD * 2, y - 10))
+    scroll_h = y - 10
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_PAD, 10, _CONTENT_W - _PAD * 2, scroll_h))
     scroll.setHasVerticalScroller_(True)
     scroll.setDrawsBackground_(False)
 
-    list_view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W - _PAD * 2 - 16, len(history) * 50))
+    _entry_h = 56
     entry_w = _CONTENT_W - _PAD * 2 - 16
-    ey = len(history) * 50 - 10
+    list_h = max(len(history) * _entry_h, scroll_h)
+    list_view = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, entry_w, list_h))
 
     pinned_cwds = get_pinned_cwds()
+    ey = 4  # top padding (flipped: y=0 is top)
 
     for entry in history:
         proj = entry.get("project", "unknown")
@@ -324,26 +327,23 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         cwd = entry.get("cwd", "")
         pin_mark = " ★" if cwd in pinned_cwds else ""
 
-        # Project name + pin
         label = NSTextField.labelWithString_(f"{proj}{pin_mark}")
         label.setFrame_(NSMakeRect(0, ey, entry_w - 230, 18))
         label.setFont_(NSFont.systemFontOfSize_(13.0))
         list_view.addSubview_(label)
 
-        # Meta: last active + model in light grey
         meta_line = f"Last active: {ended}"
         if model:
             meta_line += f"  ·  Model: {model}"
         meta_label = NSTextField.labelWithString_(meta_line)
-        meta_label.setFrame_(NSMakeRect(0, ey - 18, entry_w - 230, 14))
+        meta_label.setFrame_(NSMakeRect(0, ey + 20, entry_w - 230, 14))
         meta_label.setFont_(NSFont.systemFontOfSize_(10.0))
         meta_label.setTextColor_(NSColor.tertiaryLabelColor())
         list_view.addSubview_(meta_label)
 
-        # Action buttons
         _btn_w = 70
         _btn_gap = 6
-        _btn_y = ey - 6
+        _btn_y = ey + 6
         bx = entry_w
 
         bx -= _btn_w
@@ -376,7 +376,11 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         resume_btn.setRepresentedObject_(f"{sid}|{cwd}")
         list_view.addSubview_(resume_btn)
 
-        ey -= 50
+        ey += _entry_h
+
+        sep_line = NSBox.alloc().initWithFrame_(NSMakeRect(0, ey - 8, entry_w, 1))
+        sep_line.setBoxType_(2)
+        list_view.addSubview_(sep_line)
 
     scroll.setDocumentView_(list_view)
     view.addSubview_(scroll)
@@ -448,7 +452,6 @@ def show_preferences() -> None:  # noqa: PLR0915
     # Build panes
     _content_views.clear()
     _content_views["General"] = _build_general_view(_delegate)
-    _content_views["Sessions"] = _build_sessions_view(_delegate)
     _content_views["History"] = _build_history_view(_delegate)
     _content_views["About"] = _build_about_view(_delegate)
 
