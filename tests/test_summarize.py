@@ -2,11 +2,11 @@
 
 import json
 import subprocess
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.services.summarize import (
+    _call_claude,
     _extract_conversation_text,
-    generate_summary,
 )
 
 
@@ -85,11 +85,11 @@ class TestExtractConversationText:
 
 
 class TestGenerateSummary:
-    """Tests for generate_summary."""
+    """Tests for _call_claude."""
 
     def test_returns_empty_when_claude_not_found(self, tmp_path):
         with patch("claudewatch.backend.services.summarize.shutil.which", return_value=None):
-            result = generate_summary("/Users/dev/myapp")
+            result = _call_claude("/Users/dev/myapp")
         assert result == ""
 
     def test_returns_empty_when_no_conversation(self, tmp_path):
@@ -97,7 +97,7 @@ class TestGenerateSummary:
             patch("claudewatch.backend.services.summarize.shutil.which", return_value="/usr/bin/claude"),
             patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")),
         ):
-            result = generate_summary("/Users/dev/myapp")
+            result = _call_claude("/Users/dev/myapp")
         assert result == ""
 
     def test_returns_summary_on_success(self, tmp_path):
@@ -107,13 +107,16 @@ class TestGenerateSummary:
             proj_dir / "session.jsonl",
             [{"type": "user", "message": {"content": "fix auth"}, "timestamp": ""}],
         )
-        mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="Fixed auth middleware\n")
+        mock_proc = MagicMock()
+        mock_proc.pid = 99999
+        mock_proc.communicate.return_value = ("Fixed auth middleware\n", "")
+        mock_proc.returncode = 0
         with (
             patch("claudewatch.backend.services.summarize.shutil.which", return_value="/usr/bin/claude"),
-            patch("claudewatch.backend.services.summarize.subprocess.run", return_value=mock_result),
+            patch("claudewatch.backend.services.summarize.subprocess.Popen", return_value=mock_proc),
             patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
-            result = generate_summary("/Users/dev/myapp")
+            result = _call_claude("/Users/dev/myapp")
         assert result == "Fixed auth middleware"
 
     def test_returns_empty_on_timeout(self, tmp_path):
@@ -123,15 +126,15 @@ class TestGenerateSummary:
             proj_dir / "session.jsonl",
             [{"type": "user", "message": {"content": "fix auth"}, "timestamp": ""}],
         )
+        mock_proc = MagicMock()
+        mock_proc.pid = 99999
+        mock_proc.communicate.side_effect = subprocess.TimeoutExpired("claude", 15)
         with (
             patch("claudewatch.backend.services.summarize.shutil.which", return_value="/usr/bin/claude"),
-            patch(
-                "claudewatch.backend.services.summarize.subprocess.run",
-                side_effect=subprocess.TimeoutExpired("claude", 15),
-            ),
+            patch("claudewatch.backend.services.summarize.subprocess.Popen", return_value=mock_proc),
             patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
-            result = generate_summary("/Users/dev/myapp")
+            result = _call_claude("/Users/dev/myapp")
         assert result == ""
 
     def test_returns_empty_on_nonzero_exit(self, tmp_path):
@@ -141,11 +144,14 @@ class TestGenerateSummary:
             proj_dir / "session.jsonl",
             [{"type": "user", "message": {"content": "fix auth"}, "timestamp": ""}],
         )
-        mock_result = subprocess.CompletedProcess(args=[], returncode=1, stdout="")
+        mock_proc = MagicMock()
+        mock_proc.pid = 99999
+        mock_proc.communicate.return_value = ("", "")
+        mock_proc.returncode = 1
         with (
             patch("claudewatch.backend.services.summarize.shutil.which", return_value="/usr/bin/claude"),
-            patch("claudewatch.backend.services.summarize.subprocess.run", return_value=mock_result),
+            patch("claudewatch.backend.services.summarize.subprocess.Popen", return_value=mock_proc),
             patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
-            result = generate_summary("/Users/dev/myapp")
+            result = _call_claude("/Users/dev/myapp")
         assert result == ""
