@@ -41,6 +41,15 @@ from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES
 from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
+
+
+class _FlippedView(NSView):
+    """NSView subclass with flipped coordinates (y=0 at top)."""
+
+    def isFlipped(self) -> bool:  # noqa: N802
+        return True
+
+
 _W = 680
 _H = 420
 _SIDEBAR_W = 150
@@ -296,19 +305,18 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         view.addSubview_(empty)
         return view
 
-    # Scrollable list of history entries
-    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_PAD, 10, _CONTENT_W - _PAD * 2, y - 10))
+    scroll_h = y - 10
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_PAD, 10, _CONTENT_W - _PAD * 2, scroll_h))
     scroll.setHasVerticalScroller_(True)
     scroll.setDrawsBackground_(False)
 
-    _entry_h = 50
-    _top_pad = 8
-    list_h = len(history) * _entry_h + _top_pad
-    list_view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CONTENT_W - _PAD * 2 - 16, list_h))
+    _entry_h = 56
     entry_w = _CONTENT_W - _PAD * 2 - 16
-    ey = list_h - _top_pad - 10
+    list_h = max(len(history) * _entry_h, scroll_h)
+    list_view = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, entry_w, list_h))
 
     pinned_cwds = get_pinned_cwds()
+    ey = 4  # top padding (flipped: y=0 is top)
 
     for entry in history:
         proj = entry.get("project", "unknown")
@@ -319,26 +327,23 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         cwd = entry.get("cwd", "")
         pin_mark = " ★" if cwd in pinned_cwds else ""
 
-        # Project name + pin
         label = NSTextField.labelWithString_(f"{proj}{pin_mark}")
         label.setFrame_(NSMakeRect(0, ey, entry_w - 230, 18))
         label.setFont_(NSFont.systemFontOfSize_(13.0))
         list_view.addSubview_(label)
 
-        # Meta: last active + model in light grey
         meta_line = f"Last active: {ended}"
         if model:
             meta_line += f"  ·  Model: {model}"
         meta_label = NSTextField.labelWithString_(meta_line)
-        meta_label.setFrame_(NSMakeRect(0, ey - 18, entry_w - 230, 14))
+        meta_label.setFrame_(NSMakeRect(0, ey + 20, entry_w - 230, 14))
         meta_label.setFont_(NSFont.systemFontOfSize_(10.0))
         meta_label.setTextColor_(NSColor.tertiaryLabelColor())
         list_view.addSubview_(meta_label)
 
-        # Action buttons
         _btn_w = 70
         _btn_gap = 6
-        _btn_y = ey - 6
+        _btn_y = ey + 6
         bx = entry_w
 
         bx -= _btn_w
@@ -371,12 +376,11 @@ def _build_history_view(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         resume_btn.setRepresentedObject_(f"{sid}|{cwd}")
         list_view.addSubview_(resume_btn)
 
-        # Separator line
-        sep_line = NSBox.alloc().initWithFrame_(NSMakeRect(0, ey - 16, entry_w, 1))
+        ey += _entry_h
+
+        sep_line = NSBox.alloc().initWithFrame_(NSMakeRect(0, ey - 8, entry_w, 1))
         sep_line.setBoxType_(2)
         list_view.addSubview_(sep_line)
-
-        ey -= _entry_h
 
     scroll.setDocumentView_(list_view)
     view.addSubview_(scroll)
