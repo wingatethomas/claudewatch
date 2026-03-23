@@ -18,6 +18,8 @@ dev = [
     "ruff>=0.9.0",
     "pre-commit>=4.0",
     "briefcase>=0.3",
+    "pytest-cov>=7.0.0",
+    "pip-audit>=2.10.0",
 ]
 
 [project.scripts]
@@ -56,3 +58,18 @@ system_requires = []
 [tool.briefcase.app.claudewatch.macOS.info]
 LSUIElement = true
 NSAppleEventsUsageDescription = "ClaudeWatch needs automation access to read terminal windows and focus sessions."
+
+[tool.coverage.run]
+source = ["claudewatch"]
+omit = [
+    "claudewatch/__main__.py",
+    "claudewatch/ui/*",
+]
+
+[tool.coverage.report]
+fail_under = 60
+show_missing = true
+exclude_lines = [
+    "if __name__",
+    "pragma: no cover",
+]

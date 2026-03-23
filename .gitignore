@@ -11,6 +11,8 @@ build/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+.coverage
+htmlcov/
 .vscode/
 .env
 macOS/

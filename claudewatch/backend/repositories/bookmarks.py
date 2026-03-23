@@ -60,13 +60,15 @@ def pin_session(session_id: str, project: str, cwd: str, note: str) -> None:
             _save(pins)
             log.info("pin.updated project=%s", project)
             return
-    pins.append({
-        "session_id": session_id,
-        "project": project,
-        "cwd": cwd,
-        "note": note,
-        "timestamp": ts,
-    })
+    pins.append(
+        {
+            "session_id": session_id,
+            "project": project,
+            "cwd": cwd,
+            "note": note,
+            "timestamp": ts,
+        }
+    )
     _save(pins)
     log.info("pin.created project=%s", project)
 

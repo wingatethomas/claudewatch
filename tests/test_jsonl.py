@@ -38,7 +38,7 @@ class TestCheckJsonlForPendingTool:
         # Touch file to set age within valid window
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, one_line, ctx = _check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert pending is True
         assert "Bash" in one_line
@@ -63,7 +63,7 @@ class TestCheckJsonlForPendingTool:
         )
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert pending is False
 
@@ -86,7 +86,7 @@ class TestCheckJsonlForPendingTool:
         )
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert pending is False
 
@@ -109,7 +109,7 @@ class TestCheckJsonlForPendingTool:
         )
         os.utime(jsonl, (time.time() - 120, time.time() - 120))
 
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert pending is False
 
@@ -133,12 +133,12 @@ class TestCheckJsonlForPendingTool:
         # File is 1 second old — below _JSONL_MIN_AGE
         os.utime(jsonl, (time.time() - 1, time.time() - 1))
 
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert pending is False
 
     def test_nonexistent_project_dir(self, tmp_path):
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/nonexistent")
         assert pending is False
 
@@ -146,7 +146,7 @@ class TestCheckJsonlForPendingTool:
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
         proj_dir.mkdir(parents=True)
 
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert pending is False
 
@@ -176,7 +176,7 @@ class TestCheckJsonlForPendingTool:
         link = proj_dir / "session.jsonl"
         link.symlink_to(evil_jsonl)
 
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert pending is False
 
@@ -204,7 +204,7 @@ class TestCheckJsonlForPendingTool:
         )
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, one_line, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert pending is True
         assert "Edit" in one_line
@@ -229,7 +229,7 @@ class TestCheckJsonlForPendingTool:
         )
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             # system is skipped, then assistant with tool_use is found
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert pending is True
@@ -255,6 +255,6 @@ class TestCheckJsonlForPendingTool:
             )
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.services.detection.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             pending, _, _ = _check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert pending is True

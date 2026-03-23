@@ -6,6 +6,25 @@ from enum import Enum
 CLAUDE_PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
 
+def cwd_to_proj_key(cwd: str) -> str:
+    """Convert a CWD path to a Claude projects directory key.
+
+    Example: '/Users/dev/myapp' -> '-Users-dev-myapp'
+    """
+    return cwd.replace("/", "-")
+
+
+def proj_key_to_cwd(proj_key: str) -> str:
+    """Best-effort reverse of cwd_to_proj_key.
+
+    Known limitation: ambiguous with hyphens in directory names.
+    Example: '-Users-dev-myapp' -> '/Users/dev/myapp'
+    """
+    if proj_key.startswith("-"):
+        return "/" + proj_key[1:].replace("-", "/")
+    return proj_key.replace("-", "/", 1)
+
+
 class HostApp(Enum):
     TERMINAL = "Terminal"
     PYCHARM = "PyCharm"

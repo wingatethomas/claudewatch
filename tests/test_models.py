@@ -5,6 +5,8 @@ from claudewatch.backend.models import (
     ClaudeSession,
     HostApp,
     SessionStatus,
+    cwd_to_proj_key,
+    proj_key_to_cwd,
 )
 
 
@@ -177,6 +179,27 @@ class TestClaudeSession:
             window_title="myapp — ⠙ Editing files — claude TMPDIR=/tmp",
         )
         assert s.task_summary == "Editing files"
+
+
+class TestPathMapping:
+    """Tests for cwd_to_proj_key and proj_key_to_cwd."""
+
+    def test_cwd_to_proj_key_basic(self):
+        assert cwd_to_proj_key("/Users/dev/myapp") == "-Users-dev-myapp"
+
+    def test_cwd_to_proj_key_root(self):
+        assert cwd_to_proj_key("/") == "-"
+
+    def test_proj_key_to_cwd_basic(self):
+        assert proj_key_to_cwd("-Users-dev-myapp") == "/Users/dev/myapp"
+
+    def test_roundtrip(self):
+        cwd = "/Users/dev/projects/myapp"
+        assert proj_key_to_cwd(cwd_to_proj_key(cwd)) == cwd
+
+    def test_proj_key_without_leading_dash(self):
+        # Edge case: key doesn't start with dash
+        assert proj_key_to_cwd("relative-path") == "relative/path"
 
 
 class TestEnums:
