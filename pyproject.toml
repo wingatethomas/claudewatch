@@ -7,7 +7,6 @@ license = "GPL-3.0-or-later"
 requires-python = ">=3.13"
 authors = [{name = "ClaudeWatch Contributors"}]
 dependencies = [
-    "rumps==0.4.0",
     "pyobjc-framework-Cocoa~=12.1",
     "pyobjc-framework-Quartz~=12.1",
 ]
@@ -46,7 +45,6 @@ formal_name = "ClaudeWatch"
 description = "macOS menu bar app for monitoring Claude Code sessions"
 sources = ["claudewatch"]
 requires = [
-    "rumps==0.4.0",
     "pyobjc-framework-Cocoa~=12.1",
     "pyobjc-framework-Quartz~=12.1",
 ]
