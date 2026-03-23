@@ -568,9 +568,7 @@ class ClaudeWatchApp(rumps.App):
 
         if recent_entries:
             self.menu.add(rumps.separator)
-            recent_header = rumps.MenuItem(f"⏱ Recent ({len(recent_entries)})")
-            recent_header.set_callback(None)
-            self.menu.add(recent_header)
+            recent_menu = rumps.MenuItem(f"⏱ Recent ({len(recent_entries)})")
             for entry in recent_entries:
                 sid = entry.get("session_id", "")
                 proj = entry.get("project", "unknown")
@@ -579,30 +577,24 @@ class ClaudeWatchApp(rumps.App):
                 model = MODEL_DISPLAY_NAMES.get(raw_model, raw_model)
                 ended_at = entry.get("ended_at", "")
 
-                item = rumps.MenuItem(f"  {proj}", callback=_noop)
-                # Summary submenu
-                summary_item = rumps.MenuItem("Summary")
-                cached = get_cached_summary(cwd)
-                if cached:
-                    _add_summary_lines(summary_item, cached)
-                else:
-                    summary_item.add(rumps.MenuItem("No summary", callback=None))
-                item.add(summary_item)
-                item.add(rumps.separator)
-                item.add(rumps.MenuItem("Activity", callback=self._make_history_activity_handler(proj, cwd)))
-                item.add(rumps.MenuItem("Resume", callback=self._make_resume_handler(sid, cwd)))
-                item.add(rumps.MenuItem("Remove from history", callback=self._make_remove_history_handler(cwd)))
-                self.menu.add(item)
-                # Detail line: ended_at date · model
-                detail_parts = []
-                if ended_at:
-                    detail_parts.append(ended_at[:10])
-                if model:
-                    detail_parts.append(model)
+                detail_parts = [p for p in [ended_at[:10] if ended_at else "", model] if p]
+                label = proj
                 if detail_parts:
-                    detail = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
-                    detail.set_callback(None)
-                    self.menu.add(detail)
+                    label += f"  ({' · '.join(detail_parts)})"
+                item = rumps.MenuItem(label, callback=_noop)
+                # Summary submenu
+                summary_text = get_cached_summary(cwd)
+                if summary_text:
+                    summary_sub = rumps.MenuItem("Summary")
+                    _add_summary_lines(summary_sub, summary_text)
+                    item.add(summary_sub)
+                    item.add(rumps.separator)
+                item.add(rumps.MenuItem("Activity", callback=self._make_history_activity_handler(proj, cwd)))
+                if sid:
+                    item.add(rumps.MenuItem("Resume", callback=self._make_resume_handler(sid, cwd)))
+                item.add(rumps.MenuItem("Remove", callback=self._make_remove_history_handler(cwd)))
+                recent_menu.add(item)
+            self.menu.add(recent_menu)
 
         self.menu.add(rumps.separator)
         self.menu.add(rumps.MenuItem("Preferences...", callback=self._open_preferences))
