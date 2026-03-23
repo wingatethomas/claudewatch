@@ -13,6 +13,8 @@ from AppKit import (
     NSColor,
     NSFont,
     NSMutableAttributedString,
+    NSPasteboard,
+    NSPasteboardTypeString,
     NSScrollView,
     NSTextView,
     NSView,
@@ -65,6 +67,18 @@ class _ActivityDelegate(NSObject):
     def openInFinder_(self, sender: objc.objc_object) -> None:
         if self._cwd and os.path.isdir(self._cwd):
             subprocess.run(["open", self._cwd], check=False)  # noqa: S603, S607
+
+    def copyToClipboard_(self, sender: objc.objc_object) -> None:
+        tv = _text_views.get(self._cwd)
+        if tv:
+            pb = NSPasteboard.generalPasteboard()
+            pb.clearContents()
+            pb.setString_forType_(tv.string(), NSPasteboardTypeString)
+
+    def openJsonlInFinder_(self, sender: objc.objc_object) -> None:
+        path = find_most_recent_jsonl(self._cwd)
+        if path:
+            subprocess.run(["open", "-R", path], check=False)  # noqa: S603, S607
 
     def toggleSort_(self, sender: objc.objc_object) -> None:
         newest = not _sort_state.get(self._cwd, True)
@@ -194,6 +208,22 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
     sort_btn.setTarget_(delegate)
     sort_btn.setAction_(objc.selector(delegate.toggleSort_, signature=b"v@:@"))
     bar.addSubview_(sort_btn)
+
+    copy_btn = NSButton.alloc().initWithFrame_(NSMakeRect(100, 8, 60, 24))
+    copy_btn.setTitle_("Copy")
+    copy_btn.setBezelStyle_(1)
+    copy_btn.setToolTip_("Copy activity to clipboard")
+    copy_btn.setTarget_(delegate)
+    copy_btn.setAction_(objc.selector(delegate.copyToClipboard_, signature=b"v@:@"))
+    bar.addSubview_(copy_btn)
+
+    jsonl_btn = NSButton.alloc().initWithFrame_(NSMakeRect(166, 8, 80, 24))
+    jsonl_btn.setTitle_("JSONL")
+    jsonl_btn.setBezelStyle_(1)
+    jsonl_btn.setToolTip_("Reveal session JSONL in Finder")
+    jsonl_btn.setTarget_(delegate)
+    jsonl_btn.setAction_(objc.selector(delegate.openJsonlInFinder_, signature=b"v@:@"))
+    bar.addSubview_(jsonl_btn)
 
     finder_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - 205, 8, 95, 24))
     finder_btn.setTitle_("Open Folder")
