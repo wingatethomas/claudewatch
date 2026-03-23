@@ -112,7 +112,7 @@ class NotificationManager:
                 "-group",
                 f"claudewatch-{s.pid}",
                 "-sender",
-                "com.claudewatch",  # prevent terminal-notifier from activating host app on click
+                _BUNDLE_IDS.get(s.host_app, "com.apple.Terminal"),
             ]
 
             if s.host_app == HostApp.TERMINAL and s.window_id is not None:
