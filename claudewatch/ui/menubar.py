@@ -57,7 +57,6 @@ from claudewatch.backend.services.summarize import (
 )
 from claudewatch.backend.services.usage import (
     MODEL_DISPLAY_NAMES,
-    format_tokens,
     format_tokens_breakdown,
     get_session_model,
     get_session_tokens,
@@ -300,6 +299,12 @@ class ClaudeWatchApp(rumps.App):
         self._exiting_pids: dict[int, float] = {}  # PID → time of quit signal
         self._has_polled = False
         self._check_accessibility()
+        # Run first detection synchronously so menu has data immediately
+        try:
+            self.sessions = detect_sessions()
+            self._has_polled = True
+        except Exception:
+            log.exception("initial detection failed")
         self.update_display()
 
     def _log_changes(self) -> None:
@@ -697,11 +702,16 @@ class ClaudeWatchApp(rumps.App):
                 item.add(rumps.MenuItem("Pin session...", callback=self._make_pin_handler(s)))
             item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
         self.menu.add(item)
-        # Detail line: status + model + tokens
-        detail = s.detail_line
+        # Detail line: model + conversation context one-liner
         model = get_session_model(s.cwd)
-        tokens = format_tokens(get_session_tokens(s.cwd))
-        detail_parts = [p for p in [detail, model, tokens] if p]
+        cached = get_cached_summary(s.cwd)
+        _max_oneliner = 40
+        oneliner = ""
+        if cached:
+            oneliner = cached.replace("\n", " ").strip()
+            if len(oneliner) > _max_oneliner:
+                oneliner = oneliner[: _max_oneliner - 1] + "…"
+        detail_parts = [p for p in [model, oneliner] if p]
         if detail_parts:
             detail_item = rumps.MenuItem(f"      {' · '.join(detail_parts)}")
             detail_item.set_callback(None)
