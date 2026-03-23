@@ -14,8 +14,14 @@ import subprocess
 import time
 
 from claudewatch.backend.helpers import run_applescript
-from claudewatch.backend.models import ClaudeSession
+from claudewatch.backend.models import ClaudeSession, HostApp
 from claudewatch.backend.repositories.config import get_setting
+
+_BUNDLE_IDS: dict[HostApp, str] = {
+    HostApp.TERMINAL: "com.apple.Terminal",
+    HostApp.VSCODE: "com.microsoft.VSCode",
+    HostApp.PYCHARM: "com.jetbrains.pycharm",
+}
 
 log = logging.getLogger("claudewatch")
 
@@ -93,21 +99,37 @@ class NotificationManager:
                 s.pid,
             )
 
+            cmd = [
+                TERMINAL_NOTIFIER,
+                "-title",
+                title,
+                "-message",
+                message[:200],
+                "-subtitle",
+                subtitle,
+                "-sound",
+                str(get_setting("notification_sound")),
+                "-group",
+                f"claudewatch-{s.pid}",
+            ]
+
+            if s.host_app == HostApp.TERMINAL and s.window_id is not None:
+                # Raise only the specific window, not all Terminal windows.
+                # window_id is always int — validated via isdigit() in detection.py
+                script = (
+                    f'tell application "Terminal"\n'
+                    f"  set miniaturized of window id {s.window_id} to false\n"
+                    f"  set index of window id {s.window_id} to 1\n"
+                    f"  activate window id {s.window_id}\n"
+                    f"end tell"
+                )
+                cmd.extend(["-execute", f"osascript -e '{script}'"])
+            elif s.host_app in _BUNDLE_IDS:
+                cmd.extend(["-activate", _BUNDLE_IDS[s.host_app]])
+
             try:
                 subprocess.run(
-                    [
-                        TERMINAL_NOTIFIER,
-                        "-title",
-                        title,
-                        "-message",
-                        message[:200],
-                        "-subtitle",
-                        subtitle,
-                        "-sound",
-                        str(get_setting("notification_sound")),
-                        "-group",
-                        f"claudewatch-{s.pid}",
-                    ],
+                    cmd,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=5,

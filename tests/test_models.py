@@ -1,5 +1,7 @@
 """Tests for claudewatch.backend.models."""
 
+import os
+
 from claudewatch.backend.models import (
     STATUS_INDICATOR,
     ClaudeSession,
@@ -190,16 +192,27 @@ class TestPathMapping:
     def test_cwd_to_proj_key_root(self):
         assert cwd_to_proj_key("/") == "-"
 
-    def test_proj_key_to_cwd_basic(self):
+    def test_proj_key_to_cwd_no_hyphens(self):
         assert proj_key_to_cwd("-Users-dev-myapp") == "/Users/dev/myapp"
 
-    def test_roundtrip(self):
+    def test_roundtrip_simple(self):
         cwd = "/Users/dev/projects/myapp"
         assert proj_key_to_cwd(cwd_to_proj_key(cwd)) == cwd
 
+    def test_resolves_real_hyphenated_dirs(self):
+        """Validates against real ~/Develop directories if they exist."""
+        test_dir = os.path.expanduser("~/Develop/backend-api")
+        if os.path.isdir(test_dir):
+            key = cwd_to_proj_key(test_dir)
+            assert proj_key_to_cwd(key) == test_dir
+
     def test_proj_key_without_leading_dash(self):
-        # Edge case: key doesn't start with dash
         assert proj_key_to_cwd("relative-path") == "relative/path"
+
+    def test_falls_back_to_slash_when_no_dir_exists(self):
+        # When path doesn't exist on disk, defaults to slash separator
+        result = proj_key_to_cwd("-nonexistent-path-with-hyphens")
+        assert result == "/nonexistent/path/with/hyphens"
 
 
 class TestEnums:

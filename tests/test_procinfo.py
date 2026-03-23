@@ -9,7 +9,6 @@ from claudewatch.backend.services.procinfo import (
     get_process_info,
     get_single_process_info,
     list_all_processes,
-    list_pids_by_name,
 )
 
 
@@ -37,39 +36,6 @@ class TestDevToTty:
         # major=5 (console), not a PTY
         dev = (5 << 24) | 0
         assert _dev_to_tty(dev) == "??"
-
-
-class TestListPidsByName:
-    """Tests for list_pids_by_name() with mocked libproc."""
-
-    @patch("claudewatch.backend.services.procinfo._list_all_pids")
-    @patch("claudewatch.backend.services.procinfo._libproc")
-    def test_finds_matching_processes(self, mock_libproc, mock_list_all):
-        mock_list_all.return_value = [100, 200, 300]
-
-        def fake_proc_pidpath(pid, buf, bufsize):
-            paths = {100: b"/usr/bin/claude", 200: b"/usr/bin/zsh", 300: b"/usr/local/bin/claude"}
-            path = paths.get(pid, b"")
-            buf.value = path
-            return len(path)
-
-        def fake_proc_name(pid, buf, bufsize):
-            names = {100: b"claude", 200: b"zsh", 300: b"claude"}
-            name = names.get(pid, b"")
-            buf.value = name
-            return len(name)
-
-        mock_libproc.proc_pidpath.side_effect = fake_proc_pidpath
-        mock_libproc.proc_name.side_effect = fake_proc_name
-        result = list_pids_by_name("claude")
-        assert 100 in result
-        assert 300 in result
-        assert 200 not in result
-
-    @patch("claudewatch.backend.services.procinfo._list_all_pids")
-    def test_no_matching_processes(self, mock_list_all):
-        mock_list_all.return_value = []
-        assert list_pids_by_name("claude") == []
 
 
 class TestGetProcessInfo:
