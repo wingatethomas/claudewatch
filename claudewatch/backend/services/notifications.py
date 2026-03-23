@@ -111,19 +111,25 @@ class NotificationManager:
                 str(get_setting("notification_sound")),
                 "-group",
                 f"claudewatch-{s.pid}",
+                "-sender",
+                "com.claudewatch",  # prevent terminal-notifier from activating host app on click
             ]
 
             if s.host_app == HostApp.TERMINAL and s.window_id is not None:
                 # Raise only the specific window, not all Terminal windows.
                 # window_id is always int — validated via isdigit() in detection.py
-                script = (
-                    f'tell application "Terminal"\n'
-                    f"  set miniaturized of window id {s.window_id} to false\n"
-                    f"  set index of window id {s.window_id} to 1\n"
-                    f"  activate window id {s.window_id}\n"
-                    f"end tell"
+                wid = s.window_id
+                cmd.extend(
+                    [
+                        "-execute",
+                        (
+                            f"osascript"
+                            f" -e 'tell application \"Terminal\" to set miniaturized of window id {wid} to false'"
+                            f" -e 'tell application \"Terminal\" to set index of window id {wid} to 1'"
+                            f' -e \'tell application "System Events" to set frontmost of process "Terminal" to true\''
+                        ),
+                    ]
                 )
-                cmd.extend(["-execute", f"osascript -e '{script}'"])
             elif s.host_app in _BUNDLE_IDS:
                 cmd.extend(["-activate", _BUNDLE_IDS[s.host_app]])
 
