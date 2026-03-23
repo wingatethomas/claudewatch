@@ -13,6 +13,8 @@ _DEFAULTS: dict[str, object] = {
     "poll_interval": 1,
     "notification_sound": "Glass",
     "pin_expiry_days": 30,
+    "onboarding_tips_shown": [],
+    "onboarding_session_count": 0,
 }
 
 _SOUNDS = ("Glass", "Blow", "Bottle", "Frog", "Funk", "Hero", "Morse", "Ping", "Pop", "Purr", "Submarine", "Tink")
