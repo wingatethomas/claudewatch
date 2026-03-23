@@ -1,0 +1,6 @@
+- Terminal.app AppleScript must be guarded with `if application "Terminal" is running`.
+- **Window focus must only raise the target window, never all windows of the app.** For Terminal.app, use `set index of window id X to 1` + `activateWithOptions_(1 << 1)` (without `NSApplicationActivateAllWindows`). Never use `-activate` with terminal-notifier for Terminal.app — use `-execute` with targeted AppleScript instead.
+- Always `NSImage.copy()` before calling `setSize_` on images from `NSWorkspace`.
+- Pair `NSImage.lockFocus()` with `unlockFocus()` in try/finally.
+- Thread-safety: use `threading.Event` or similar guards when background threads update UI objects that may be deallocated (e.g. modal text fields).
+- Check `AXIsProcessTrusted()` on launch and show a menu item if permission is missing.
