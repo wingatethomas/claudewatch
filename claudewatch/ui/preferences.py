@@ -283,33 +283,26 @@ def _build_sessions_pane(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         view.addSubview_(empty)
         return view
 
-    # Bottom toolbar with action buttons
+    # Bottom toolbar with Actions dropdown
     _bar_h = 36
     bar = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, _bar_h))
 
-    resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, 6, 28, 24))
-    resume_btn.setTitle_("▶")
-    resume_btn.setBezelStyle_(1)
-    resume_btn.setToolTip_("Resume session")
-    resume_btn.setTarget_(delegate)
-    resume_btn.setAction_(objc.selector(delegate.resumeSelected_, signature=b"v@:@"))
-    bar.addSubview_(resume_btn)
-
-    activity_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 34, 6, 28, 24))
-    activity_btn.setTitle_("ℹ")
-    activity_btn.setBezelStyle_(1)
-    activity_btn.setToolTip_("View session activity log")
-    activity_btn.setTarget_(delegate)
-    activity_btn.setAction_(objc.selector(delegate.activitySelected_, signature=b"v@:@"))
-    bar.addSubview_(activity_btn)
-
-    delete_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 68, 6, 28, 24))
-    delete_btn.setTitle_("⊘")
-    delete_btn.setBezelStyle_(1)
-    delete_btn.setToolTip_("Delete from history")
-    delete_btn.setTarget_(delegate)
-    delete_btn.setAction_(objc.selector(delegate.deleteSelected_, signature=b"v@:@"))
-    bar.addSubview_(delete_btn)
+    actions_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+        NSMakeRect(_PAD, 6, 100, 24),
+        True,
+    )
+    actions_popup.setFont_(NSFont.systemFontOfSize_(12.0))
+    actions_popup.addItemWithTitle_("Actions")
+    actions_popup.addItemWithTitle_("Resume")
+    actions_popup.addItemWithTitle_("Activity")
+    actions_popup.addItemWithTitle_("Delete")
+    actions_popup.itemAtIndex_(1).setTarget_(delegate)
+    actions_popup.itemAtIndex_(1).setAction_(objc.selector(delegate.resumeSelected_, signature=b"v@:@"))
+    actions_popup.itemAtIndex_(2).setTarget_(delegate)
+    actions_popup.itemAtIndex_(2).setAction_(objc.selector(delegate.activitySelected_, signature=b"v@:@"))
+    actions_popup.itemAtIndex_(3).setTarget_(delegate)
+    actions_popup.itemAtIndex_(3).setAction_(objc.selector(delegate.deleteSelected_, signature=b"v@:@"))
+    bar.addSubview_(actions_popup)
 
     sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, _bar_h - 1, _W, 1))
     sep.setBoxType_(2)
