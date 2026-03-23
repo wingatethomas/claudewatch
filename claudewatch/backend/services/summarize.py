@@ -1,4 +1,9 @@
-"""Generate conversation summaries via the Claude CLI."""
+"""Generate and persist conversation summaries via the Claude CLI.
+
+Summaries are stored in ~/.claude/claudewatch-summaries.json keyed by CWD.
+A background thread periodically refreshes stale summaries (when the JSONL
+has changed since the last generation). Max 1 concurrent claude -p call.
+"""
 
 import json
 import logging
@@ -14,13 +19,9 @@ log = logging.getLogger("claudewatch")
 
 _MAX_CONTEXT_CHARS = 8000
 _TIMEOUT_SECONDS = 15
-_MAX_CONCURRENT = 2  # max simultaneous claude -p calls
+_REFRESH_INTERVAL = 60  # seconds between background refresh cycles
+_STORE_PATH = os.path.expanduser("~/.claude/claudewatch-summaries.json")
 
-# CWD → (summary, jsonl_mtime) — only regenerate when JSONL changes
-_summary_cache: dict[str, tuple[str, float]] = {}
-_semaphore = threading.Semaphore(_MAX_CONCURRENT)
-_in_progress: set[str] = set()  # CWDs currently being summarized
-_in_progress_lock = threading.Lock()
 _PROMPT = (
     "Summarize this Claude Code conversation in 3-4 sentences. "
     "Cover: what the user was trying to accomplish, what was done, key files or areas touched, "
@@ -30,6 +31,159 @@ _PROMPT = (
     "Fixed token validation in auth.py, added integration tests, updated the migration. "
     "PR #42 is merged to main.'\n\n"
 )
+
+# In-memory mirror of the persistent store: CWD → {"summary": str, "mtime": float}
+_store: dict[str, dict] = {}
+_store_loaded = False
+_store_lock = threading.Lock()
+
+# Concurrency control
+_generating = threading.Lock()  # only 1 claude -p at a time
+_in_progress: set[str] = set()
+_in_progress_lock = threading.Lock()
+
+# Background thread
+_bg_thread: threading.Thread | None = None
+_tracked_cwds: set[str] = set()  # CWDs to periodically refresh
+_tracked_lock = threading.Lock()
+
+
+# ── Persistent store ──────────────────────────────────────────────────
+
+
+def _load_store() -> None:
+    global _store, _store_loaded  # noqa: PLW0603
+    if _store_loaded:
+        return
+    try:
+        with open(_STORE_PATH) as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                _store = data
+    except (OSError, json.JSONDecodeError):
+        _store = {}
+    _store_loaded = True
+
+
+def _save_store() -> None:
+    try:
+        with open(_STORE_PATH, "w") as f:
+            json.dump(_store, f, indent=2)
+    except OSError:
+        log.warning("Failed to save summaries to %s", _STORE_PATH)
+
+
+# ── Public API ────────────────────────────────────────────────────────
+
+
+def get_cached_summary(cwd: str) -> str | None:
+    """Return stored summary if JSONL hasn't changed since generation."""
+    with _store_lock:
+        _load_store()
+        entry = _store.get(cwd)
+    if not entry:
+        return None
+    cached_mtime = entry.get("mtime", 0)
+    current_mtime = _get_jsonl_mtime(cwd)
+    if current_mtime and current_mtime <= cached_mtime:
+        return entry.get("summary", "")
+    return None
+
+
+def cache_summary(cwd: str, summary: str) -> None:
+    """Persist a summary keyed to the current JSONL mtime."""
+    mtime = _get_jsonl_mtime(cwd) or time.time()
+    with _store_lock:
+        _load_store()
+        _store[cwd] = {"summary": summary, "mtime": mtime}
+        _save_store()
+
+
+def generate_and_cache_summary(cwd: str) -> str:
+    """Generate a summary via claude -p and persist it.
+
+    Skips if already cached and fresh, or if another generation is in progress.
+    """
+    cached = get_cached_summary(cwd)
+    if cached is not None:
+        return cached
+
+    with _in_progress_lock:
+        if cwd in _in_progress:
+            return ""
+        _in_progress.add(cwd)
+
+    try:
+        if not _generating.acquire(timeout=1):
+            return ""
+        try:
+            summary = _call_claude(cwd)
+            if summary:
+                cache_summary(cwd, summary)
+            return summary
+        finally:
+            _generating.release()
+    finally:
+        with _in_progress_lock:
+            _in_progress.discard(cwd)
+
+
+def invalidate_cache(cwd: str) -> None:
+    """Remove a CWD from the summary store."""
+    with _store_lock:
+        _load_store()
+        _store.pop(cwd, None)
+        _save_store()
+
+
+# ── Background refresh ────────────────────────────────────────────────
+
+
+def track_session(cwd: str) -> None:
+    """Register a CWD for periodic background summary refresh."""
+    with _tracked_lock:
+        _tracked_cwds.add(cwd)
+    _ensure_bg_thread()
+
+
+def untrack_session(cwd: str) -> None:
+    """Stop refreshing summaries for a CWD."""
+    with _tracked_lock:
+        _tracked_cwds.discard(cwd)
+
+
+def _ensure_bg_thread() -> None:
+    global _bg_thread  # noqa: PLW0603
+    if _bg_thread is not None and _bg_thread.is_alive():
+        return
+    _bg_thread = threading.Thread(target=_bg_refresh_loop, daemon=True)
+    _bg_thread.start()
+
+
+def _bg_refresh_loop() -> None:
+    """Periodically check tracked sessions and regenerate stale summaries."""
+    while True:
+        time.sleep(_REFRESH_INTERVAL)
+        with _tracked_lock:
+            cwds = list(_tracked_cwds)
+        for cwd in cwds:
+            if get_cached_summary(cwd) is None:
+                log.debug("bg_refresh: regenerating summary for %s", cwd)
+                generate_and_cache_summary(cwd)
+
+
+# ── Internal helpers ──────────────────────────────────────────────────
+
+
+def _get_jsonl_mtime(cwd: str) -> float:
+    """Get the modification time of the most recent JSONL for a CWD."""
+    path = find_most_recent_jsonl(cwd)
+    if path:
+        try:
+            return os.path.getmtime(path)
+        except OSError:
+            pass
+    return 0.0
 
 
 def _extract_conversation_text(cwd: str) -> str:  # noqa: PLR0912
@@ -78,11 +232,8 @@ def _extract_conversation_text(cwd: str) -> str:  # noqa: PLR0912
     return "\n".join(parts)
 
 
-def generate_summary(cwd: str) -> str:
-    """Generate a conversation summary using the Claude CLI.
-
-    Returns the summary string, or empty string on failure.
-    """
+def _call_claude(cwd: str) -> str:
+    """Call claude -p to generate a summary. Returns empty string on failure."""
     claude_path = shutil.which("claude")
     if not claude_path:
         log.warning("summarize: claude CLI not found")
@@ -109,113 +260,3 @@ def generate_summary(cwd: str) -> str:
         log.warning("summarize: failed to run claude: %s", e)
 
     return ""
-
-
-def quick_summary(cwd: str, max_len: int = 60) -> str:
-    """Instant heuristic summary from JSONL — no API call.
-
-    Returns the first user message (the intent) truncated to max_len.
-    """
-    path = find_most_recent_jsonl(cwd)
-    if not path:
-        return ""
-
-    tail = read_jsonl_tail(path, tail_bytes=20000)
-    if not tail:
-        return ""
-
-    first_user_msg = ""
-    tool_count = 0
-    for line in tail.strip().splitlines():
-        try:
-            d = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
-            continue
-
-        dtype = d.get("type", "")
-        msg = d.get("message", {})
-        if not isinstance(msg, dict):
-            continue
-
-        if dtype == "user" and not first_user_msg:
-            content = msg.get("content", "")
-            if isinstance(content, str) and content.strip():
-                first_user_msg = content.strip().replace("\n", " ")
-
-        elif dtype == "assistant":
-            content = msg.get("content", [])
-            if isinstance(content, list):
-                tool_count += sum(1 for b in content if isinstance(b, dict) and b.get("type") == "tool_use")
-
-    if not first_user_msg:
-        return ""
-
-    summary = first_user_msg
-    if len(summary) > max_len:
-        summary = summary[: max_len - 1] + "…"
-    if tool_count:
-        summary += f" ({tool_count} tools)"
-    return summary
-
-
-def get_cached_summary(cwd: str) -> str | None:
-    """Return cached summary if JSONL hasn't changed since it was generated."""
-    entry = _summary_cache.get(cwd)
-    if not entry:
-        return None
-    summary, cached_mtime = entry
-    current_mtime = _get_jsonl_mtime(cwd)
-    if current_mtime and current_mtime <= cached_mtime:
-        return summary
-    return None
-
-
-def cache_summary(cwd: str, summary: str) -> None:
-    """Store a summary keyed to the current JSONL mtime."""
-    mtime = _get_jsonl_mtime(cwd) or time.time()
-    _summary_cache[cwd] = (summary, mtime)
-
-
-def _get_jsonl_mtime(cwd: str) -> float:
-    """Get the modification time of the most recent JSONL for a CWD."""
-    path = find_most_recent_jsonl(cwd)
-    if path:
-        try:
-            return os.path.getmtime(path)
-        except OSError:
-            pass
-    return 0.0
-
-
-def generate_and_cache_summary(cwd: str) -> str:
-    """Generate a rich summary via claude -p and cache it.
-
-    Limits concurrency to _MAX_CONCURRENT and deduplicates in-flight requests.
-    """
-    cached = get_cached_summary(cwd)
-    if cached is not None:
-        return cached
-
-    with _in_progress_lock:
-        if cwd in _in_progress:
-            return ""  # another thread is already generating for this CWD
-        _in_progress.add(cwd)
-
-    try:
-        if not _semaphore.acquire(timeout=1):
-            return ""  # too many concurrent summaries
-        try:
-            summary = generate_summary(cwd)
-            if summary:
-                cache_summary(cwd, summary)
-            return summary
-        finally:
-            _semaphore.release()
-    finally:
-        with _in_progress_lock:
-            _in_progress.discard(cwd)
-
-
-def invalidate_cache(cwd: str) -> None:
-    """Remove a CWD from the summary cache."""
-    _summary_cache.pop(cwd, None)

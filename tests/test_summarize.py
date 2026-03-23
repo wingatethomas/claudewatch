@@ -5,8 +5,8 @@ import subprocess
 from unittest.mock import patch
 
 from claudewatch.backend.services.summarize import (
+    _call_claude,
     _extract_conversation_text,
-    generate_summary,
 )
 
 
@@ -85,11 +85,11 @@ class TestExtractConversationText:
 
 
 class TestGenerateSummary:
-    """Tests for generate_summary."""
+    """Tests for _call_claude."""
 
     def test_returns_empty_when_claude_not_found(self, tmp_path):
         with patch("claudewatch.backend.services.summarize.shutil.which", return_value=None):
-            result = generate_summary("/Users/dev/myapp")
+            result = _call_claude("/Users/dev/myapp")
         assert result == ""
 
     def test_returns_empty_when_no_conversation(self, tmp_path):
@@ -97,7 +97,7 @@ class TestGenerateSummary:
             patch("claudewatch.backend.services.summarize.shutil.which", return_value="/usr/bin/claude"),
             patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")),
         ):
-            result = generate_summary("/Users/dev/myapp")
+            result = _call_claude("/Users/dev/myapp")
         assert result == ""
 
     def test_returns_summary_on_success(self, tmp_path):
@@ -113,7 +113,7 @@ class TestGenerateSummary:
             patch("claudewatch.backend.services.summarize.subprocess.run", return_value=mock_result),
             patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
-            result = generate_summary("/Users/dev/myapp")
+            result = _call_claude("/Users/dev/myapp")
         assert result == "Fixed auth middleware"
 
     def test_returns_empty_on_timeout(self, tmp_path):
@@ -131,7 +131,7 @@ class TestGenerateSummary:
             ),
             patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
-            result = generate_summary("/Users/dev/myapp")
+            result = _call_claude("/Users/dev/myapp")
         assert result == ""
 
     def test_returns_empty_on_nonzero_exit(self, tmp_path):
@@ -147,5 +147,5 @@ class TestGenerateSummary:
             patch("claudewatch.backend.services.summarize.subprocess.run", return_value=mock_result),
             patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
-            result = generate_summary("/Users/dev/myapp")
+            result = _call_claude("/Users/dev/myapp")
         assert result == ""

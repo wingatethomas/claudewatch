@@ -43,6 +43,7 @@ from claudewatch.backend.services.summarize import (
     cache_summary,
     generate_and_cache_summary,
     get_cached_summary,
+    track_session,
 )
 from claudewatch.backend.services.usage import get_session_model
 from claudewatch.ui.activity import show_activity
@@ -533,14 +534,18 @@ class ClaudeWatchApp(rumps.App):
         icon = _get_app_icon(s.host_app)
         if icon:
             item._menuitem.setImage_(icon)
-        # Sub-items: show cached summary if available, then actions
+        # Sub-items: show cached summary or option to generate
         cached = get_cached_summary(s.cwd)
         if cached:
             summary_item = rumps.MenuItem("Summary")
             _add_summary_lines(summary_item, cached)
             item.add(summary_item)
-            item.add(rumps.separator)
+        else:
+            item.add(rumps.MenuItem("Generate Summary", callback=self._make_summary_handler(s.cwd)))
+        item.add(rumps.separator)
         item.add(rumps.MenuItem("Activity", callback=self._make_activity_handler(s)))
+        # Track for background refresh
+        track_session(s.cwd)
         if pinned:
             item.add(rumps.MenuItem("Unpin", callback=self._make_unpin_handler(s.cwd)))
             item.add(rumps.MenuItem("Quit session", callback=self._make_quit_handler(s)))
@@ -564,6 +569,12 @@ class ClaudeWatchApp(rumps.App):
 
         def handler(_: rumps.MenuItem) -> None:
             show_activity(project, cwd, session_active=True)
+
+        return handler
+
+    def _make_summary_handler(self, cwd: str):  # noqa: ANN202
+        def handler(_: rumps.MenuItem) -> None:
+            threading.Thread(target=generate_and_cache_summary, args=(cwd,), daemon=True).start()
 
         return handler
 
