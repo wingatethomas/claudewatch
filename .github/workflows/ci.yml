@@ -12,9 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
-      - run: uv pip install ruff --system
-      - run: ruff check .
-      - run: ruff format --check .
+      - run: uvx ruff check .
+      - run: uvx ruff format --check .
 
   test:
     runs-on: macos-14  # ARM64 — PyObjC requires macOS
@@ -32,6 +31,5 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
       - name: Audit dependencies for known vulnerabilities
         run: |
-          uv pip install pip-audit --system
           uv export --no-hashes > requirements.txt
-          pip-audit -r requirements.txt
+          uvx pip-audit -r requirements.txt
