@@ -43,7 +43,7 @@ from claudewatch.ui.activity import show_activity
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
 _W = 500
-_H = 420
+_H = 560
 _PAD = 20
 _CARD_PAD = 16
 _CARD_GAP = 12
