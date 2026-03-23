@@ -5,13 +5,17 @@ import time
 
 from claudewatch.backend.helpers import _shell, run_applescript
 from claudewatch.backend.models import (
-    CLAUDE_PROJECTS_DIR,
     HOST_PROCESS_NAMES,
     IDLE_INDICATOR,
     PROMPT_KEYWORDS,
     ClaudeSession,
     HostApp,
     SessionStatus,
+)
+from claudewatch.backend.services.jsonl import (
+    find_most_recent_jsonl,
+    get_session_id_from_path,
+    read_jsonl_tail,
 )
 from claudewatch.backend.services.procinfo import (
     get_cwds,
@@ -156,69 +160,30 @@ def _extract_prompt_info(buffer: str) -> tuple[str, str]:
     return one_line, full_context
 
 
-
 def _get_session_id(cwd: str) -> str:
     """Get the most recent session ID for a CWD from the JSONL filename."""
-    proj_key = cwd.replace("/", "-")
-    proj_dir = os.path.join(CLAUDE_PROJECTS_DIR, proj_key)
-    if not os.path.isdir(proj_dir):
-        return ""
-    try:
-        jsonls = sorted(
-            [f for f in os.listdir(proj_dir) if f.endswith(".jsonl")],
-            key=lambda f: os.path.getmtime(os.path.join(proj_dir, f)),
-            reverse=True,
-        )
-    except OSError:
-        return ""
-    if jsonls:
-        return jsonls[0].removesuffix(".jsonl")
-    return ""
+    path = find_most_recent_jsonl(cwd)
+    return get_session_id_from_path(path) if path else ""
 
 
 def _check_jsonl_for_pending_tool(cwd: str) -> tuple[bool, str, str]:  # noqa: PLR0911, PLR0912
     """Check if the most recent JSONL for this CWD has a pending tool_use.
     Returns (is_pending, one_line_summary, full_context)."""
-    proj_key = cwd.replace("/", "-")
-    proj_dir = os.path.join(CLAUDE_PROJECTS_DIR, proj_key)
-    if not os.path.isdir(proj_dir):
-        return False, "", ""
-
-    try:
-        jsonls = sorted(
-            [os.path.join(proj_dir, f) for f in os.listdir(proj_dir) if f.endswith(".jsonl")],
-            key=os.path.getmtime,
-            reverse=True,
-        )
-    except OSError:
-        return False, "", ""
-
-    if not jsonls:
+    path = find_most_recent_jsonl(cwd)
+    if not path:
         return False, "", ""
 
     # Check file age: must be recent enough to be relevant (< 60s)
     # but stale enough that Claude has stopped writing (> 3s)
     try:
-        age = time.time() - os.path.getmtime(jsonls[0])
+        age = time.time() - os.path.getmtime(path)
         if age > _JSONL_MAX_AGE or age < _JSONL_MIN_AGE:
             return False, "", ""
     except OSError:
         return False, "", ""
 
-    # Validate resolved path stays within projects dir (prevent symlink traversal)
-    real_proj_dir = os.path.realpath(CLAUDE_PROJECTS_DIR)
-    real_jsonl = os.path.realpath(jsonls[0])
-    if not real_jsonl.startswith(real_proj_dir + os.sep):
-        return False, "", ""
-
-    # Read last ~10KB to find the last progress message
-    try:
-        with open(jsonls[0], "rb") as f:
-            f.seek(0, 2)
-            size = f.tell()
-            f.seek(max(0, size - 10240))
-            tail = f.read().decode("utf-8", errors="replace")
-    except OSError:
+    tail = read_jsonl_tail(path)
+    if not tail:
         return False, "", ""
 
     lines = tail.strip().splitlines()

@@ -5,7 +5,8 @@ import logging
 import os
 from datetime import UTC, datetime
 
-from claudewatch.backend.models import CLAUDE_PROJECTS_DIR
+from claudewatch.backend.models import CLAUDE_PROJECTS_DIR, proj_key_to_cwd
+from claudewatch.backend.services.jsonl import read_jsonl_tail
 
 log = logging.getLogger("claudewatch")
 
@@ -42,14 +43,16 @@ def record_session(session_id: str, project: str, cwd: str, model: str, host_app
     ts = datetime.now(tz=UTC).isoformat()
     # Remove existing entry for same CWD (keep only latest)
     entries = [e for e in entries if not (isinstance(e, dict) and e.get("cwd") == cwd)]
-    entries.append({
-        "session_id": session_id,
-        "project": project,
-        "cwd": cwd,
-        "model": model,
-        "host_app": host_app,
-        "ended_at": ts,
-    })
+    entries.append(
+        {
+            "session_id": session_id,
+            "project": project,
+            "cwd": cwd,
+            "model": model,
+            "host_app": host_app,
+            "ended_at": ts,
+        }
+    )
     # Cap at max
     if len(entries) > _MAX_ENTRIES:
         entries = entries[-_MAX_ENTRIES:]
@@ -82,40 +85,32 @@ def _seed_from_jsonl() -> list[dict]:
             # Most recent JSONL
             jsonls.sort(key=lambda f: os.path.getmtime(os.path.join(proj_dir, f)), reverse=True)
             session_id = jsonls[0].removesuffix(".jsonl")
-            cwd = proj_key.replace("-", "/", 1)  # rough reverse of cwd.replace("/", "-")
-            # Fix: the key is the full path with leading dash, e.g. "-Users-foo-bar"
-            if proj_key.startswith("-"):
-                cwd = "/" + proj_key[1:].replace("-", "/")
+            cwd = proj_key_to_cwd(proj_key)
             project = os.path.basename(cwd)
             # Get model from last few lines
             model = ""
             jsonl_path = os.path.join(proj_dir, jsonls[0])
-            try:
-                with open(jsonl_path, "rb") as f:
-                    f.seek(0, 2)
-                    size = f.tell()
-                    f.seek(max(0, size - 5120))
-                    tail = f.read().decode("utf-8", errors="replace")
-                for line in tail.strip().splitlines():
-                    try:
-                        d = json.loads(line)
-                        m = d.get("message", {}).get("model", "")
-                        if m:
-                            model = m
-                    except (json.JSONDecodeError, AttributeError):
-                        pass
-            except OSError:
-                pass
+            tail = read_jsonl_tail(jsonl_path, tail_bytes=5120)
+            for line in tail.strip().splitlines():
+                try:
+                    d = json.loads(line)
+                    m = d.get("message", {}).get("model", "")
+                    if m:
+                        model = m
+                except (json.JSONDecodeError, AttributeError):
+                    pass
 
             mtime = os.path.getmtime(jsonl_path)
-            entries.append({
-                "session_id": session_id,
-                "project": project,
-                "cwd": cwd,
-                "model": model,
-                "host_app": "Terminal",
-                "ended_at": datetime.fromtimestamp(mtime, tz=UTC).isoformat(),
-            })
+            entries.append(
+                {
+                    "session_id": session_id,
+                    "project": project,
+                    "cwd": cwd,
+                    "model": model,
+                    "host_app": "Terminal",
+                    "ended_at": datetime.fromtimestamp(mtime, tz=UTC).isoformat(),
+                }
+            )
     except OSError:
         return []
 

@@ -480,10 +480,14 @@ class ClaudeWatchApp(rumps.App):
             seg.addAttribute_value_range_("NSFont", _legend_font, r)
             dot_end = label.index("●") + 1
             seg.addAttribute_value_range_(
-                "NSColor", _STATUS_COLORS[status], NSRange(label.index("●"), 1),
+                "NSColor",
+                _STATUS_COLORS[status],
+                NSRange(label.index("●"), 1),
             )
             seg.addAttribute_value_range_(
-                "NSColor", NSColor.secondaryLabelColor(), NSRange(dot_end, len(label) - dot_end),
+                "NSColor",
+                NSColor.secondaryLabelColor(),
+                NSRange(dot_end, len(label) - dot_end),
             )
             legend_text.appendAttributedString_(seg)
         legend._menuitem.setAttributedTitle_(legend_text)
@@ -530,7 +534,6 @@ class ClaudeWatchApp(rumps.App):
 
         return handler
 
-
     def _make_click_handler(self, session: ClaudeSession):  # noqa: ANN202
         pid = session.pid
 
@@ -574,10 +577,7 @@ class ClaudeWatchApp(rumps.App):
 
                     quit_alert = NSAlert.alloc().init()
                     quit_alert.setMessageText_("Quit this session?")
-                    quit_alert.setInformativeText_(
-                        f"Cleanly exit {project}?\n"
-                        f"Resume later from the Pinned section."
-                    )
+                    quit_alert.setInformativeText_(f"Cleanly exit {project}?\nResume later from the Pinned section.")
                     quit_alert.addButtonWithTitle_("Quit Session")
                     quit_alert.addButtonWithTitle_("Keep Running")
                     if quit_alert.runModal() == NSAlertFirstButtonReturn:
@@ -654,7 +654,7 @@ class ClaudeWatchApp(rumps.App):
                 return
             # Open a new Terminal tab, cd to the project dir, and resume
             safe_cwd = escape_applescript(cwd) if cwd else ""
-            cd_cmd = f"cd \\\"{safe_cwd}\\\" && " if safe_cwd else ""
+            cd_cmd = f'cd \\"{safe_cwd}\\" && ' if safe_cwd else ""
             run_applescript(f"""
                 tell application "Terminal"
                     activate
@@ -700,10 +700,12 @@ def main() -> None:
             maxBytes=1_000_000,
             backupCount=3,
         )
-        file_handler.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)s %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
-        ))
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)s %(message)s",
+                datefmt="%Y-%m-%dT%H:%M:%S%z",
+            )
+        )
         logger.addHandler(file_handler)
 
     ClaudeWatchApp().run()

@@ -25,8 +25,8 @@ from AppKit import (
 from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
 
 from claudewatch.backend.helpers import escape_applescript, run_applescript
-from claudewatch.backend.models import CLAUDE_PROJECTS_DIR
 from claudewatch.backend.services.activity import ActivityEntry, parse_activity
+from claudewatch.backend.services.jsonl import find_most_recent_jsonl, get_session_id_from_path
 
 _W = 750
 _H = 500
@@ -46,19 +46,8 @@ _MONO_SMALL = NSFont.monospacedSystemFontOfSize_weight_(10.0, 0)
 
 def _get_session_id(cwd: str) -> str:
     """Get the most recent session ID for a CWD."""
-    proj_key = cwd.replace("/", "-")
-    proj_dir = os.path.join(CLAUDE_PROJECTS_DIR, proj_key)
-    if not os.path.isdir(proj_dir):
-        return ""
-    try:
-        jsonls = sorted(
-            [f for f in os.listdir(proj_dir) if f.endswith(".jsonl")],
-            key=lambda f: os.path.getmtime(os.path.join(proj_dir, f)),
-            reverse=True,
-        )
-    except OSError:
-        return ""
-    return jsonls[0].removesuffix(".jsonl") if jsonls else ""
+    path = find_most_recent_jsonl(cwd)
+    return get_session_id_from_path(path) if path else ""
 
 
 class _ActivityDelegate(NSObject):
@@ -160,7 +149,7 @@ def show_activity(project: str, cwd: str) -> None:  # noqa: PLR0915
         2,  # NSBackingStoreBuffered
         False,
     )
-    short_cwd = "~" + cwd[len(os.path.expanduser("~")):] if cwd.startswith(os.path.expanduser("~")) else cwd
+    short_cwd = "~" + cwd[len(os.path.expanduser("~")) :] if cwd.startswith(os.path.expanduser("~")) else cwd
     window.setTitle_(f"{project} — {short_cwd}")
     window.setDelegate_(delegate)
     window.setReleasedWhenClosed_(False)
