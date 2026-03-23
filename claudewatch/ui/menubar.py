@@ -606,8 +606,19 @@ class ClaudeWatchApp(rumps.App):
                     summary_sub = rumps.MenuItem("Summary")
                     _add_summary_lines(summary_sub, summary_text)
                     item.add(summary_sub)
-                    item.add(rumps.separator)
-                item.add(rumps.MenuItem("Activity", callback=self._make_history_activity_handler(proj, cwd)))
+                # Usage submenu with token breakdown + Activity
+                token_data = get_session_tokens(cwd)
+                breakdown = format_tokens_breakdown(token_data)
+                usage_item = rumps.MenuItem("Usage")
+                if breakdown:
+                    for uline in breakdown:
+                        uentry = rumps.MenuItem(f"  {uline}")
+                        uentry.set_callback(None)
+                        usage_item.add(uentry)
+                    usage_item.add(rumps.separator)
+                usage_item.add(rumps.MenuItem("Activity", callback=self._make_history_activity_handler(proj, cwd)))
+                item.add(usage_item)
+                item.add(rumps.separator)
                 if sid:
                     item.add(rumps.MenuItem("Resume", callback=self._make_resume_handler(sid, cwd)))
                 item.add(rumps.MenuItem("Remove", callback=self._make_remove_history_handler(cwd)))
