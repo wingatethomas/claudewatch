@@ -567,9 +567,11 @@ class ClaudeWatchApp(rumps.App):
                 alert.setInformativeText_(f"Add a note for {project}:")
                 alert.addButtonWithTitle_("Pin")
                 alert.addButtonWithTitle_("Cancel")
-                text_field = NSTextField.alloc().initWithFrame_(((0, 0), (300, 24)))
+                text_field = NSTextField.alloc().initWithFrame_(((0, 0), (350, 60)))
                 text_field.setStringValue_("")
                 text_field.setPlaceholderString_("Generating summary…")
+                text_field.setLineBreakMode_(0)  # NSLineBreakByWordWrapping
+                text_field.setUsesSingleLineMode_(False)
                 alert.setAccessoryView_(text_field)
                 alert.window().setInitialFirstResponder_(text_field)
 
