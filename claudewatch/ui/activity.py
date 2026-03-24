@@ -26,9 +26,9 @@ from AppKit import (
 )
 from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
 
+from claudewatch.backend.activity.service import ActivityEntry, parse_activity
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
-from claudewatch.backend.services.activity import ActivityEntry, parse_activity
-from claudewatch.backend.services.jsonl import find_most_recent_jsonl, get_session_id_from_path
+from claudewatch.backend.core.session_log.dependencies import get_session_log_service
 
 _W = 750
 _H = 500
@@ -50,8 +50,9 @@ _MONO_SMALL = NSFont.monospacedSystemFontOfSize_weight_(10.0, 0)
 
 def _get_session_id(cwd: str) -> str:
     """Get the most recent session ID for a CWD."""
-    path = find_most_recent_jsonl(cwd)
-    return get_session_id_from_path(path) if path else ""
+    svc = get_session_log_service()
+    path = svc.find_most_recent(cwd)
+    return svc.get_session_id(path) if path else ""
 
 
 class _ActivityDelegate(NSObject):
@@ -76,7 +77,7 @@ class _ActivityDelegate(NSObject):
             pb.setString_forType_(tv.string(), NSPasteboardTypeString)
 
     def openJsonlInFinder_(self, sender: objc.objc_object) -> None:
-        path = find_most_recent_jsonl(self._cwd)
+        path = get_session_log_service().find_most_recent(self._cwd)
         if path:
             subprocess.run(["open", "-R", path], check=False)  # noqa: S603, S607
 

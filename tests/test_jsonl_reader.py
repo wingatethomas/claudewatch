@@ -1,9 +1,9 @@
-"""Tests for claudewatch.backend.services.jsonl shared reader."""
+"""Tests for claudewatch.backend.core.session_log.jsonl shared reader."""
 
 import os
 from unittest.mock import patch
 
-from claudewatch.backend.services.jsonl import (
+from claudewatch.backend.core.session_log.jsonl import (
     find_most_recent_jsonl,
     get_session_id_from_path,
     read_jsonl_full,
@@ -15,13 +15,13 @@ class TestFindMostRecentJsonl:
     """Tests for find_most_recent_jsonl."""
 
     def test_returns_none_for_missing_dir(self, tmp_path):
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
             assert find_most_recent_jsonl("/Users/dev/myapp") is None
 
     def test_returns_none_for_empty_dir(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
         proj_dir.mkdir(parents=True)
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             assert find_most_recent_jsonl("/Users/dev/myapp") is None
 
     def test_returns_most_recent_jsonl(self, tmp_path):
@@ -36,7 +36,7 @@ class TestFindMostRecentJsonl:
         new.write_text("{}\n")
         os.utime(new, (2000, 2000))
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = find_most_recent_jsonl("/Users/dev/myapp")
         assert result is not None
         assert result.endswith("new.jsonl")
@@ -50,7 +50,7 @@ class TestFindMostRecentJsonl:
         real_file.write_text("{}\n")
         (proj_dir / "session.jsonl").symlink_to(real_file)
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             assert find_most_recent_jsonl("/Users/dev/myapp") is None
 
     def test_ignores_non_jsonl_files(self, tmp_path):
@@ -59,7 +59,7 @@ class TestFindMostRecentJsonl:
         (proj_dir / "notes.txt").write_text("not jsonl")
         (proj_dir / "session.jsonl").write_text("{}\n")
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = find_most_recent_jsonl("/Users/dev/myapp")
         assert result is not None
         assert result.endswith("session.jsonl")
