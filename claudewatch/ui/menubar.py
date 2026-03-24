@@ -42,6 +42,7 @@ from claudewatch.backend.models import (
     HostApp,
     SessionStatus,
 )
+from claudewatch.backend.paths import LOG_PATH, ensure_data_dir
 from claudewatch.backend.repositories.bookmarks import get_pinned_cwds, get_pins, pin_session, unpin_session
 from claudewatch.backend.repositories.config import get_setting
 from claudewatch.backend.repositories.history import get_history, record_session, remove_history_entry
@@ -1079,23 +1080,21 @@ def main() -> None:
     logger.setLevel(logging.INFO)
     logger.propagate = False  # prevent root logger from printing to stderr
 
-    audit_dir = os.path.expanduser("~/.claude")
-    if os.path.isdir(audit_dir):
-        audit_path = os.path.join(audit_dir, "claudewatch.log")
-        if not os.path.exists(audit_path):
-            os.open(audit_path, os.O_CREAT | os.O_WRONLY, 0o600)
-        file_handler = logging.handlers.RotatingFileHandler(
-            audit_path,
-            maxBytes=1_000_000,
-            backupCount=3,
+    ensure_data_dir()
+    if not os.path.exists(LOG_PATH):
+        os.open(LOG_PATH, os.O_CREAT | os.O_WRONLY, 0o600)
+    file_handler = logging.handlers.RotatingFileHandler(
+        LOG_PATH,
+        maxBytes=1_000_000,
+        backupCount=3,
+    )
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)s %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S%z",
         )
-        file_handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s %(levelname)s %(message)s",
-                datefmt="%Y-%m-%dT%H:%M:%S%z",
-            )
-        )
-        logger.addHandler(file_handler)
+    )
+    logger.addHandler(file_handler)
 
     signal.signal(signal.SIGINT, lambda *_: AppHelper.stopEventLoop())
 
