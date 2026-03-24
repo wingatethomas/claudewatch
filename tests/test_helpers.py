@@ -1,29 +1,29 @@
-"""Tests for claudewatch.backend.helpers — _shell and escape_applescript."""
+"""Tests for claudewatch.backend.core.helpers — _shell and escape_applescript."""
 
 import subprocess
 from unittest.mock import MagicMock, patch
 
-from claudewatch.backend.helpers import _shell, escape_applescript, run_applescript
+from claudewatch.backend.core.helpers import _shell, escape_applescript, run_applescript
 
 
 class TestShell:
     def test_returns_stdout(self):
-        with patch("claudewatch.backend.helpers.subprocess.run") as mock_run:
+        with patch("claudewatch.backend.core.helpers.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(stdout="  hello world  ")
             assert _shell("echo hello") == "hello world"
 
     def test_returns_empty_on_timeout(self):
-        with patch("claudewatch.backend.helpers.subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 5)):
+        with patch("claudewatch.backend.core.helpers.subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 5)):
             assert _shell("sleep 100") == ""
 
     def test_returns_empty_on_oserror(self):
-        with patch("claudewatch.backend.helpers.subprocess.run", side_effect=OSError("nope")):
+        with patch("claudewatch.backend.core.helpers.subprocess.run", side_effect=OSError("nope")):
             assert _shell("bad") == ""
 
 
 class TestRunApplescript:
     def test_returns_result(self):
-        with patch("claudewatch.backend.helpers.NSAppleScript") as mock_cls:
+        with patch("claudewatch.backend.core.helpers.NSAppleScript") as mock_cls:
             mock_script = MagicMock()
             mock_result = MagicMock()
             mock_result.stringValue.return_value = "hello"
@@ -33,7 +33,7 @@ class TestRunApplescript:
             assert run_applescript('return "hello"') == "hello"
 
     def test_returns_empty_on_error(self):
-        with patch("claudewatch.backend.helpers.NSAppleScript") as mock_cls:
+        with patch("claudewatch.backend.core.helpers.NSAppleScript") as mock_cls:
             mock_script = MagicMock()
             mock_script.executeAndReturnError_.return_value = (None, {"NSAppleScriptErrorMessage": "fail"})
             mock_cls.alloc.return_value.initWithSource_.return_value = mock_script
@@ -41,7 +41,7 @@ class TestRunApplescript:
             assert run_applescript("bad script") == ""
 
     def test_returns_empty_when_result_has_no_string_value(self):
-        with patch("claudewatch.backend.helpers.NSAppleScript") as mock_cls:
+        with patch("claudewatch.backend.core.helpers.NSAppleScript") as mock_cls:
             mock_script = MagicMock()
             mock_result = MagicMock()
             mock_result.stringValue.return_value = None
