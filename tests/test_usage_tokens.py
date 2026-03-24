@@ -13,7 +13,7 @@ from claudewatch.backend.services.usage import (
 )
 
 
-def _make_svc(
+def _make_service(
     find_most_recent: str | None = None,
     read_full: list[str] | None = None,
 ) -> UsageService:
@@ -81,12 +81,12 @@ class TestUsageServiceGetTokens:
     """Tests for UsageService.get_tokens."""
 
     def test_returns_empty_when_no_jsonl(self):
-        svc = _make_svc(find_most_recent=None)
+        svc = _make_service(find_most_recent=None)
         result = svc.get_tokens("/Users/dev/myapp")
         assert result == {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
 
     def test_returns_empty_when_file_gone(self, tmp_path):
-        svc = _make_svc(find_most_recent=str(tmp_path / "gone.jsonl"))
+        svc = _make_service(find_most_recent=str(tmp_path / "gone.jsonl"))
         result = svc.get_tokens("/Users/dev/myapp")
         assert result == {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
 
@@ -112,7 +112,7 @@ class TestUsageServiceGetTokens:
         ]
         jsonl_file.write_text("\n".join(lines) + "\n")
 
-        svc = _make_svc(find_most_recent=str(jsonl_file), read_full=lines)
+        svc = _make_service(find_most_recent=str(jsonl_file), read_full=lines)
         result = svc.get_tokens("/Users/dev/myapp")
         assert result["input"] == 110
         assert result["output"] == 55
@@ -124,13 +124,13 @@ class TestUsageServiceGetTokens:
         line = json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 42, "output_tokens": 10}}})
         jsonl_file.write_text(line + "\n")
 
-        svc = _make_svc(find_most_recent=str(jsonl_file), read_full=[line])
+        svc = _make_service(find_most_recent=str(jsonl_file), read_full=[line])
         r1 = svc.get_tokens("/Users/dev/myapp")
         r2 = svc.get_tokens("/Users/dev/myapp")
         assert r1 == r2
         assert r1["input"] == 42
         # read_full should only be called once (second call uses cache)
-        assert svc._session_log_svc.read_full.call_count == 1
+        assert svc._session_log_service.read_full.call_count == 1
 
     def test_skips_invalid_json(self, tmp_path):
         jsonl_file = tmp_path / "session.jsonl"
@@ -140,7 +140,7 @@ class TestUsageServiceGetTokens:
         ]
         jsonl_file.write_text("\n".join(lines) + "\n")
 
-        svc = _make_svc(find_most_recent=str(jsonl_file), read_full=lines)
+        svc = _make_service(find_most_recent=str(jsonl_file), read_full=lines)
         result = svc.get_tokens("/Users/dev/myapp")
         assert result["input"] == 5
 
@@ -150,8 +150,8 @@ class TestUsageServiceGetTokens:
         line = json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 7, "output_tokens": 2}}})
         jsonl_file.write_text(line + "\n")
 
-        svc1 = _make_svc(find_most_recent=str(jsonl_file), read_full=[line])
-        svc2 = _make_svc(find_most_recent=str(jsonl_file), read_full=[line])
+        svc1 = _make_service(find_most_recent=str(jsonl_file), read_full=[line])
+        svc2 = _make_service(find_most_recent=str(jsonl_file), read_full=[line])
         svc1.get_tokens("/Users/dev/myapp")
         assert len(svc1._token_cache) == 1
         assert len(svc2._token_cache) == 0

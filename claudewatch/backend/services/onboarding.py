@@ -38,9 +38,9 @@ TIPS: dict[str, dict[str, str]] = {
 class OnboardingService(BaseService):
     """Manages onboarding tips and session-count tracking."""
 
-    def __init__(self, notification_svc: NotificationService) -> None:
+    def __init__(self, notification_service: NotificationService) -> None:
         super().__init__()
-        self._notification_svc = notification_svc
+        self._notification_service = notification_service
 
     def _shown_tips(self) -> list[str]:
         """Return the list of already-shown tip IDs."""
@@ -139,42 +139,42 @@ class OnboardingService(BaseService):
 # Backward-compatible module-level functions
 # ---------------------------------------------------------------------------
 
-_default_svc: OnboardingService | None = None
+_default_service: OnboardingService | None = None
 
 
-def _get_default_svc() -> OnboardingService:
+def _get_default_service() -> OnboardingService:
     """Lazily create a default OnboardingService instance."""
-    global _default_svc  # noqa: PLW0603
-    if _default_svc is None:
-        _default_svc = OnboardingService(NotificationService())
-    return _default_svc
+    global _default_service  # noqa: PLW0603
+    if _default_service is None:
+        _default_service = OnboardingService(NotificationService())
+    return _default_service
 
 
 def is_tip_shown(tip_id: str) -> bool:
     """Check whether *tip_id* has already been delivered."""
-    return _get_default_svc().is_tip_shown(tip_id)
+    return _get_default_service().is_tip_shown(tip_id)
 
 
 def show_tip(tip_id: str) -> bool:
     """Deliver an onboarding tip via terminal-notifier if not already shown."""
-    return _get_default_svc().show_tip(tip_id)
+    return _get_default_service().show_tip(tip_id)
 
 
 def get_session_count() -> int:
     """Return the cumulative number of unique sessions observed."""
-    return _get_default_svc().get_session_count()
+    return _get_default_service().get_session_count()
 
 
 def increment_session_count(n: int = 1) -> int:
     """Add *n* to the cumulative session counter and return the new total."""
-    return _get_default_svc().increment_session_count(n)
+    return _get_default_service().increment_session_count(n)
 
 
 def replay_all_tips() -> None:
     """Reset and deliver all tips with a small delay between each."""
-    _get_default_svc().replay_all_tips()
+    _get_default_service().replay_all_tips()
 
 
 def reset_tips() -> None:
     """Clear all shown tips so they can be replayed."""
-    _get_default_svc()._reset_tips()
+    _get_default_service()._reset_tips()
