@@ -4,7 +4,9 @@ import time
 from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.models import ClaudeSession, HostApp, SessionStatus
-from claudewatch.backend.services.notifications import NotificationManager
+from claudewatch.backend.services.notifications import NotificationManager, NotificationService
+
+_MOD = "claudewatch.backend.services.notifications"
 
 
 def _make_session(**kwargs):
@@ -21,12 +23,23 @@ def _make_session(**kwargs):
     return ClaudeSession(**defaults)
 
 
+class TestNotificationServiceIsBaseService:
+    """NotificationService extends BaseService and has backward-compat alias."""
+
+    def test_notification_manager_is_alias(self):
+        assert NotificationManager is NotificationService
+
+    def test_instance_is_notification_service(self):
+        svc = NotificationService()
+        assert isinstance(svc, NotificationService)
+
+
 class TestNotificationManagerBasics:
     """Basic notification manager behavior."""
 
     def test_no_terminal_notifier_skips(self):
         mgr = NotificationManager()
-        with patch("claudewatch.backend.services.notifications.TERMINAL_NOTIFIER", None):
+        with patch(f"{_MOD}.TERMINAL_NOTIFIER", None):
             s = _make_session(status=SessionStatus.ATTENTION)
             mgr.notify_if_needed([s])
         assert s.pid not in mgr._notified_pids
@@ -34,8 +47,8 @@ class TestNotificationManagerBasics:
     def test_notifications_disabled_skips(self):
         mgr = NotificationManager()
         with (
-            patch("claudewatch.backend.services.notifications.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch("claudewatch.backend.services.notifications.get_setting", return_value=False),
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.get_setting", return_value=False),
         ):
             s = _make_session(status=SessionStatus.ATTENTION)
             mgr.notify_if_needed([s])
@@ -45,8 +58,8 @@ class TestNotificationManagerBasics:
         mgr = NotificationManager()
         mgr._notified_pids = {999}
         with (
-            patch("claudewatch.backend.services.notifications.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch("claudewatch.backend.services.notifications.get_setting", return_value=True),
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.get_setting", return_value=True),
         ):
             s = _make_session(pid=100, status=SessionStatus.WORKING)
             mgr.notify_if_needed([s])
@@ -57,10 +70,10 @@ class TestNotificationManagerBasics:
         mgr._notified_pids = {100}
         mock_run = MagicMock()
         with (
-            patch("claudewatch.backend.services.notifications.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch("claudewatch.backend.services.notifications.get_setting", return_value=True),
-            patch("claudewatch.backend.services.notifications.subprocess.run", mock_run),
-            patch("claudewatch.backend.services.notifications._get_frontmost_window", return_value=("Finder", "")),
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.subprocess.run", mock_run),
+            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
             s = _make_session(pid=100, status=SessionStatus.ATTENTION)
             mgr.notify_if_needed([s])
@@ -76,10 +89,10 @@ class TestNotificationManagerCooldown:
         mgr.last_notification_time = time.time()
         mock_run = MagicMock()
         with (
-            patch("claudewatch.backend.services.notifications.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch("claudewatch.backend.services.notifications.get_setting", return_value=True),
-            patch("claudewatch.backend.services.notifications.subprocess.run", mock_run),
-            patch("claudewatch.backend.services.notifications._get_frontmost_window", return_value=("Finder", "")),
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.subprocess.run", mock_run),
+            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             mgr.notify_if_needed([s])
@@ -91,10 +104,10 @@ class TestNotificationManagerCooldown:
         mgr.last_notification_time = time.time() - 60
         mock_run = MagicMock()
         with (
-            patch("claudewatch.backend.services.notifications.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch("claudewatch.backend.services.notifications.get_setting", return_value=True),
-            patch("claudewatch.backend.services.notifications.subprocess.run", mock_run),
-            patch("claudewatch.backend.services.notifications._get_frontmost_window", return_value=("Finder", "")),
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.subprocess.run", mock_run),
+            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             mgr.notify_if_needed([s])
@@ -109,11 +122,11 @@ class TestNotificationManagerFrontWindow:
         mgr.last_notification_time = 0.0
         mock_run = MagicMock()
         with (
-            patch("claudewatch.backend.services.notifications.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch("claudewatch.backend.services.notifications.get_setting", return_value=True),
-            patch("claudewatch.backend.services.notifications.subprocess.run", mock_run),
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.subprocess.run", mock_run),
             patch(
-                "claudewatch.backend.services.notifications._get_frontmost_window",
+                f"{_MOD}._get_frontmost_window",
                 return_value=("Terminal", "myproject — claude"),
             ),
         ):
@@ -126,11 +139,11 @@ class TestNotificationManagerFrontWindow:
         mgr.last_notification_time = 0.0
         mock_run = MagicMock()
         with (
-            patch("claudewatch.backend.services.notifications.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch("claudewatch.backend.services.notifications.get_setting", return_value=True),
-            patch("claudewatch.backend.services.notifications.subprocess.run", mock_run),
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.subprocess.run", mock_run),
             patch(
-                "claudewatch.backend.services.notifications._get_frontmost_window",
+                f"{_MOD}._get_frontmost_window",
                 return_value=("Terminal", "other-project — claude"),
             ),
         ):
@@ -140,18 +153,66 @@ class TestNotificationManagerFrontWindow:
 
 
 class TestNotificationSend:
-    """Verify subprocess call."""
+    """Verify subprocess call and send() method."""
 
     def test_pid_added_to_notified_set(self):
         mgr = NotificationManager()
         mgr.last_notification_time = 0.0
         mock_run = MagicMock()
         with (
-            patch("claudewatch.backend.services.notifications.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch("claudewatch.backend.services.notifications.get_setting", return_value=True),
-            patch("claudewatch.backend.services.notifications.subprocess.run", mock_run),
-            patch("claudewatch.backend.services.notifications._get_frontmost_window", return_value=("Finder", "")),
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.subprocess.run", mock_run),
+            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
             s = _make_session(pid=500, status=SessionStatus.ATTENTION)
             mgr.notify_if_needed([s])
         assert 500 in mgr._notified_pids
+
+    def test_send_calls_terminal_notifier(self):
+        svc = NotificationService()
+        mock_run = MagicMock()
+        with (
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.subprocess.run", mock_run),
+        ):
+            svc.send("My Title", "My Subtitle", "My Message")
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        assert cmd[0] == "/usr/bin/tn"
+        assert "-title" in cmd
+        assert "My Title" in cmd
+        assert "My Subtitle" in cmd
+        assert "My Message" in cmd
+
+    def test_send_skips_without_terminal_notifier(self):
+        svc = NotificationService()
+        mock_run = MagicMock()
+        with (
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", None),
+            patch(f"{_MOD}.subprocess.run", mock_run),
+        ):
+            svc.send("Title", "Sub", "Msg")
+        mock_run.assert_not_called()
+
+    def test_send_truncates_long_message(self):
+        svc = NotificationService()
+        mock_run = MagicMock()
+        long_msg = "x" * 500
+        with (
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.subprocess.run", mock_run),
+        ):
+            svc.send("Title", "Sub", long_msg)
+        cmd = mock_run.call_args[0][0]
+        msg_idx = cmd.index("-message") + 1
+        assert len(cmd[msg_idx]) == 200
+
+    def test_send_handles_oserror(self):
+        svc = NotificationService()
+        with (
+            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
+            patch(f"{_MOD}.subprocess.run", side_effect=OSError("not found")),
+        ):
+            # Should not raise
+            svc.send("Title", "Sub", "Msg")
