@@ -2,7 +2,7 @@
 
 import os
 
-from claudewatch.backend.models import (
+from claudewatch.backend.core.models import (
     STATUS_INDICATOR,
     ClaudeSession,
     HostApp,
