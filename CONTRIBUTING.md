@@ -48,7 +48,7 @@ claudewatch/
 │       ├── bookmarks.py       # Pinned session bookmarks
 │       └── history.py         # Session history (auto-recorded)
 └── ui/
-    ├── menubar.py             # Menu bar view (rumps NSStatusItem)
+    ├── menubar.py             # Menu bar view (AppKit NSStatusBar)
     ├── focus.py               # Window focusing (AppleScript, CGEvent)
     ├── preferences.py         # Preferences window (PyObjC NSWindow)
     └── activity.py            # Activity feed window
