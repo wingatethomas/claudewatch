@@ -33,9 +33,9 @@ def proj_key_to_cwd(proj_key: str) -> str:
 def _resolve_path_segments(parts: list[str]) -> str:
     """Build a filesystem path from hyphen-split segments.
 
-    Uses a look-ahead approach: when a slash-separated path doesn't exist,
-    accumulates segments with hyphens until a valid directory is found.
-    Handles multi-hyphen names like 'custom-domain-infra'.
+    Uses a longest-match approach: when multiple hyphen-joined combinations
+    exist on disk, picks the longest one to avoid incorrect splits.
+    e.g. 'backend-api-auth-rework' is preferred over 'backend-api' + 'auth/rework'.
     """
     if not parts:
         return "/"
@@ -43,27 +43,24 @@ def _resolve_path_segments(parts: list[str]) -> str:
     path = "/" + parts[0]
     i = 1
     while i < len(parts):
-        slash_path = path + "/" + parts[i]
-        if os.path.exists(slash_path):
-            path = slash_path
-            i += 1
+        # Try all possible hyphen-joined combinations, longest first
+        best_candidate = ""
+        best_j = -1
+        accumulated = parts[i]
+        for j in range(i + 1, len(parts) + 1):
+            candidate = path + "/" + accumulated
+            if os.path.exists(candidate):
+                best_candidate = candidate
+                best_j = j
+            if j < len(parts):
+                accumulated += "-" + parts[j]
+        if best_j > 0:
+            path = best_candidate
+            i = best_j
         else:
-            # Accumulate with hyphens until we find an existing path
-            accumulated = parts[i]
-            found = False
-            for j in range(i + 1, len(parts) + 1):
-                candidate = path + "/" + accumulated
-                if os.path.exists(candidate):
-                    path = candidate
-                    i = j
-                    found = True
-                    break
-                if j < len(parts):
-                    accumulated += "-" + parts[j]
-            if not found:
-                # Nothing matched — default to slash
-                path = slash_path
-                i += 1
+            # Nothing matched — default to slash
+            path = path + "/" + parts[i]
+            i += 1
     return path
 
 
