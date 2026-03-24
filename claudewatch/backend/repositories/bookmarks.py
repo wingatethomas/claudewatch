@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from claudewatch.backend.paths import PINS_PATH
+from claudewatch.backend.core.paths import PINS_PATH
 from claudewatch.backend.repositories.config import get_setting
 
 log = logging.getLogger("claudewatch")

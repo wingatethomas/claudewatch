@@ -12,8 +12,8 @@ from Quartz import (
     kCGMouseButtonLeft,
 )
 
-from claudewatch.backend.helpers import escape_applescript, run_applescript
-from claudewatch.backend.models import ClaudeSession, HostApp
+from claudewatch.backend.core.helpers import escape_applescript, run_applescript
+from claudewatch.backend.core.models import ClaudeSession, HostApp
 
 log = logging.getLogger("claudewatch")
 

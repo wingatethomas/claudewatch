@@ -15,7 +15,7 @@ import subprocess
 import threading
 import time
 
-from claudewatch.backend.paths import SUMMARIES_PATH
+from claudewatch.backend.core.paths import SUMMARIES_PATH
 from claudewatch.backend.services.jsonl import find_most_recent_jsonl, read_jsonl_tail
 
 log = logging.getLogger("claudewatch")
