@@ -226,31 +226,3 @@ rm -rf "{tmp_dir}"
         if on_ready:
             on_ready()
         return True
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible module-level functions (used by UI layer)
-# ---------------------------------------------------------------------------
-
-_default_service = UpdateService()
-
-
-def check_for_update() -> dict[str, str] | None:
-    """Check for a newer release. Delegates to the default UpdateService instance."""
-    dto = _default_service.check()
-    if dto is None:
-        return None
-    return {"tag": dto.tag}
-
-
-def get_cached_update() -> dict[str, str] | None:
-    """Return the cached update info without hitting the network."""
-    dto = _default_service.get_cached()
-    if dto is None:
-        return None
-    return {"tag": dto.tag}
-
-
-def download_and_apply_update(tag: str, on_ready: Callable[[], None] | None = None) -> bool:
-    """Download a release and prepare the swap. Delegates to the default UpdateService instance."""
-    return _default_service.download_and_apply(tag, on_ready)
