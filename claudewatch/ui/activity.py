@@ -26,7 +26,7 @@ from AppKit import (
 )
 from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
 
-from claudewatch.backend.helpers import escape_applescript, run_applescript
+from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.services.activity import ActivityEntry, parse_activity
 from claudewatch.backend.services.jsonl import find_most_recent_jsonl, get_session_id_from_path
 

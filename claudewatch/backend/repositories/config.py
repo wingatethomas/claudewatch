@@ -3,7 +3,7 @@
 import json
 import logging
 
-from claudewatch.backend.paths import SETTINGS_PATH
+from claudewatch.backend.core.paths import SETTINGS_PATH
 
 log = logging.getLogger("claudewatch")
 

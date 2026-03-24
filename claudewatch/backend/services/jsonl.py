@@ -2,7 +2,7 @@
 
 import os
 
-from claudewatch.backend.models import CLAUDE_PROJECTS_DIR, cwd_to_proj_key
+from claudewatch.backend.core.models import CLAUDE_PROJECTS_DIR, cwd_to_proj_key
 
 
 def find_most_recent_jsonl(cwd: str) -> str | None:
