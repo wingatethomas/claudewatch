@@ -1,4 +1,4 @@
-"""Tests for claudewatch.backend.services.activity."""
+"""Tests for claudewatch.backend.activity.service."""
 
 import json
 import os
@@ -6,14 +6,14 @@ from unittest.mock import patch
 
 import pytest
 
-from claudewatch.backend.core.dto import ActivityEventDTO
-from claudewatch.backend.core.services.session_log import SessionLogService
-from claudewatch.backend.services.activity import (
+from claudewatch.backend.activity.service import (
     ActivityService,
     _parse_tool_use,
     _truncate,
     parse_activity,
 )
+from claudewatch.backend.core.dto import ActivityEventDTO
+from claudewatch.backend.core.session_log.service import SessionLogService
 
 
 def _write_jsonl(path, entries):
@@ -89,14 +89,14 @@ class TestParseActivity:
     """Tests for parse_activity."""
 
     def test_empty_when_no_project_dir(self, tmp_path):
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert result == []
 
     def test_empty_when_no_jsonl_files(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
         proj_dir.mkdir(parents=True)
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert result == []
 
@@ -109,7 +109,7 @@ class TestParseActivity:
                 {"type": "user", "message": {"content": "hello world"}, "timestamp": "2026-01-01T00:00:00Z"},
             ],
         )
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].kind == "user"
@@ -128,7 +128,7 @@ class TestParseActivity:
                 },
             ],
         )
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].kind == "assistant"
@@ -147,7 +147,7 @@ class TestParseActivity:
                 },
             ],
         )
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].kind == "tool"
@@ -168,7 +168,7 @@ class TestParseActivity:
                 },
             ],
         )
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].kind == "assistant"
@@ -184,7 +184,7 @@ class TestParseActivity:
                 {"type": "user", "message": {"content": "third"}, "timestamp": "2026-01-01T00:02:00Z"},
             ],
         )
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert len(result) == 3
         assert result[0].detail == "third"
@@ -198,7 +198,7 @@ class TestParseActivity:
             for i in range(10)
         ]
         _write_jsonl(proj_dir / "session.jsonl", entries)
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp", max_entries=3)
         assert len(result) == 3
         # Should keep the last 3 (newest)
@@ -211,7 +211,7 @@ class TestParseActivity:
         with open(jsonl, "w") as f:
             f.write("not valid json\n")
             f.write(json.dumps({"type": "user", "message": {"content": "valid"}, "timestamp": ""}) + "\n")
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].detail == "valid"
@@ -226,7 +226,7 @@ class TestParseActivity:
                 {"type": "user", "message": {"content": "   "}, "timestamp": ""},
             ],
         )
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert result == []
 
@@ -239,7 +239,7 @@ class TestParseActivity:
                 {"type": "user", "message": "string-not-dict", "timestamp": ""},
             ],
         )
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert result == []
 
@@ -259,7 +259,7 @@ class TestParseActivity:
         symlink = proj_dir / "session.jsonl"
         symlink.symlink_to(real_jsonl)
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert result == []
 
@@ -284,7 +284,7 @@ class TestParseActivity:
         )
         os.utime(new, (2000, 2000))
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].detail == "new msg"
@@ -298,7 +298,7 @@ class TestParseActivity:
                 {"type": "assistant", "message": {"content": "string-not-list"}, "timestamp": ""},
             ],
         )
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert result == []
 
@@ -319,7 +319,7 @@ class TestActivityService:
             ],
         )
         svc = self._make_service()
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp")
         assert len(result) == 1
         assert isinstance(result[0], ActivityEventDTO)
@@ -328,7 +328,7 @@ class TestActivityService:
 
     def test_empty_when_no_jsonl(self, tmp_path):
         svc = self._make_service()
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp")
         assert result == []
 
@@ -346,7 +346,7 @@ class TestActivityService:
             ],
         )
         svc = self._make_service()
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp")
         assert len(result) == 1
         assert isinstance(result[0], ActivityEventDTO)
@@ -362,7 +362,7 @@ class TestActivityService:
         ]
         _write_jsonl(proj_dir / "session.jsonl", entries)
         svc = self._make_service()
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp", max_entries=3)
         assert len(result) == 3
         assert result[0].detail == "msg-9"
@@ -378,7 +378,7 @@ class TestActivityService:
             ],
         )
         svc = self._make_service()
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp")
         assert result[0].detail == "second"
         assert result[1].detail == "first"
@@ -393,7 +393,7 @@ class TestActivityService:
             ],
         )
         svc = self._make_service()
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp")
 
         with pytest.raises(AttributeError):

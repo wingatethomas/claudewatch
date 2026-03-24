@@ -1,11 +1,11 @@
-"""Tests for claudewatch.backend.services.updates."""
+"""Tests for claudewatch.backend.updates.service."""
 
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import claudewatch.backend.services.updates as _updates_mod
+import claudewatch.backend.updates.service as _updates_mod
 from claudewatch.backend.core.dto import UpdateInfoDTO
-from claudewatch.backend.services.updates import (
+from claudewatch.backend.updates.service import (
     UpdateService,
     _get_download_url,
     _parse_version,
@@ -13,7 +13,7 @@ from claudewatch.backend.services.updates import (
     get_cached_update,
 )
 
-MODULE = "claudewatch.backend.services.updates"
+MODULE = "claudewatch.backend.updates.service"
 
 
 class TestParseVersion:
