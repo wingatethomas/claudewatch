@@ -182,7 +182,3 @@ class NotificationService(BaseService):
 
         live_attention_pids = {s.pid for s in attention}
         self._notified_pids &= live_attention_pids
-
-
-# Backward-compatible alias
-NotificationManager = NotificationService

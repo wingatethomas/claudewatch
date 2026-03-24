@@ -1,17 +1,11 @@
 """Tests for pure functions in claudewatch.backend.detection.service."""
 
-from unittest.mock import patch
-
 from claudewatch.backend.core.models import HostApp, SessionStatus
 from claudewatch.backend.detection.service import (
-    _batch_lsof_cwds,
-    _batch_ps_info,
-    _detect_host_app,
     _determine_status,
     _extract_last_output,
     _extract_prompt_info,
     _format_tool_use,
-    _host_app_cache,
     _match_terminal_window,
 )
 
@@ -113,67 +107,6 @@ class TestDetermineStatus:
         assert _determine_status("") == SessionStatus.WORKING
 
 
-class TestBatchPsInfo:
-    """Tests for _batch_ps_info() with mocked procinfo output."""
-
-    @patch("claudewatch.backend.detection.service.get_process_info")
-    def test_returns_process_info(self, mock_get):
-        mock_get.return_value = {
-            1234: {"tty": "ttys001", "ppid": 5678, "comm": "/usr/bin/zsh"},
-            1235: {"tty": "ttys002", "ppid": 5679, "comm": "/usr/bin/bash"},
-        }
-        result = _batch_ps_info([1234, 1235])
-        assert 1234 in result
-        assert result[1234]["tty"] == "ttys001"
-        assert result[1234]["ppid"] == 5678
-        assert result[1234]["comm"] == "/usr/bin/zsh"
-        assert result[1235]["tty"] == "ttys002"
-
-    @patch("claudewatch.backend.detection.service.get_process_info")
-    def test_empty_pids(self, mock_get):
-        mock_get.return_value = {}
-        assert _batch_ps_info([]) == {}
-
-    @patch("claudewatch.backend.detection.service.get_process_info")
-    def test_comm_with_path(self, mock_get):
-        mock_get.return_value = {
-            1234: {"tty": "ttys001", "ppid": 5678, "comm": "/Applications/Code Helper (Plugin)"},
-        }
-        result = _batch_ps_info([1234])
-        assert result[1234]["comm"] == "/Applications/Code Helper (Plugin)"
-
-
-class TestBatchLsofCwds:
-    """Tests for _batch_lsof_cwds() with mocked procinfo output."""
-
-    @patch("claudewatch.backend.detection.service.get_cwds")
-    def test_returns_cwds(self, mock_get):
-        mock_get.return_value = {
-            1234: "/Users/dev/myapp",
-            1235: "/Users/dev/other",
-        }
-        result = _batch_lsof_cwds([1234, 1235])
-        assert result[1234] == "/Users/dev/myapp"
-        assert result[1235] == "/Users/dev/other"
-
-    @patch("claudewatch.backend.detection.service.get_cwds")
-    def test_empty_pids(self, mock_get):
-        mock_get.return_value = {}
-        assert _batch_lsof_cwds([]) == {}
-
-    @patch("claudewatch.backend.detection.service.get_cwds")
-    def test_pid_without_cwd(self, mock_get):
-        mock_get.return_value = {1235: "/Users/dev/other"}
-        result = _batch_lsof_cwds([1234, 1235])
-        assert 1234 not in result
-        assert result[1235] == "/Users/dev/other"
-
-    @patch("claudewatch.backend.detection.service.get_cwds")
-    def test_empty_result(self, mock_get):
-        mock_get.return_value = {}
-        assert _batch_lsof_cwds([1234]) == {}
-
-
 class TestMatchTerminalWindow:
     """Tests for _match_terminal_window()."""
 
@@ -214,62 +147,3 @@ class TestMatchTerminalWindow:
         assert wid is None
 
 
-class TestDetectHostApp:
-    """Tests for _detect_host_app() with mocked process tree."""
-
-    def setup_method(self):
-        _host_app_cache.clear()
-
-    def test_finds_terminal_in_ppid_chain(self):
-        all_ps = {
-            100: {"tty": "ttys001", "ppid": 200, "comm": "/usr/bin/zsh"},
-            200: {"tty": "??", "ppid": 300, "comm": "/usr/bin/login"},
-            300: {
-                "tty": "??",
-                "ppid": 1,
-                "comm": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
-            },
-        }
-        assert _detect_host_app(100, all_ps) == HostApp.TERMINAL
-
-    def test_finds_pycharm(self):
-        all_ps = {
-            100: {"tty": "ttys001", "ppid": 200, "comm": "/usr/bin/zsh"},
-            200: {"tty": "??", "ppid": 1, "comm": "/Applications/PyCharm.app/Contents/MacOS/pycharm"},
-        }
-        assert _detect_host_app(100, all_ps) == HostApp.PYCHARM
-
-    def test_finds_tmux(self):
-        all_ps = {
-            100: {"tty": "ttys001", "ppid": 200, "comm": "/usr/bin/zsh"},
-            200: {"tty": "??", "ppid": 1, "comm": "tmux: server"},
-        }
-        assert _detect_host_app(100, all_ps) == HostApp.TMUX
-
-    def test_caches_result(self):
-        all_ps = {
-            100: {"tty": "ttys001", "ppid": 200, "comm": "/usr/bin/zsh"},
-            200: {"tty": "??", "ppid": 1, "comm": "Terminal"},
-        }
-        _detect_host_app(100, all_ps)
-        assert 100 in _host_app_cache
-        assert _host_app_cache[100] == HostApp.TERMINAL
-
-    def test_returns_other_when_no_match(self):
-        all_ps = {
-            100: {"tty": "ttys001", "ppid": 1, "comm": "/usr/bin/zsh"},
-        }
-        assert _detect_host_app(100, all_ps) == HostApp.OTHER
-
-    @patch("claudewatch.backend.detection.service.get_single_process_info")
-    def test_falls_back_to_procinfo_for_missing_ppid(self, mock_get_single):
-        all_ps = {
-            100: {"tty": "ttys001", "ppid": 200, "comm": "/usr/bin/zsh"},
-            # 200 not in all_ps — will call get_single_process_info
-        }
-        mock_get_single.return_value = {
-            "tty": "??",
-            "ppid": 1,
-            "comm": "/Applications/PyCharm.app/Contents/MacOS/pycharm",
-        }
-        assert _detect_host_app(100, all_ps) == HostApp.PYCHARM

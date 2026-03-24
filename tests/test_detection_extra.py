@@ -3,14 +3,15 @@
 import json
 import os
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 from claudewatch.backend.core.models import SessionStatus
+from claudewatch.backend.core.process.service import ProcessService
+from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.detection.service import (
-    _check_jsonl_for_idle,
+    DetectionService,
     _determine_status,
     _extract_prompt_info,
-    _get_session_id,
 )
 
 
@@ -20,11 +21,23 @@ def _write_jsonl(path, entries):
             f.write(json.dumps(entry) + "\n")
 
 
+def _make_detection_service(
+    find_most_recent: str | None = None,
+    read_tail: str = "",
+    get_session_id: str = "",
+) -> DetectionService:
+    """Create a DetectionService with mocked dependencies."""
+    mock_log = MagicMock(spec=SessionLogService)
+    mock_log.find_most_recent.return_value = find_most_recent
+    mock_log.read_tail.return_value = read_tail
+    mock_log.get_session_id.return_value = get_session_id
+    mock_proc = MagicMock(spec=ProcessService)
+    return DetectionService(mock_proc, mock_log)
+
+
 class TestCheckJsonlForIdle:
     def test_returns_idle_when_last_is_assistant(self, tmp_path):
-        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
-        proj_dir.mkdir(parents=True)
-        jsonl = proj_dir / "session.jsonl"
+        jsonl = tmp_path / "session.jsonl"
         _write_jsonl(
             jsonl,
             [
@@ -32,17 +45,15 @@ class TestCheckJsonlForIdle:
                 {"type": "assistant", "message": {"content": [{"type": "text", "text": "hi"}]}},
             ],
         )
-        # Set mtime to be old enough (>5s threshold)
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
+        tail = jsonl.read_text()
 
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = _check_jsonl_for_idle("/Users/dev/myapp")
+        svc = _make_detection_service(find_most_recent=str(jsonl), read_tail=tail)
+        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.IDLE
 
     def test_returns_working_when_last_is_user(self, tmp_path):
-        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
-        proj_dir.mkdir(parents=True)
-        jsonl = proj_dir / "session.jsonl"
+        jsonl = tmp_path / "session.jsonl"
         _write_jsonl(
             jsonl,
             [
@@ -51,15 +62,14 @@ class TestCheckJsonlForIdle:
             ],
         )
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
+        tail = jsonl.read_text()
 
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = _check_jsonl_for_idle("/Users/dev/myapp")
+        svc = _make_detection_service(find_most_recent=str(jsonl), read_tail=tail)
+        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.WORKING
 
     def test_returns_working_when_recently_modified(self, tmp_path):
-        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
-        proj_dir.mkdir(parents=True)
-        jsonl = proj_dir / "session.jsonl"
+        jsonl = tmp_path / "session.jsonl"
         _write_jsonl(
             jsonl,
             [
@@ -67,31 +77,28 @@ class TestCheckJsonlForIdle:
             ],
         )
         # File is fresh — should return WORKING even though last msg is assistant
+        tail = jsonl.read_text()
 
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = _check_jsonl_for_idle("/Users/dev/myapp")
+        svc = _make_detection_service(find_most_recent=str(jsonl), read_tail=tail)
+        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.WORKING
 
-    def test_returns_working_when_no_jsonl(self, tmp_path):
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
-            result = _check_jsonl_for_idle("/Users/dev/myapp")
+    def test_returns_working_when_no_jsonl(self):
+        svc = _make_detection_service(find_most_recent=None)
+        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.WORKING
 
     def test_returns_working_when_empty_jsonl(self, tmp_path):
-        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
-        proj_dir.mkdir(parents=True)
-        jsonl = proj_dir / "session.jsonl"
+        jsonl = tmp_path / "session.jsonl"
         jsonl.write_text("")
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = _check_jsonl_for_idle("/Users/dev/myapp")
+        svc = _make_detection_service(find_most_recent=str(jsonl), read_tail="")
+        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.WORKING
 
     def test_skips_non_user_assistant_types(self, tmp_path):
-        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
-        proj_dir.mkdir(parents=True)
-        jsonl = proj_dir / "session.jsonl"
+        jsonl = tmp_path / "session.jsonl"
         _write_jsonl(
             jsonl,
             [
@@ -101,9 +108,10 @@ class TestCheckJsonlForIdle:
             ],
         )
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
+        tail = jsonl.read_text()
 
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = _check_jsonl_for_idle("/Users/dev/myapp")
+        svc = _make_detection_service(find_most_recent=str(jsonl), read_tail=tail)
+        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.IDLE
 
 
@@ -139,30 +147,23 @@ class TestExtractPromptInfo:
 
 
 class TestGetSessionId:
-    def test_returns_session_id(self, tmp_path):
-        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
-        proj_dir.mkdir(parents=True)
-        (proj_dir / "abc-123-def.jsonl").write_text("{}\n")
-
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = _get_session_id("/Users/dev/myapp")
+    def test_returns_session_id(self):
+        svc = _make_detection_service(
+            find_most_recent="/fake/abc-123-def.jsonl",
+            get_session_id="abc-123-def",
+        )
+        result = svc._get_session_id("/Users/dev/myapp")
         assert result == "abc-123-def"
 
-    def test_returns_empty_when_no_dir(self, tmp_path):
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
-            result = _get_session_id("/Users/dev/myapp")
+    def test_returns_empty_when_no_dir(self):
+        svc = _make_detection_service(find_most_recent=None)
+        result = svc._get_session_id("/Users/dev/myapp")
         assert result == ""
 
-    def test_returns_most_recent(self, tmp_path):
-        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
-        proj_dir.mkdir(parents=True)
-        old = proj_dir / "old-session.jsonl"
-        old.write_text("{}\n")
-        os.utime(old, (1000, 1000))
-        new = proj_dir / "new-session.jsonl"
-        new.write_text("{}\n")
-        os.utime(new, (2000, 2000))
-
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = _get_session_id("/Users/dev/myapp")
+    def test_returns_most_recent(self):
+        svc = _make_detection_service(
+            find_most_recent="/fake/new-session.jsonl",
+            get_session_id="new-session",
+        )
+        result = svc._get_session_id("/Users/dev/myapp")
         assert result == "new-session"
