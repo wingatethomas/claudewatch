@@ -38,9 +38,9 @@ class TestBaseService:
 
         ForbiddenChild.__module__ = "test_service_mod"
 
-        fake_svc_mod = types.ModuleType("test_service_mod")
-        fake_svc_mod.ForbiddenChild = ForbiddenChild  # type: ignore[attr-defined]
-        sys.modules["test_service_mod"] = fake_svc_mod
+        fake_service_mod = types.ModuleType("test_service_mod")
+        fake_service_mod.ForbiddenChild = ForbiddenChild  # type: ignore[attr-defined]
+        sys.modules["test_service_mod"] = fake_service_mod
 
         try:
 

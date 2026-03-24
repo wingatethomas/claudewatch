@@ -306,7 +306,7 @@ class TestParseActivity:
 class TestActivityService:
     """Tests for ActivityService.parse() returning ActivityEventDTO."""
 
-    def _make_svc(self) -> ActivityService:
+    def _make_service(self) -> ActivityService:
         return ActivityService(SessionLogService())
 
     def test_returns_activity_event_dtos(self, tmp_path):
@@ -318,7 +318,7 @@ class TestActivityService:
                 {"type": "user", "message": {"content": "hello"}, "timestamp": "2026-01-01T00:00:00Z"},
             ],
         )
-        svc = self._make_svc()
+        svc = self._make_service()
         with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp")
         assert len(result) == 1
@@ -327,7 +327,7 @@ class TestActivityService:
         assert result[0].summary == "hello"
 
     def test_empty_when_no_jsonl(self, tmp_path):
-        svc = self._make_svc()
+        svc = self._make_service()
         with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp")
         assert result == []
@@ -345,7 +345,7 @@ class TestActivityService:
                 },
             ],
         )
-        svc = self._make_svc()
+        svc = self._make_service()
         with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp")
         assert len(result) == 1
@@ -361,7 +361,7 @@ class TestActivityService:
             for i in range(10)
         ]
         _write_jsonl(proj_dir / "session.jsonl", entries)
-        svc = self._make_svc()
+        svc = self._make_service()
         with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp", max_entries=3)
         assert len(result) == 3
@@ -377,7 +377,7 @@ class TestActivityService:
                 {"type": "user", "message": {"content": "second"}, "timestamp": "2026-01-01T00:01:00Z"},
             ],
         )
-        svc = self._make_svc()
+        svc = self._make_service()
         with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp")
         assert result[0].detail == "second"
@@ -392,7 +392,7 @@ class TestActivityService:
                 {"type": "user", "message": {"content": "hello"}, "timestamp": ""},
             ],
         )
-        svc = self._make_svc()
+        svc = self._make_service()
         with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.parse("/Users/dev/myapp")
 

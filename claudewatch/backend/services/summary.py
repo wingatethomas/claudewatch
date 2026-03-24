@@ -40,14 +40,14 @@ class SummaryService(BaseService):
 
     def __init__(
         self,
-        session_log_svc: SessionLogService,
-        process_svc: ProcessService,
+        session_log_service: SessionLogService,
+        process_service: ProcessService,
         *,
         store_path: str = SUMMARIES_PATH,
     ) -> None:
         super().__init__()
-        self._session_log_svc = session_log_svc
-        self._process_svc = process_svc
+        self._session_log_service = session_log_service
+        self._process_service = process_service
         self._store_path = store_path
 
         # In-memory mirror of the persistent store: CWD -> {"summary": str, "mtime": float}
@@ -231,7 +231,7 @@ class SummaryService(BaseService):
 
     def _get_jsonl_mtime(self, cwd: str) -> float:
         """Get the modification time of the most recent JSONL for a CWD."""
-        path = self._session_log_svc.find_most_recent(cwd)
+        path = self._session_log_service.find_most_recent(cwd)
         if path:
             try:
                 return os.path.getmtime(path)
@@ -241,11 +241,11 @@ class SummaryService(BaseService):
 
     def _extract_conversation_text(self, cwd: str) -> str:  # noqa: PLR0912
         """Extract a condensed conversation from the most recent JSONL."""
-        path = self._session_log_svc.find_most_recent(cwd)
+        path = self._session_log_service.find_most_recent(cwd)
         if not path:
             return ""
 
-        tail = self._session_log_svc.read_tail(path, tail_bytes=50000)
+        tail = self._session_log_service.read_tail(path, tail_bytes=50000)
         if not tail:
             return ""
 
@@ -302,7 +302,7 @@ class SummaryService(BaseService):
                 stderr=subprocess.PIPE,
                 text=True,
             )
-            self._process_svc.register_child(proc.pid)
+            self._process_service.register_child(proc.pid)
             try:
                 stdout, _ = proc.communicate(timeout=_TIMEOUT_SECONDS)
                 if proc.returncode == 0 and stdout.strip():
@@ -313,7 +313,7 @@ class SummaryService(BaseService):
                 proc.wait()
                 log.warning("summarize: claude timed out after %ds", _TIMEOUT_SECONDS)
             finally:
-                self._process_svc.unregister_child(proc.pid)
+                self._process_service.unregister_child(proc.pid)
         except OSError as e:
             log.warning("summarize: failed to run claude: %s", e)
 

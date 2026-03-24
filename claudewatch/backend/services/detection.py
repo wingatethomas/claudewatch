@@ -53,12 +53,12 @@ class DetectionService(BaseService):
 
     def __init__(
         self,
-        process_svc: ProcessService,
-        session_log_svc: SessionLogService,
+        process_service: ProcessService,
+        session_log_service: SessionLogService,
     ) -> None:
         super().__init__()
-        self._process_svc = process_svc
-        self._session_log_svc = session_log_svc
+        self._process_service = process_service
+        self._session_log_service = session_log_service
 
         # PID -> HostApp cache (host app doesn't change for a session's lifetime)
         self._host_app_cache: dict[int, HostApp] = {}
@@ -71,11 +71,11 @@ class DetectionService(BaseService):
 
     def _batch_ps_info(self, pids: list[int]) -> dict[int, dict]:
         """Get tty + ppid + comm for all PIDs via native libproc calls."""
-        return self._process_svc.get_info(pids)
+        return self._process_service.get_info(pids)
 
     def _batch_lsof_cwds(self, pids: list[int]) -> dict[int, str]:
         """Get CWD for all PIDs via native libproc calls."""
-        return self._process_svc.get_cwds(pids)
+        return self._process_service.get_cwds(pids)
 
     # -- Terminal window helpers --------------------------------------------
 
@@ -128,7 +128,7 @@ class DetectionService(BaseService):
             ppid = info["ppid"] if info else 0
 
             if not ppid:
-                ppid = self._process_svc.get_ppid(current)
+                ppid = self._process_service.get_ppid(current)
 
             if ppid <= 1:
                 break
@@ -136,7 +136,7 @@ class DetectionService(BaseService):
             if ppid in all_ps:
                 comm = os.path.basename(all_ps[ppid]["comm"])
             else:
-                pinfo = self._process_svc.get_single_info(ppid)
+                pinfo = self._process_service.get_single_info(ppid)
                 if pinfo:
                     parent_ppid = pinfo["ppid"]
                     raw_comm = pinfo["comm"]
@@ -178,7 +178,7 @@ class DetectionService(BaseService):
                 if ppid in all_ps:
                     comm = os.path.basename(all_ps[ppid]["comm"]).lower()
                 else:
-                    pinfo = self._process_svc.get_single_info(ppid)
+                    pinfo = self._process_service.get_single_info(ppid)
                     comm = os.path.basename(pinfo["comm"]).lower() if pinfo else ""
                 if "pycharm" in comm or "idea" in comm or comm == "code" or "electron" in comm:
                     ide_pids.add(ppid)
@@ -188,7 +188,7 @@ class DetectionService(BaseService):
         if not ide_pids:
             return
 
-        all_procs = self._process_svc.list_all()
+        all_procs = self._process_service.list_all()
         shell_names = {"sh", "bash", "zsh", "fish", "dash", "tcsh", "ksh"}
         ide_shells: list[tuple[int, str]] = []
         for proc in all_procs:
@@ -208,7 +208,7 @@ class DetectionService(BaseService):
 
     def _check_jsonl_for_idle(self, cwd: str) -> SessionStatus:
         """Determine idle/working status from JSONL."""
-        path = self._session_log_svc.find_most_recent(cwd)
+        path = self._session_log_service.find_most_recent(cwd)
         if not path:
             return SessionStatus.WORKING
 
@@ -220,7 +220,7 @@ class DetectionService(BaseService):
         except OSError:
             pass
 
-        tail = self._session_log_svc.read_tail(path, tail_bytes=5120)
+        tail = self._session_log_service.read_tail(path, tail_bytes=5120)
         if not tail:
             return SessionStatus.WORKING
 
@@ -240,12 +240,12 @@ class DetectionService(BaseService):
 
     def _get_session_id(self, cwd: str) -> str:
         """Get the most recent session ID for a CWD from the JSONL filename."""
-        path = self._session_log_svc.find_most_recent(cwd)
-        return self._session_log_svc.get_session_id(path) if path else ""
+        path = self._session_log_service.find_most_recent(cwd)
+        return self._session_log_service.get_session_id(path) if path else ""
 
     def _check_jsonl_for_pending_tool(self, cwd: str) -> tuple[bool, str, str]:  # noqa: PLR0911, PLR0912
         """Check if the most recent JSONL for this CWD has a pending tool_use."""
-        path = self._session_log_svc.find_most_recent(cwd)
+        path = self._session_log_service.find_most_recent(cwd)
         if not path:
             return False, "", ""
 
@@ -256,7 +256,7 @@ class DetectionService(BaseService):
         except OSError:
             return False, "", ""
 
-        tail = self._session_log_svc.read_tail(path)
+        tail = self._session_log_service.read_tail(path)
         if not tail:
             return False, "", ""
 
@@ -302,7 +302,7 @@ class DetectionService(BaseService):
         """Detect all running Claude Code sessions."""
         pids_out = _shell("pgrep -x claude")
         raw_pids = [int(p) for p in pids_out.splitlines() if p.strip().isdigit()]
-        child_pids = self._process_svc.get_child_pids()
+        child_pids = self._process_service.get_child_pids()
         pids = [p for p in raw_pids if p not in child_pids][:_MAX_SESSIONS]
         log.debug("detect: found %d claude processes", len(pids))
         if not pids:
@@ -330,7 +330,7 @@ class DetectionService(BaseService):
                 for _ in range(5):
                     if walk_pid <= 1:
                         break
-                    parent = self._process_svc.get_single_info(walk_pid)
+                    parent = self._process_service.get_single_info(walk_pid)
                     if not parent:
                         break
                     if parent["tty"] != "??":
