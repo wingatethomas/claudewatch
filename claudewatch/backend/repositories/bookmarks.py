@@ -1,15 +1,15 @@
-"""Pinned session bookmarks stored at ~/.claude/claudewatch-pins.json."""
+"""Pinned session bookmarks."""
 
 import json
 import logging
-import os
 from datetime import UTC, datetime
 
+from claudewatch.backend.paths import PINS_PATH
 from claudewatch.backend.repositories.config import get_setting
 
 log = logging.getLogger("claudewatch")
 
-_PATH = os.path.expanduser("~/.claude/claudewatch-pins.json")
+_PATH = PINS_PATH
 
 
 def _load() -> list[dict]:
