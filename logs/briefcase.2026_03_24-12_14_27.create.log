@@ -1,0 +1,498 @@
+Date/Time:       2026-03-24 12:14:27 
+Command line:    /Users/twingate/Develop/sandbox/claudewatch/.venv/bin/briefcase create macOS --no-input
+
+OS Release:      Darwin 25.2.0
+OS Version:      Darwin Kernel Version 25.2.0: Tue Nov 18 21:09:56 PST 2025; root:xnu-12377.61.12~1/RELEASE_ARM64_T6041
+Architecture:    arm64
+Platform:        macOS-26.2-arm64-arm-64bit-Mach-O
+
+Python exe:      /Users/twingate/Develop/sandbox/claudewatch/.venv/bin/python3
+Python version:  3.13.3 (main, Apr  9 2025, 03:47:57) [Clang 20.1.0 ]
+Virtual env:     True
+Conda env:       False
+
+Briefcase:       0.4.1
+Target platform: macOS
+Target format:   app
+
+Environment Variables:
+	BUILD_TOOLS=/Users/twingate/Develop/build-tools
+	CLAUDECODE=1
+	CLAUDE_CODE_ENTRYPOINT=cli
+	COLORTERM=truecolor
+	COREPACK_ENABLE_AUTO_PIN=0
+	GITLAB_ACCESS_TOKEN=********************
+	GIT_EDITOR=true
+	HOME=/Users/twingate
+	HOMEBREW_CELLAR=/opt/homebrew/Cellar
+	HOMEBREW_PREFIX=/opt/homebrew
+	HOMEBREW_REPOSITORY=/opt/homebrew
+	INFOPATH=/opt/homebrew/share/info:
+	LANG=en_US.UTF-8
+	LESS=-R
+	LOGNAME=twingate
+	LSCOLORS=Gxfxcxdxbxegedabagacad
+	LS_COLORS=di=1;36:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43
+	NoDefaultCurrentDirectoryInExePath=1
+	OLDPWD=/Users/twingate/Develop/sandbox/claudewatch
+	OSLogRateLimit=64
+	OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+	PAGER=less
+	PATH=/Users/twingate/Develop/sandbox/claudewatch/.venv/bin:/Users/twingate/.codeium/windsurf/bin:/Users/twingate/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Users/twingate/Library/Application Support/JetBrains/Toolbox/scripts
+	PWD=/Users/twingate/Develop/sandbox/claudewatch
+	SHELL=/bin/zsh
+	SHLVL=2
+	SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.Nza8sBdH9h/Listeners
+	TERM=xterm-256color
+	TERM_PROGRAM=Apple_Terminal
+	TERM_PROGRAM_VERSION=466
+	TERM_SESSION_ID=A1E1596B-D7A1-4E08-8F47-9EDEC0C7C8B5
+	TMPDIR=/var/folders/w0/0d9238h93fd4vjgw6c3zxzsw0000gq/T/
+	USER=twingate
+	UV=/Users/twingate/.local/bin/uv
+	UV_RUN_RECURSION_DEPTH=1
+	VIPSHOME=/Users/runner/work/sharp-libvips/sharp-libvips/target
+	VIRTUAL_ENV=/Users/twingate/Develop/sandbox/claudewatch/.venv
+	XPC_FLAGS=0x0
+	XPC_SERVICE_NAME=0
+	ZSH=/Users/twingate/.oh-my-zsh
+	_=/Users/twingate/.local/bin/uv
+	__CFBundleIdentifier=com.apple.Terminal
+	__CF_USER_TEXT_ENCODING=0x1F7:0x0:0x0
+
+pyproject.toml:
+[project]
+name = "claudewatch"
+version = "0.5.0"
+description = "macOS menu bar app for monitoring Claude Code sessions"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.13"
+authors = [{name = "ClaudeWatch Contributors"}]
+dependencies = [
+    "pyobjc-framework-Cocoa~=12.1",
+    "pyobjc-framework-Quartz~=12.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9.0",
+    "pre-commit>=4.0",
+    "briefcase>=0.3",
+    "pytest-cov>=7.0.0",
+    "pip-audit>=2.10.0",
+]
+
+[project.scripts]
+claudewatch = "claudewatch.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["claudewatch"]
+
+# Briefcase app packaging
+[tool.briefcase]
+project_name = "ClaudeWatch"
+bundle = "com.claudewatch"
+version = "0.5.0"
+url = "https://github.com/wingatethomas/claudewatch"
+license.file = "LICENSE"
+author = "ClaudeWatch Contributors"
+
+[tool.briefcase.app.claudewatch]
+formal_name = "ClaudeWatch"
+description = "macOS menu bar app for monitoring Claude Code sessions"
+sources = ["claudewatch"]
+requires = [
+    "pyobjc-framework-Cocoa~=12.1",
+    "pyobjc-framework-Quartz~=12.1",
+]
+
+[tool.briefcase.app.claudewatch.macOS]
+requires = []
+system_requires = []
+
+[tool.briefcase.app.claudewatch.macOS.info]
+LSUIElement = true
+NSAppleEventsUsageDescription = "ClaudeWatch needs automation access to read terminal windows and focus sessions."
+
+[tool.coverage.run]
+source = ["claudewatch"]
+omit = [
+    "claudewatch/__main__.py",
+    "claudewatch/ui/*",
+]
+
+[tool.coverage.report]
+fail_under = 75
+show_missing = true
+exclude_lines = [
+    "if __name__",
+    "pragma: no cover",
+]
+
+Briefcase Log:
+[12:14:20]                                                                                                                                                             create.py:949
+           [claudewatch] Generating application template...                                                                                                            create.py:949
+           Using app template: https://github.com/beeware/briefcase-macOS-app-template.git, branch v0.4.1                                                               base.py:1340
+           Cloning template 'https://github.com/beeware/briefcase-macOS-app-template.git'...                                                                            base.py:1165
+[12:14:21] Using existing template (sha 5037571396245a0962fb77465b907566cf4c24f1, updated Mon Feb 16 03:04:17 2026)                                                     base.py:1241
+                                                                                                                                                                   subprocess.py:839
+           >>> Running Command:                                                                                                                                    subprocess.py:839
+           >>>     xattr -p 'com.apple.fileprovider.fpfs#P' /Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/ClaudeWatch.app                subprocess.py:839
+           >>> Working Directory:                                                                                                                                  subprocess.py:839
+           >>>     /Users/twingate/Develop/sandbox/claudewatch                                                                                                     subprocess.py:839
+[12:14:22] >>> Command Output:                                                                                                                                     subprocess.py:839
+           >>>     xattr: /Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/ClaudeWatch.app: No such xattr: com.apple.fileprovider.fpfs#P    subprocess.py:839
+           >>> Return code: 1                                                                                                                                      subprocess.py:839
+                                                                                                                                                                   subprocess.py:839
+                                                                                                                                                                       create.py:971
+           [claudewatch] Installing support package...                                                                                                                 create.py:971
+           Using support package https://briefcase-support.s3.amazonaws.com/python/3.13/macOS/Python-3.13-macOS-support.b13.tar.gz                                     create.py:374
+           Downloading Python-3.13-macOS-support.b13.tar.gz...                                                                                                           file.py:227
+[12:14:24] Unpacking support package... started                                                                                                                        create.py:289
+[12:14:25] Unpacking support package... done                                                                                                                           create.py:289
+           Copying standard library into app bundle... started                                                                                                             app.py:66
+[12:14:26] Copying standard library into app bundle... done                                                                                                                app.py:66
+                                                                                                                                                                       create.py:982
+           [claudewatch] Installing stub binary...                                                                                                                     create.py:982
+           Using stub binary https://briefcase-support.s3.amazonaws.com/python/3.13/macOS/GUI-Stub-3.13-b13.zip                                                        create.py:485
+           Downloading GUI-Stub-3.13-b13.zip...                                                                                                                          file.py:227
+           Installing stub binary... started                                                                                                                           create.py:430
+           Installing stub binary... done                                                                                                                              create.py:430
+                                                                                                                                                                       create.py:989
+           [claudewatch] Installing application code...                                                                                                                create.py:989
+           Installing claudewatch... started                                                                                                                           create.py:745
+           Installing claudewatch... done                                                                                                                              create.py:745
+                                                                                                                                                                       create.py:992
+           [claudewatch] Installing requirements...                                                                                                                    create.py:992
+           Installing app requirements... started                                                                                                                      create.py:668
+                                                                                                                                                                   subprocess.py:839
+           >>> Running Command:                                                                                                                                    subprocess.py:839
+           >>>     /Users/twingate/Develop/sandbox/claudewatch/.venv/bin/python3 -u -X utf8 -m pip install --disable-pip-version-check --upgrade --no-user         subprocess.py:839
+           --target=/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/app_packages.arm64 --only-binary :all: --platform macosx_11_0_arm64                     
+           'pyobjc-framework-Cocoa~=12.1' 'pyobjc-framework-Quartz~=12.1' 'pyobjc-framework-Cocoa~=12.1' 'pyobjc-framework-Quartz~=12.1'                                            
+           >>> Working Directory:                                                                                                                                  subprocess.py:839
+           >>>     /Users/twingate/Develop/sandbox/claudewatch                                                                                                     subprocess.py:839
+[12:14:27] Looking in indexes: https://aws:****@threesixty-privacy-211125549559.d.codeartifact.us-east-2.amazonaws.com/pypi/pypi/simple/                           subprocess.py:196
+           WARNING: 401 Error, Credentials not correct for                                                                                                         subprocess.py:196
+           https://threesixty-privacy-211125549559.d.codeartifact.us-east-2.amazonaws.com/pypi/pypi/simple/pyobjc-framework-cocoa/                                                  
+           ERROR: Could not find a version that satisfies the requirement pyobjc-framework-Cocoa~=12.1 (from versions: none)                                       subprocess.py:196
+           ERROR: No matching distribution found for pyobjc-framework-Cocoa~=12.1                                                                                  subprocess.py:196
+           >>> Return code: 1                                                                                                                                      subprocess.py:839
+                                                                                                                                                                   subprocess.py:839
+           Installing app requirements... errored                                                                                                                      create.py:668
+                                                                                                                                                                      __main__.py:42
+           Unable to install requirements. This may be because one of your                                                                                            __main__.py:43
+           requirements is invalid, or because pip was unable to connect                                                                                              __main__.py:43
+           to the PyPI server.                                                                                                                                        __main__.py:43
+                                                                                                                                                                      __main__.py:43
+           This may be because an arm64 wheel that is compatible with a minimum                                                                                       __main__.py:43
+           macOS version of 11.0 is not available.                                                                                                                    __main__.py:43
+                                                                                                                                                                      __main__.py:43
+           Saving log... started                                                                                                                                      console.py:443
+
+Main thread traceback:
+╭─────────────────────────────────────────────────────────────────────── Traceback (most recent call last) ────────────────────────────────────────────────────────────────────────╮
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/commands/create.py:613 in _pip_install                                                  │
+│                                                                                                                                                                                  │
+│    610 │   │   │   ``subprocess.run`` when invoking pip.                                                                                                                         │
+│    611 │   │   """                                                                                                                                                               │
+│    612 │   │   try:                                                                                                                                                              │
+│ ❱  613 │   │   │   self.tools[app].app_context.run(                                                                                                                              │
+│    614 │   │   │   │   [                                                                                                                                                         │
+│    615 │   │   │   │   │   sys.executable,                                                                                                                                       │
+│    616 │   │   │   │   │   "-u",                                                                                                                                                 │
+│                                                                                                                                                                                  │
+│ ╭────────────────────────────────────────────────────────── locals ───────────────────────────────────────────────────────────╮                                                  │
+│ │               app = <com.claudewatch.claudewatch v0.5.0 AppConfig>                                                          │                                                  │
+│ │ app_packages_path = PosixPath('/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/app_packages.arm64') │                                                  │
+│ │      install_hint = '\n\nThis may be because an arm64 wheel that is compatible with a minimum\nmacOS ver'+31                │                                                  │
+│ │          pip_args = [                                                                                                       │                                                  │
+│ │                     │   '--only-binary',                                                                                    │                                                  │
+│ │                     │   ':all:',                                                                                            │                                                  │
+│ │                     │   '--platform',                                                                                       │                                                  │
+│ │                     │   'macosx_11_0_arm64',                                                                                │                                                  │
+│ │                     │   'pyobjc-framework-Cocoa~=12.1',                                                                     │                                                  │
+│ │                     │   'pyobjc-framework-Quartz~=12.1',                                                                    │                                                  │
+│ │                     │   'pyobjc-framework-Cocoa~=12.1',                                                                     │                                                  │
+│ │                     │   'pyobjc-framework-Quartz~=12.1'                                                                     │                                                  │
+│ │                     ]                                                                                                       │                                                  │
+│ │        pip_kwargs = {}                                                                                                      │                                                  │
+│ │              self = <briefcase.platforms.macOS.app.macOSAppCreateCommand object at 0x107cb2cf0>                             │                                                  │
+│ ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯                                                  │
+│                                                                                                                                                                                  │
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/integrations/subprocess.py:145 in inner                                                 │
+│                                                                                                                                                                                  │
+│   142 │   │   │   with sub.tools.console.release_console_control():                                                                                                              │
+│   143 │   │   │   │   return sub_method(sub, args, *wrapped_args, **wrapped_kwargs)                                                                                              │
+│   144 │   │   else:                                                                                                                                                              │
+│ ❱ 145 │   │   │   return sub_method(sub, args, *wrapped_args, **wrapped_kwargs)                                                                                                  │
+│   146 │                                                                                                                                                                          │
+│   147 │   return inner                                                                                                                                                           │
+│   148                                                                                                                                                                            │
+│                                                                                                                                                                                  │
+│ ╭──────────────────────────────────────────── locals ────────────────────────────────────────────╮                                                                               │
+│ │                    args = [                                                                    │                                                                               │
+│ │                           │   '/Users/twingate/Develop/sandbox/claudewatch/.venv/bin/python3', │                                                                               │
+│ │                           │   '-u',                                                            │                                                                               │
+│ │                           │   '-X',                                                            │                                                                               │
+│ │                           │   'utf8',                                                          │                                                                               │
+│ │                           │   '-m',                                                            │                                                                               │
+│ │                           │   'pip',                                                           │                                                                               │
+│ │                           │   'install',                                                       │                                                                               │
+│ │                           │   '--disable-pip-version-check',                                   │                                                                               │
+│ │                           │   '--upgrade',                                                     │                                                                               │
+│ │                           │   '--no-user',                                                     │                                                                               │
+│ │                           │   ... +9                                                           │                                                                               │
+│ │                           ]                                                                    │                                                                               │
+│ │ remove_dynamic_elements = False                                                                │                                                                               │
+│ │                     sub = <briefcase.integrations.subprocess.Subprocess object at 0x107f01a90> │                                                                               │
+│ │            wrapped_args = ()                                                                   │                                                                               │
+│ │          wrapped_kwargs = {'check': True, 'encoding': 'UTF-8'}                                 │                                                                               │
+│ ╰────────────────────────────────────────────────────────────────────────────────────────────────╯                                                                               │
+│                                                                                                                                                                                  │
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/integrations/subprocess.py:539 in run                                                   │
+│                                                                                                                                                                                  │
+│   536 │   │   # caller sets stream_output=False, then ensure_console_is_safe() will                                                                                              │
+│   537 │   │   # disable any dynamic console elements while the command runs.                                                                                                     │
+│   538 │   │   if stream_output:                                                                                                                                                  │
+│ ❱ 539 │   │   │   return self._run_and_stream_output(args, filter_func=filter_func, **kwargs)                                                                                    │
+│   540 │   │                                                                                                                                                                      │
+│   541 │   │   # Can't filter non-streamed output.                                                                                                                                │
+│   542 │   │   if filter_func:                                                                                                                                                    │
+│                                                                                                                                                                                  │
+│ ╭─────────────────────────────────────── locals ───────────────────────────────────────╮                                                                                         │
+│ │          args = [                                                                    │                                                                                         │
+│ │                 │   '/Users/twingate/Develop/sandbox/claudewatch/.venv/bin/python3', │                                                                                         │
+│ │                 │   '-u',                                                            │                                                                                         │
+│ │                 │   '-X',                                                            │                                                                                         │
+│ │                 │   'utf8',                                                          │                                                                                         │
+│ │                 │   '-m',                                                            │                                                                                         │
+│ │                 │   'pip',                                                           │                                                                                         │
+│ │                 │   'install',                                                       │                                                                                         │
+│ │                 │   '--disable-pip-version-check',                                   │                                                                                         │
+│ │                 │   '--upgrade',                                                     │                                                                                         │
+│ │                 │   '--no-user',                                                     │                                                                                         │
+│ │                 │   ... +9                                                           │                                                                                         │
+│ │                 ]                                                                    │                                                                                         │
+│ │   filter_func = None                                                                 │                                                                                         │
+│ │        kwargs = {'check': True, 'encoding': 'UTF-8'}                                 │                                                                                         │
+│ │          self = <briefcase.integrations.subprocess.Subprocess object at 0x107f01a90> │                                                                                         │
+│ │ stream_output = True                                                                 │                                                                                         │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────╯                                                                                         │
+│                                                                                                                                                                                  │
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/integrations/subprocess.py:616 in _run_and_stream_output                                │
+│                                                                                                                                                                                  │
+│   613 │   │   self._log_return_code(return_code)                                                                                                                                 │
+│   614 │   │                                                                                                                                                                      │
+│   615 │   │   if check and return_code:                                                                                                                                          │
+│ ❱ 616 │   │   │   raise subprocess.CalledProcessError(return_code, args, stderr=stderr)                                                                                          │
+│   617 │   │                                                                                                                                                                      │
+│   618 │   │   return subprocess.CompletedProcess(args, return_code, stderr=stderr)                                                                                               │
+│   619                                                                                                                                                                            │
+│                                                                                                                                                                                  │
+│ ╭──────────────────────────────────────────── locals ────────────────────────────────────────────╮                                                                               │
+│ │        args = [                                                                                │                                                                               │
+│ │               │   '/Users/twingate/Develop/sandbox/claudewatch/.venv/bin/python3',             │                                                                               │
+│ │               │   '-u',                                                                        │                                                                               │
+│ │               │   '-X',                                                                        │                                                                               │
+│ │               │   'utf8',                                                                      │                                                                               │
+│ │               │   '-m',                                                                        │                                                                               │
+│ │               │   'pip',                                                                       │                                                                               │
+│ │               │   'install',                                                                   │                                                                               │
+│ │               │   '--disable-pip-version-check',                                               │                                                                               │
+│ │               │   '--upgrade',                                                                 │                                                                               │
+│ │               │   '--no-user',                                                                 │                                                                               │
+│ │               │   ... +9                                                                       │                                                                               │
+│ │               ]                                                                                │                                                                               │
+│ │       check = True                                                                             │                                                                               │
+│ │ filter_func = None                                                                             │                                                                               │
+│ │      kwargs = {'encoding': 'UTF-8', 'stdout': -1, 'stderr': -2, 'bufsize': 1}                  │                                                                               │
+│ │     process = <Popen: returncode: 1 args: ['/Users/twingate/Develop/sandbox/claudewatch/.v...> │                                                                               │
+│ │ return_code = 1                                                                                │                                                                               │
+│ │        self = <briefcase.integrations.subprocess.Subprocess object at 0x107f01a90>             │                                                                               │
+│ │      stderr = None                                                                             │                                                                               │
+│ ╰────────────────────────────────────────────────────────────────────────────────────────────────╯                                                                               │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+CalledProcessError: Command '['/Users/twingate/Develop/sandbox/claudewatch/.venv/bin/python3', '-u', '-X', 'utf8', '-m', 'pip', 'install', '--disable-pip-version-check', '--upgrade', '--no-user', '--target=/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/app_packages.arm64', '--only-binary', ':all:', '--platform', 'macosx_11_0_arm64', 'pyobjc-framework-Cocoa~=12.1', 'pyobjc-framework-Quartz~=12.1', 'pyobjc-framework-Cocoa~=12.1', 'pyobjc-framework-Quartz~=12.1']' returned non-zero exit status 1.
+
+The above exception was the direct cause of the following exception:
+
+╭─────────────────────────────────────────────────────────────────────── Traceback (most recent call last) ────────────────────────────────────────────────────────────────────────╮
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/__main__.py:27 in main                                                                  │
+│                                                                                                                                                                                  │
+│   24 │   │   │   Path.cwd() / "pyproject.toml",                                                                                                                                  │
+│   25 │   │   │   overrides=overrides,                                                                                                                                            │
+│   26 │   │   )                                                                                                                                                                   │
+│ ❱ 27 │   │   command(**options)                                                                                                                                                  │
+│   28 │   except HelpText as e:                                                                                                                                                   │
+│   29 │   │   console.info()                                                                                                                                                      │
+│   30 │   │   console.info(str(e))                                                                                                                                                │
+│                                                                                                                                                                                  │
+│ ╭────────────────────────────────────────── locals ───────────────────────────────────────────╮                                                                                  │
+│ │       command = <briefcase.platforms.macOS.app.macOSAppCreateCommand object at 0x107cb2cf0> │                                                                                  │
+│ │       console = <briefcase.console.Console object at 0x10195b770>                           │                                                                                  │
+│ │             e = RequirementsInstallError()                                                  │                                                                                  │
+│ │ extra_cmdline = ['--no-input']                                                              │                                                                                  │
+│ │       options = {}                                                                          │                                                                                  │
+│ │     overrides = {}                                                                          │                                                                                  │
+│ │        result = 200                                                                         │                                                                                  │
+│ ╰─────────────────────────────────────────────────────────────────────────────────────────────╯                                                                                  │
+│                                                                                                                                                                                  │
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/commands/create.py:1035 in __call__                                                     │
+│                                                                                                                                                                                  │
+│   1032 │   │                                                                                                                                                                     │
+│   1033 │   │   state = None                                                                                                                                                      │
+│   1034 │   │   for _, app_obj in sorted(apps_to_create.items()):                                                                                                                 │
+│ ❱ 1035 │   │   │   state = self.create_app(                                                                                                                                      │
+│   1036 │   │   │   │   app_obj,                                                                                                                                                  │
+│   1037 │   │   │   │   **full_options(state, options),                                                                                                                           │
+│   1038 │   │   │   )                                                                                                                                                             │
+│                                                                                                                                                                                  │
+│ ╭─────────────────────────────────────────── locals ───────────────────────────────────────────╮                                                                                 │
+│ │              _ = 'claudewatch'                                                               │                                                                                 │
+│ │            app = None                                                                        │                                                                                 │
+│ │       app_name = None                                                                        │                                                                                 │
+│ │        app_obj = <com.claudewatch.claudewatch v0.5.0 AppConfig>                              │                                                                                 │
+│ │ apps_to_create = {'claudewatch': <com.claudewatch.claudewatch v0.5.0 AppConfig>}             │                                                                                 │
+│ │        options = {}                                                                          │                                                                                 │
+│ │           self = <briefcase.platforms.macOS.app.macOSAppCreateCommand object at 0x107cb2cf0> │                                                                                 │
+│ │          state = None                                                                        │                                                                                 │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯                                                                                 │
+│                                                                                                                                                                                  │
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/commands/create.py:993 in create_app                                                    │
+│                                                                                                                                                                                  │
+│    990 │   │   │   self.install_app_code(app=app)                                                                                                                                │
+│    991 │   │   │                                                                                                                                                                 │
+│    992 │   │   │   self.console.info("Installing requirements...", prefix=app.app_name)                                                                                          │
+│ ❱  993 │   │   │   self.install_app_requirements(app=app)                                                                                                                        │
+│    994 │   │   │                                                                                                                                                                 │
+│    995 │   │   │   self.console.info(                                                                                                                                            │
+│    996 │   │   │   │   "Installing application resources...", prefix=app.app_name                                                                                                │
+│                                                                                                                                                                                  │
+│ ╭────────────────────────────────────────────── locals ──────────────────────────────────────────────╮                                                                           │
+│ │         app = <com.claudewatch.claudewatch v0.5.0 AppConfig>                                       │                                                                           │
+│ │ bundle_path = PosixPath('/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app') │                                                                           │
+│ │     options = {}                                                                                   │                                                                           │
+│ │        self = <briefcase.platforms.macOS.app.macOSAppCreateCommand object at 0x107cb2cf0>          │                                                                           │
+│ ╰────────────────────────────────────────────────────────────────────────────────────────────────────╯                                                                           │
+│                                                                                                                                                                                  │
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/commands/create.py:722 in install_app_requirements                                      │
+│                                                                                                                                                                                  │
+│    719 │   │   else:                                                                                                                                                             │
+│    720 │   │   │   try:                                                                                                                                                          │
+│    721 │   │   │   │   app_packages_path = self.app_packages_path(app)                                                                                                           │
+│ ❱  722 │   │   │   │   self._install_app_requirements(app, requires, app_packages_path)                                                                                          │
+│    723 │   │   │   except KeyError as e:                                                                                                                                         │
+│    724 │   │   │   │   raise BriefcaseCommandError(                                                                                                                              │
+│    725 │   │   │   │   │   "Application path index file does not define "                                                                                                        │
+│                                                                                                                                                                                  │
+│ ╭──────────────────────────────────────────────────────────────────────────────── locals ────────────────────────────────────────────────────────────────────────────────╮       │
+│ │                             app = <com.claudewatch.claudewatch v0.5.0 AppConfig>                                                                                       │       │
+│ │               app_packages_path = PosixPath('/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/ClaudeWatch.app/Contents/Resources/app_packages') │       │
+│ │ requirement_installer_args_path = None                                                                                                                                 │       │
+│ │               requirements_path = None                                                                                                                                 │       │
+│ │                        requires = ['pyobjc-framework-Cocoa~=12.1', 'pyobjc-framework-Quartz~=12.1', 'pyobjc-framework-Cocoa~=12.1', 'pyobjc-framework-Quartz~=12.1']   │       │
+│ │                            self = <briefcase.platforms.macOS.app.macOSAppCreateCommand object at 0x107cb2cf0>                                                          │       │
+│ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯       │
+│                                                                                                                                                                                  │
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/platforms/macOS/__init__.py:249 in _install_app_requirements                            │
+│                                                                                                                                                                                  │
+│    246 │   │   │   # we've made the judgement call that the (minor, with known workarounds)                                                                                      │
+│    247 │   │   │   # inconvenience of not being able to use source tarballs is outweighed by                                                                                     │
+│    248 │   │   │   # the need to produce reliable, repeatable binary artefacts.                                                                                                  │
+│ ❱  249 │   │   │   super()._install_app_requirements(                                                                                                                            │
+│    250 │   │   │   │   app,                                                                                                                                                      │
+│    251 │   │   │   │   requires=requires,                                                                                                                                        │
+│    252 │   │   │   │   app_packages_path=host_app_packages_path,                                                                                                                 │
+│                                                                                                                                                                                  │
+│ ╭─────────────────────────────────────────────────────────────────────────────────── locals ───────────────────────────────────────────────────────────────────────────────────╮ │
+│ │                    app = <com.claudewatch.claudewatch v0.5.0 AppConfig>                                                                                                      │ │
+│ │      app_packages_path = PosixPath('/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/ClaudeWatch.app/Contents/Resources/app_packages')                │ │
+│ │                      f = <_io.BufferedReader                                                                                                                                 │ │
+│ │                          name='/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/support/Python.xcframework/macos-arm64_x86_64/Python.framework/Resou… │ │
+│ │ host_app_packages_path = PosixPath('/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/app_packages.arm64')                                             │ │
+│ │             info_plist = {                                                                                                                                                   │ │
+│ │                          │   'CFBundleDevelopmentRegion': 'English',                                                                                                         │ │
+│ │                          │   'CFBundleExecutable': 'Python',                                                                                                                 │ │
+│ │                          │   'CFBundleGetInfoString': 'Python Runtime and Library',                                                                                          │ │
+│ │                          │   'CFBundleIdentifier': 'org.python.python',                                                                                                      │ │
+│ │                          │   'CFBundleInfoDictionaryVersion': '6.0',                                                                                                         │ │
+│ │                          │   'CFBundleName': 'Python',                                                                                                                       │ │
+│ │                          │   'CFBundlePackageType': 'FMWK',                                                                                                                  │ │
+│ │                          │   'CFBundleShortVersionString': '3.13.11, (c) 2001-2024 Python Software Foundation.',                                                             │ │
+│ │                          │   'CFBundleLongVersionString': '3.13.11, (c) 2001-2024 Python Software Foundation.',                                                              │ │
+│ │                          │   'CFBundleSignature': '????',                                                                                                                    │ │
+│ │                          │   ... +2                                                                                                                                          │ │
+│ │                          }                                                                                                                                                   │ │
+│ │                 kwargs = {}                                                                                                                                                  │ │
+│ │          macOS_min_tag = '11_0'                                                                                                                                              │ │
+│ │      macOS_min_version = '11.0'                                                                                                                                              │ │
+│ │             plist_file = PosixPath('/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/support/Python.xcframework/macos-arm64_x86_64/Python.framework/… │ │
+│ │               requires = ['pyobjc-framework-Cocoa~=12.1', 'pyobjc-framework-Quartz~=12.1', 'pyobjc-framework-Cocoa~=12.1', 'pyobjc-framework-Quartz~=12.1']                  │ │
+│ │                   self = <briefcase.platforms.macOS.app.macOSAppCreateCommand object at 0x107cb2cf0>                                                                         │ │
+│ │    support_min_version = '11.0'                                                                                                                                              │ │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│                                                                                                                                                                                  │
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/commands/create.py:669 in _install_app_requirements                                     │
+│                                                                                                                                                                                  │
+│    666 │   │   # Install requirements                                                                                                                                            │
+│    667 │   │   if requires:                                                                                                                                                      │
+│    668 │   │   │   with self.console.wait_bar(progress_message):                                                                                                                 │
+│ ❱  669 │   │   │   │   self._pip_install(                                                                                                                                        │
+│    670 │   │   │   │   │   app,                                                                                                                                                  │
+│    671 │   │   │   │   │   app_packages_path=app_packages_path,                                                                                                                  │
+│    672 │   │   │   │   │   pip_args=(                                                                                                                                            │
+│                                                                                                                                                                                  │
+│ ╭──────────────────────────────────────────────────────────────────────── locals ────────────────────────────────────────────────────────────────────────╮                       │
+│ │               app = <com.claudewatch.claudewatch v0.5.0 AppConfig>                                                                                     │                       │
+│ │ app_packages_path = PosixPath('/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/app_packages.arm64')                            │                       │
+│ │      install_hint = '\n\nThis may be because an arm64 wheel that is compatible with a minimum\nmacOS ver'+31                                           │                       │
+│ │          pip_args = ['--only-binary', ':all:', '--platform', 'macosx_11_0_arm64']                                                                      │                       │
+│ │        pip_kwargs = None                                                                                                                               │                       │
+│ │  progress_message = 'Installing app requirements...'                                                                                                   │                       │
+│ │          requires = ['pyobjc-framework-Cocoa~=12.1', 'pyobjc-framework-Quartz~=12.1', 'pyobjc-framework-Cocoa~=12.1', 'pyobjc-framework-Quartz~=12.1'] │                       │
+│ │              self = <briefcase.platforms.macOS.app.macOSAppCreateCommand object at 0x107cb2cf0>                                                        │                       │
+│ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯                       │
+│                                                                                                                                                                                  │
+│ /Users/twingate/Develop/sandbox/claudewatch/.venv/lib/python3.13/site-packages/briefcase/commands/create.py:635 in _pip_install                                                  │
+│                                                                                                                                                                                  │
+│    632 │   │   │   │   **pip_kwargs,                                                                                                                                             │
+│    633 │   │   │   )                                                                                                                                                             │
+│    634 │   │   except subprocess.CalledProcessError as e:                                                                                                                        │
+│ ❱  635 │   │   │   raise RequirementsInstallError(install_hint=install_hint) from e                                                                                              │
+│    636 │                                                                                                                                                                         │
+│    637 │   def _install_app_requirements(                                                                                                                                        │
+│    638 │   │   self,                                                                                                                                                             │
+│                                                                                                                                                                                  │
+│ ╭────────────────────────────────────────────────────────── locals ───────────────────────────────────────────────────────────╮                                                  │
+│ │               app = <com.claudewatch.claudewatch v0.5.0 AppConfig>                                                          │                                                  │
+│ │ app_packages_path = PosixPath('/Users/twingate/Develop/sandbox/claudewatch/build/claudewatch/macos/app/app_packages.arm64') │                                                  │
+│ │      install_hint = '\n\nThis may be because an arm64 wheel that is compatible with a minimum\nmacOS ver'+31                │                                                  │
+│ │          pip_args = [                                                                                                       │                                                  │
+│ │                     │   '--only-binary',                                                                                    │                                                  │
+│ │                     │   ':all:',                                                                                            │                                                  │
+│ │                     │   '--platform',                                                                                       │                                                  │
+│ │                     │   'macosx_11_0_arm64',                                                                                │                                                  │
+│ │                     │   'pyobjc-framework-Cocoa~=12.1',                                                                     │                                                  │
+│ │                     │   'pyobjc-framework-Quartz~=12.1',                                                                    │                                                  │
+│ │                     │   'pyobjc-framework-Cocoa~=12.1',                                                                     │                                                  │
+│ │                     │   'pyobjc-framework-Quartz~=12.1'                                                                     │                                                  │
+│ │                     ]                                                                                                       │                                                  │
+│ │        pip_kwargs = {}                                                                                                      │                                                  │
+│ │              self = <briefcase.platforms.macOS.app.macOSAppCreateCommand object at 0x107cb2cf0>                             │                                                  │
+│ ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+RequirementsInstallError: Unable to install requirements. This may be because one of your
+requirements is invalid, or because pip was unable to connect
+to the PyPI server.
+
+This may be because an arm64 wheel that is compatible with a minimum
+macOS version of 11.0 is not available.
+
+

@@ -1,8 +1,10 @@
-"""Generate and persist conversation summaries via the Claude CLI.
+"""Backward-compatible shim — delegates to SummaryService.
 
-Summaries are stored in ~/.claude/claudewatch-summaries.json keyed by CWD.
-A background thread periodically refreshes stale summaries (when the JSONL
-has changed since the last generation). Max 1 concurrent claude -p call.
+Existing callers (menubar.py, tests) can continue importing module-level
+functions. A lazily-created default SummaryService instance handles the work.
+The old ``_our_pids`` set is preserved for backward compatibility with
+detection.py's ``get_our_pids()`` import; new code should use
+``ProcessService.get_child_pids()`` instead.
 """
 
 import json
@@ -29,7 +31,7 @@ _PROMPT = (
     "Examples: 'Fix auth token storage' / 'Add CI coverage' / 'Refactor prefs UI'\n\n"
 )
 
-# In-memory mirror of the persistent store: CWD → {"summary": str, "mtime": float}
+# In-memory mirror of the persistent store: CWD -> {"summary": str, "mtime": float}
 _store: dict[str, dict] = {}
 _store_loaded = False
 _store_lock = threading.Lock()
@@ -55,7 +57,7 @@ _priority_queue: list[str] = []  # CWDs needing immediate summary generation
 _priority_lock = threading.Lock()
 
 
-# ── Persistent store ──────────────────────────────────────────────────
+# -- Persistent store -------------------------------------------------------
 
 
 def _load_store() -> None:
@@ -80,7 +82,7 @@ def _save_store() -> None:
         log.warning("Failed to save summaries to %s", _STORE_PATH)
 
 
-# ── Public API ────────────────────────────────────────────────────────
+# -- Public API --------------------------------------------------------------
 
 
 def get_cached_summary(cwd: str) -> str | None:
@@ -170,7 +172,7 @@ def invalidate_cache(cwd: str) -> None:
         _failures.pop(cwd, None)
 
 
-# ── Background refresh ────────────────────────────────────────────────
+# -- Background refresh -----------------------------------------------------
 
 
 def track_session(cwd: str) -> None:
@@ -232,7 +234,7 @@ def _bg_refresh_loop() -> None:
                 generate_and_cache_summary(cwd)
 
 
-# ── Internal helpers ──────────────────────────────────────────────────
+# -- Internal helpers --------------------------------------------------------
 
 
 def _get_jsonl_mtime(cwd: str) -> float:

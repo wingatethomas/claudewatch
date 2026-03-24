@@ -4,7 +4,12 @@ import json
 import os
 from unittest.mock import patch
 
+import pytest
+
+from claudewatch.backend.core.dto import ActivityEventDTO
+from claudewatch.backend.core.services.session_log import SessionLogService
 from claudewatch.backend.services.activity import (
+    ActivityService,
     _parse_tool_use,
     _truncate,
     parse_activity,
@@ -296,3 +301,100 @@ class TestParseActivity:
         with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = parse_activity("/Users/dev/myapp")
         assert result == []
+
+
+class TestActivityService:
+    """Tests for ActivityService.parse() returning ActivityEventDTO."""
+
+    def _make_service(self) -> ActivityService:
+        return ActivityService(SessionLogService())
+
+    def test_returns_activity_event_dtos(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "user", "message": {"content": "hello"}, "timestamp": "2026-01-01T00:00:00Z"},
+            ],
+        )
+        svc = self._make_service()
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc.parse("/Users/dev/myapp")
+        assert len(result) == 1
+        assert isinstance(result[0], ActivityEventDTO)
+        assert result[0].kind == "user"
+        assert result[0].summary == "hello"
+
+    def test_empty_when_no_jsonl(self, tmp_path):
+        svc = self._make_service()
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc.parse("/Users/dev/myapp")
+        assert result == []
+
+    def test_parses_tool_use_dto(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "pytest"}}]},
+                    "timestamp": "2026-01-01T00:00:00Z",
+                },
+            ],
+        )
+        svc = self._make_service()
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc.parse("/Users/dev/myapp")
+        assert len(result) == 1
+        assert isinstance(result[0], ActivityEventDTO)
+        assert result[0].kind == "tool"
+        assert "pytest" in result[0].summary
+
+    def test_max_entries_cap(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        entries = [
+            {"type": "user", "message": {"content": f"msg-{i}"}, "timestamp": f"2026-01-01T00:{i:02d}:00Z"}
+            for i in range(10)
+        ]
+        _write_jsonl(proj_dir / "session.jsonl", entries)
+        svc = self._make_service()
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc.parse("/Users/dev/myapp", max_entries=3)
+        assert len(result) == 3
+        assert result[0].detail == "msg-9"
+
+    def test_newest_first_ordering(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "user", "message": {"content": "first"}, "timestamp": "2026-01-01T00:00:00Z"},
+                {"type": "user", "message": {"content": "second"}, "timestamp": "2026-01-01T00:01:00Z"},
+            ],
+        )
+        svc = self._make_service()
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc.parse("/Users/dev/myapp")
+        assert result[0].detail == "second"
+        assert result[1].detail == "first"
+
+    def test_dto_is_frozen(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "user", "message": {"content": "hello"}, "timestamp": ""},
+            ],
+        )
+        svc = self._make_service()
+        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc.parse("/Users/dev/myapp")
+
+        with pytest.raises(AttributeError):
+            result[0].kind = "changed"
