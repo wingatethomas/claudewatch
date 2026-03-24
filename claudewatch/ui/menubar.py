@@ -1046,7 +1046,7 @@ class ClaudeWatchApp:
         webbrowser.open("https://github.com/wingatethomas/claudewatch")
 
     def _quit(self, _: NSMenuItem) -> None:
-        NSApplication.sharedApplication().terminate_(None)
+        AppHelper.stopEventLoop()
 
 
 def main() -> None:
@@ -1073,6 +1073,8 @@ def main() -> None:
             )
         )
         logger.addHandler(file_handler)
+
+    signal.signal(signal.SIGINT, lambda *_: AppHelper.stopEventLoop())
 
     delegate = _AppDelegate.alloc().init()
     app = ClaudeWatchApp(delegate)
