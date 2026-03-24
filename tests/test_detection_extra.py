@@ -6,7 +6,7 @@ import time
 from unittest.mock import patch
 
 from claudewatch.backend.core.models import SessionStatus
-from claudewatch.backend.services.detection import (
+from claudewatch.backend.detection.service import (
     _check_jsonl_for_idle,
     _determine_status,
     _extract_prompt_info,
@@ -35,7 +35,7 @@ class TestCheckJsonlForIdle:
         # Set mtime to be old enough (>5s threshold)
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = _check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.IDLE
 
@@ -52,7 +52,7 @@ class TestCheckJsonlForIdle:
         )
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = _check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.WORKING
 
@@ -68,12 +68,12 @@ class TestCheckJsonlForIdle:
         )
         # File is fresh — should return WORKING even though last msg is assistant
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = _check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.WORKING
 
     def test_returns_working_when_no_jsonl(self, tmp_path):
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
             result = _check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.WORKING
 
@@ -84,7 +84,7 @@ class TestCheckJsonlForIdle:
         jsonl.write_text("")
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = _check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.WORKING
 
@@ -102,7 +102,7 @@ class TestCheckJsonlForIdle:
         )
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = _check_jsonl_for_idle("/Users/dev/myapp")
         assert result == SessionStatus.IDLE
 
@@ -144,12 +144,12 @@ class TestGetSessionId:
         proj_dir.mkdir(parents=True)
         (proj_dir / "abc-123-def.jsonl").write_text("{}\n")
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = _get_session_id("/Users/dev/myapp")
         assert result == "abc-123-def"
 
     def test_returns_empty_when_no_dir(self, tmp_path):
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
             result = _get_session_id("/Users/dev/myapp")
         assert result == ""
 
@@ -163,6 +163,6 @@ class TestGetSessionId:
         new.write_text("{}\n")
         os.utime(new, (2000, 2000))
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = _get_session_id("/Users/dev/myapp")
         assert result == "new-session"

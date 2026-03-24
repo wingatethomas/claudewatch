@@ -2,9 +2,9 @@
 
 from unittest.mock import patch
 
-from claudewatch.backend.core.services.session_log import SessionLogService
+from claudewatch.backend.core.session_log.service import SessionLogService
 
-MODULE = "claudewatch.backend.core.services.session_log.jsonl"
+MODULE = "claudewatch.backend.core.session_log.service.jsonl"
 
 
 class TestFindMostRecent:

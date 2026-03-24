@@ -42,7 +42,7 @@ from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.repositories.bookmarks import get_pinned_cwds
 from claudewatch.backend.repositories.config import get_available_sounds, get_setting, set_setting
 from claudewatch.backend.repositories.history import get_history, remove_history_entry
-from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES
+from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES
 from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"

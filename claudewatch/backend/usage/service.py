@@ -6,8 +6,8 @@ import json
 import os
 
 from claudewatch.backend.core.base_service import BaseService
-from claudewatch.backend.core.services.session_log import SessionLogService
-from claudewatch.backend.services.jsonl import find_most_recent_jsonl, read_jsonl_full, read_jsonl_tail
+from claudewatch.backend.core.session_log.jsonl import find_most_recent_jsonl, read_jsonl_full, read_jsonl_tail
+from claudewatch.backend.core.session_log.service import SessionLogService
 
 # Model display names — keep factual
 MODEL_DISPLAY_NAMES: dict[str, str] = {

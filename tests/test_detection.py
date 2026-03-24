@@ -1,9 +1,9 @@
-"""Tests for pure functions in claudewatch.backend.services.detection."""
+"""Tests for pure functions in claudewatch.backend.detection.service."""
 
 from unittest.mock import patch
 
 from claudewatch.backend.core.models import HostApp, SessionStatus
-from claudewatch.backend.services.detection import (
+from claudewatch.backend.detection.service import (
     _batch_lsof_cwds,
     _batch_ps_info,
     _detect_host_app,
@@ -116,7 +116,7 @@ class TestDetermineStatus:
 class TestBatchPsInfo:
     """Tests for _batch_ps_info() with mocked procinfo output."""
 
-    @patch("claudewatch.backend.services.detection.get_process_info")
+    @patch("claudewatch.backend.detection.service.get_process_info")
     def test_returns_process_info(self, mock_get):
         mock_get.return_value = {
             1234: {"tty": "ttys001", "ppid": 5678, "comm": "/usr/bin/zsh"},
@@ -129,12 +129,12 @@ class TestBatchPsInfo:
         assert result[1234]["comm"] == "/usr/bin/zsh"
         assert result[1235]["tty"] == "ttys002"
 
-    @patch("claudewatch.backend.services.detection.get_process_info")
+    @patch("claudewatch.backend.detection.service.get_process_info")
     def test_empty_pids(self, mock_get):
         mock_get.return_value = {}
         assert _batch_ps_info([]) == {}
 
-    @patch("claudewatch.backend.services.detection.get_process_info")
+    @patch("claudewatch.backend.detection.service.get_process_info")
     def test_comm_with_path(self, mock_get):
         mock_get.return_value = {
             1234: {"tty": "ttys001", "ppid": 5678, "comm": "/Applications/Code Helper (Plugin)"},
@@ -146,7 +146,7 @@ class TestBatchPsInfo:
 class TestBatchLsofCwds:
     """Tests for _batch_lsof_cwds() with mocked procinfo output."""
 
-    @patch("claudewatch.backend.services.detection.get_cwds")
+    @patch("claudewatch.backend.detection.service.get_cwds")
     def test_returns_cwds(self, mock_get):
         mock_get.return_value = {
             1234: "/Users/dev/myapp",
@@ -156,19 +156,19 @@ class TestBatchLsofCwds:
         assert result[1234] == "/Users/dev/myapp"
         assert result[1235] == "/Users/dev/other"
 
-    @patch("claudewatch.backend.services.detection.get_cwds")
+    @patch("claudewatch.backend.detection.service.get_cwds")
     def test_empty_pids(self, mock_get):
         mock_get.return_value = {}
         assert _batch_lsof_cwds([]) == {}
 
-    @patch("claudewatch.backend.services.detection.get_cwds")
+    @patch("claudewatch.backend.detection.service.get_cwds")
     def test_pid_without_cwd(self, mock_get):
         mock_get.return_value = {1235: "/Users/dev/other"}
         result = _batch_lsof_cwds([1234, 1235])
         assert 1234 not in result
         assert result[1235] == "/Users/dev/other"
 
-    @patch("claudewatch.backend.services.detection.get_cwds")
+    @patch("claudewatch.backend.detection.service.get_cwds")
     def test_empty_result(self, mock_get):
         mock_get.return_value = {}
         assert _batch_lsof_cwds([1234]) == {}
@@ -261,7 +261,7 @@ class TestDetectHostApp:
         }
         assert _detect_host_app(100, all_ps) == HostApp.OTHER
 
-    @patch("claudewatch.backend.services.detection.get_single_process_info")
+    @patch("claudewatch.backend.detection.service.get_single_process_info")
     def test_falls_back_to_procinfo_for_missing_ppid(self, mock_get_single):
         all_ps = {
             100: {"tty": "ttys001", "ppid": 200, "comm": "/usr/bin/zsh"},

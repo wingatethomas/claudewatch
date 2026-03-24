@@ -15,8 +15,8 @@ import time
 
 from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.core.paths import SUMMARIES_PATH
-from claudewatch.backend.core.services.process import ProcessService
-from claudewatch.backend.core.services.session_log import SessionLogService
+from claudewatch.backend.core.process.service import ProcessService
+from claudewatch.backend.core.session_log.service import SessionLogService
 
 log = logging.getLogger("claudewatch")
 
