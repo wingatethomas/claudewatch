@@ -7,12 +7,14 @@ notifications on modern macOS.
 Requires: brew install terminal-notifier
 """
 
+import contextlib
 import logging
 import os
 import shutil
 import subprocess
 import time
 
+from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.helpers import run_applescript
 from claudewatch.backend.models import ClaudeSession, HostApp
 from claudewatch.backend.repositories.config import get_setting
@@ -55,13 +57,46 @@ def _get_frontmost_window() -> tuple[str, str]:
     return "", ""
 
 
-class NotificationManager:
+class NotificationService(BaseService):
+    """Sends macOS notifications via terminal-notifier."""
+
     def __init__(self) -> None:
+        super().__init__()
         self._notified_pids: set[int] = set()
         self.cooldown = 30.0
         self.last_notification_time = 0.0
 
+    def send(self, title: str, subtitle: str, message: str) -> None:
+        """Send a single notification via terminal-notifier.
+
+        This is a fire-and-forget helper for one-off notifications (e.g.
+        "session paused" from the quit-pinned flow in menubar.py).
+        """
+        if not TERMINAL_NOTIFIER:
+            return
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            subprocess.run(  # noqa: S603
+                [
+                    TERMINAL_NOTIFIER,
+                    "-title",
+                    title,
+                    "-message",
+                    message[:200],
+                    "-subtitle",
+                    subtitle,
+                    "-group",
+                    "claudewatch-send",
+                    "-sender",
+                    "com.apple.Terminal",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+            )
+
     def notify_if_needed(self, sessions: list[ClaudeSession]) -> None:
+        """Send notifications for sessions that need attention."""
         if not TERMINAL_NOTIFIER or not get_setting("notifications_enabled"):
             return
 
@@ -147,3 +182,7 @@ class NotificationManager:
 
         live_attention_pids = {s.pid for s in attention}
         self._notified_pids &= live_attention_pids
+
+
+# Backward-compatible alias
+NotificationManager = NotificationService

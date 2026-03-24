@@ -35,40 +35,33 @@ from AppKit import (
 from Foundation import NSMakeRect, NSMakeSize, NSRange, NSTimer
 from PyObjCTools import AppHelper
 
-from claudewatch.backend.helpers import escape_applescript, run_applescript
-from claudewatch.backend.models import (
+from claudewatch.backend.core.helpers import escape_applescript, run_applescript
+from claudewatch.backend.core.models import (
     HOST_APP_PATH,
     ClaudeSession,
     HostApp,
     SessionStatus,
 )
-from claudewatch.backend.paths import LOG_PATH, ensure_data_dir
-from claudewatch.backend.repositories.bookmarks import get_pinned_cwds, get_pins, pin_session, unpin_session
+from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
+from claudewatch.backend.dependencies import (
+    get_bookmark_service,
+    get_detection_service,
+    get_history_service,
+    get_notification_service,
+    get_onboarding_service,
+    get_summary_service,
+    get_update_service,
+    get_usage_service,
+)
 from claudewatch.backend.repositories.config import get_setting
-from claudewatch.backend.repositories.history import get_history, record_session, remove_history_entry
-from claudewatch.backend.services.detection import detect_sessions
-from claudewatch.backend.services.notifications import TERMINAL_NOTIFIER, NotificationManager
-from claudewatch.backend.services.onboarding import (
-    get_session_count,
-    increment_session_count,
-    is_tip_shown,
-    replay_all_tips,
-    show_tip,
-)
-from claudewatch.backend.services.summarize import (
-    cache_summary,
-    generate_and_cache_summary,
-    get_cached_summary,
-    is_generating,
-    track_session,
-)
-from claudewatch.backend.services.updates import check_for_update, download_and_apply_update, get_cached_update
-from claudewatch.backend.services.usage import (
-    MODEL_DISPLAY_NAMES,
-    format_tokens_breakdown,
-    get_session_model,
-    get_session_tokens,
-)
+from claudewatch.backend.services.bookmark import BookmarkService
+from claudewatch.backend.services.detection import DetectionService
+from claudewatch.backend.services.history import HistoryService
+from claudewatch.backend.services.notifications import TERMINAL_NOTIFIER, NotificationService
+from claudewatch.backend.services.onboarding import OnboardingService
+from claudewatch.backend.services.summary import SummaryService
+from claudewatch.backend.services.updates import UpdateService
+from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, UsageService, format_tokens_breakdown
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
@@ -347,7 +340,19 @@ class _AppDelegate(NSObject):
 
 
 class ClaudeWatchApp:
-    def __init__(self, delegate: _AppDelegate) -> None:
+    def __init__(  # noqa: PLR0913
+        self,
+        delegate: _AppDelegate,
+        *,
+        detection_service: DetectionService,
+        summary_service: SummaryService,
+        notification_service: NotificationService,
+        onboarding_service: OnboardingService,
+        update_service: UpdateService,
+        usage_service: UsageService,
+        bookmark_service: BookmarkService,
+        history_service: HistoryService,
+    ) -> None:
         self._delegate = delegate
         self._menu = NSMenu.alloc().init()
         self._menu.setAutoenablesItems_(False)
@@ -355,7 +360,14 @@ class ClaudeWatchApp:
         self.sessions: list[ClaudeSession] = []
         self._last_menu_key = "__uninitialized__"
         self._consecutive_errors = 0
-        self.notifications = NotificationManager()
+        self._detection_service = detection_service
+        self._summary_service = summary_service
+        self._notification_service = notification_service
+        self._onboarding_service = onboarding_service
+        self._update_service = update_service
+        self._usage_service = usage_service
+        self._bookmark_service = bookmark_service
+        self._history_service = history_service
         self._future: Future | None = None  # type: ignore[type-arg]
         self._last_poll_time = 0.0
         self._modal_active = False
@@ -367,13 +379,13 @@ class ClaudeWatchApp:
         self._check_accessibility()
         # Run first detection synchronously so menu has data immediately
         try:
-            self.sessions = detect_sessions()
+            self.sessions = self._detection_service.detect()
             self._has_polled = True
         except Exception:
             log.exception("initial detection failed")
         self.update_display()
         # Kick off background update check
-        threading.Thread(target=check_for_update, daemon=True).start()
+        threading.Thread(target=self._update_service.check, daemon=True).start()
 
     def run(self) -> None:
         """Start the app: create status bar item, timer, and run the event loop."""
@@ -418,7 +430,7 @@ class ClaudeWatchApp:
         if self._prev_pids:  # not first poll
             for pid in new_pids:
                 s = session_map[pid]
-                model = get_session_model(s.cwd)
+                model = self._usage_service.get_model(s.cwd)
                 log.info(
                     "session.started project=%s host=%s model=%s pid=%d",
                     s.project,
@@ -428,19 +440,19 @@ class ClaudeWatchApp:
                 )
 
         # Track cumulative session count for onboarding "hover" tip
-        if new_pids and not is_tip_shown("hover"):
-            increment_session_count(len(new_pids))
+        if new_pids and not self._onboarding_service.is_tip_shown("hover"):
+            self._onboarding_service.increment_session_count(len(new_pids))
 
         # Ended sessions — record to history
         for pid in self._prev_pids - current_pids:
             log.info("session.ended pid=%d", pid)
             prev = self._prev_sessions.get(pid)
             if prev:
-                record_session(
+                self._history_service.record(
                     session_id=prev.session_id,
                     project=prev.project,
                     cwd=prev.cwd,
-                    model=get_session_model(prev.cwd),
+                    model=self._usage_service.get_model(prev.cwd),
                     host_app=prev.host_app.value,
                 )
 
@@ -455,19 +467,19 @@ class ClaudeWatchApp:
     def _check_onboarding_tips(self) -> None:
         """Fire one-time onboarding tips based on current state."""
         # Welcome — first successful poll
-        if not is_tip_shown("welcome"):
-            show_tip("welcome")
+        if not self._onboarding_service.is_tip_shown("welcome"):
+            self._onboarding_service.show_tip("welcome")
             return  # one tip per cycle
 
         # Attention — first time a session needs attention
-        if not is_tip_shown("attention") and any(s.status == SessionStatus.ATTENTION for s in self.sessions):
-            show_tip("attention")
+        if not self._onboarding_service.is_tip_shown("attention") and any(s.status == SessionStatus.ATTENTION for s in self.sessions):
+            self._onboarding_service.show_tip("attention")
             return
 
         # Hover — after 5 cumulative unique sessions observed
         _hover_threshold = 5
-        if not is_tip_shown("hover") and get_session_count() >= _hover_threshold:
-            show_tip("hover")
+        if not self._onboarding_service.is_tip_shown("hover") and self._onboarding_service.get_session_count() >= _hover_threshold:
+            self._onboarding_service.show_tip("hover")
 
     def _check_accessibility(self) -> None:
         """Show a warning if Accessibility permissions are not granted."""
@@ -501,7 +513,7 @@ class ClaudeWatchApp:
                 self._has_polled = True
                 self._log_changes()
                 self.update_display()
-                self.notifications.notify_if_needed(self.sessions)
+                self._notification_service.notify_if_needed(self.sessions)
                 self._check_onboarding_tips()
                 self._consecutive_errors = 0
             except Exception:
@@ -518,7 +530,7 @@ class ClaudeWatchApp:
             self._future = None
 
         # Dispatch new detection to background thread
-        self._future = _executor.submit(detect_sessions)
+        self._future = _executor.submit(self._detection_service.detect)
 
     def _menu_key(self) -> str:
         return "|".join(f"{s.pid}:{s.status.value}:{s.project}:{s.task_summary}:{s.last_output}" for s in self.sessions)
@@ -549,11 +561,11 @@ class ClaudeWatchApp:
         self._menu.addItem_(NSMenuItem.separatorItem())
 
         # Update available?
-        update_info = get_cached_update()
+        update_info = self._update_service.get_cached()
         if update_info:
             self._menu.addItem_(
                 _make_menu_item(
-                    f"Update to {update_info['tag']}",
+                    f"Update to {update_info.tag}",
                     self._make_open_update_handler(),
                     d,
                 )
@@ -567,7 +579,7 @@ class ClaudeWatchApp:
             )
             self._menu.addItem_(NSMenuItem.separatorItem())
 
-        pinned_cwds = get_pinned_cwds()
+        pinned_cwds = self._bookmark_service.get_pinned_cwds()
         active_cwds = {s.cwd for s in self.sessions}
 
         if not self.sessions:
@@ -628,45 +640,40 @@ class ClaudeWatchApp:
                     self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
         # Pinned sessions that are NOT currently active
-        pins = get_pins()
-        inactive_pins = [p for p in pins if p.get("cwd", "") not in active_cwds]
+        pins = self._bookmark_service.get_pins()
+        inactive_pins = [p for p in pins if p.cwd not in active_cwds]
         if inactive_pins:
             self._menu.addItem_(NSMenuItem.separatorItem())
             self._menu.addItem_(_make_menu_item(f"★ Pinned ({len(inactive_pins)})", None, d))
-            for entry in inactive_pins:
-                sid = entry.get("session_id", "")
-                proj = entry.get("project", "unknown")
-                note = entry.get("note", "")
-                cwd = entry.get("cwd", "")
+            for pin in inactive_pins:
                 _max_note = 25
-                label = f"  {proj}"
-                if note:
-                    short_note = note[:_max_note] + "…" if len(note) > _max_note else note
+                label = f"  {pin.project}"
+                if pin.note:
+                    short_note = pin.note[:_max_note] + "…" if len(pin.note) > _max_note else pin.note
                     label += f" — {short_note}"
-                item = _make_menu_item(label, self._make_resume_handler(sid, cwd), d)
+                item = _make_menu_item(label, self._make_resume_handler(pin.session_id, pin.cwd), d)
                 # Summary submenu
                 summary_menu = NSMenu.alloc().init()
                 summary_item = _make_menu_item("Summary", None, d)
-                cached = get_cached_summary(cwd)
+                cached = self._summary_service.get_cached(pin.cwd)
                 if cached:
                     _add_summary_lines(summary_menu, cached, d)
-                elif note:
-                    _add_summary_lines(summary_menu, note, d)
+                elif pin.note:
+                    _add_summary_lines(summary_menu, pin.note, d)
                 else:
                     summary_menu.addItem_(_make_menu_item("No summary available", None, d))
                 summary_item.setSubmenu_(summary_menu)
                 sub = NSMenu.alloc().init()
                 sub.addItem_(summary_item)
                 sub.addItem_(NSMenuItem.separatorItem())
-                sub.addItem_(_make_menu_item("Unpin", self._make_unpin_handler(cwd), d))
+                sub.addItem_(_make_menu_item("Unpin", self._make_unpin_handler(pin.cwd), d))
                 item.setSubmenu_(sub)
                 self._menu.addItem_(item)
                 # Date + model
                 detail_parts = []
-                ts = entry.get("timestamp", "")
-                if ts:
-                    detail_parts.append(ts[:10])
-                model = get_session_model(cwd)
+                if pin.timestamp:
+                    detail_parts.append(pin.timestamp[:10])
+                model = self._usage_service.get_model(pin.cwd)
                 if model:
                     detail_parts.append(model)
                 if detail_parts:
@@ -676,17 +683,15 @@ class ClaudeWatchApp:
         _recent_days = 3
         _recent_limit = 10
         cutoff = datetime.now(tz=UTC) - timedelta(days=_recent_days)
-        history = get_history()  # newest-first
+        history = self._history_service.get_all()  # newest-first
         recent_entries = []
         for entry in history:
             if len(recent_entries) >= _recent_limit:
                 break
-            cwd = entry.get("cwd", "")
-            ended_at = entry.get("ended_at", "")
-            if cwd in active_cwds or cwd in pinned_cwds:
+            if entry.cwd in active_cwds or entry.cwd in pinned_cwds:
                 continue
             try:
-                ended_dt = datetime.fromisoformat(ended_at)
+                ended_dt = datetime.fromisoformat(entry.ended_at)
                 if ended_dt < cutoff:
                     continue
             except (ValueError, TypeError):
@@ -698,21 +703,16 @@ class ClaudeWatchApp:
             recent_menu_item = _make_menu_item(f"⏱ Recent ({len(recent_entries)})", None, d)
             recent_submenu = NSMenu.alloc().init()
             for entry in recent_entries:
-                sid = entry.get("session_id", "")
-                proj = entry.get("project", "unknown")
-                cwd = entry.get("cwd", "")
-                raw_model = entry.get("model", "")
-                model = MODEL_DISPLAY_NAMES.get(raw_model, raw_model)
-                ended_at = entry.get("ended_at", "")
+                model = MODEL_DISPLAY_NAMES.get(entry.model, entry.model)
 
-                detail_parts = [p for p in [ended_at[:10] if ended_at else "", model] if p]
-                label = proj
+                detail_parts = [p for p in [entry.ended_at[:10] if entry.ended_at else "", model] if p]
+                label = entry.project
                 if detail_parts:
                     label += f"  ({' · '.join(detail_parts)})"
                 item = _make_menu_item(label, _noop, d)
                 item_sub = NSMenu.alloc().init()
                 # Summary submenu
-                summary_text = get_cached_summary(cwd)
+                summary_text = self._summary_service.get_cached(entry.cwd)
                 if summary_text:
                     summary_item = _make_menu_item("Summary", None, d)
                     summary_sub = NSMenu.alloc().init()
@@ -720,7 +720,7 @@ class ClaudeWatchApp:
                     summary_item.setSubmenu_(summary_sub)
                     item_sub.addItem_(summary_item)
                 # Usage submenu with token breakdown + Activity
-                token_data = get_session_tokens(cwd)
+                token_data = self._usage_service.get_tokens(entry.cwd)
                 breakdown = format_tokens_breakdown(token_data)
                 usage_item = _make_menu_item("Usage", None, d)
                 usage_sub = NSMenu.alloc().init()
@@ -731,19 +731,19 @@ class ClaudeWatchApp:
                 usage_sub.addItem_(
                     _make_menu_item(
                         "View session activity log",
-                        self._make_history_activity_handler(proj, cwd),
+                        self._make_history_activity_handler(entry.project, entry.cwd),
                         d,
                     )
                 )
                 usage_item.setSubmenu_(usage_sub)
                 item_sub.addItem_(usage_item)
                 item_sub.addItem_(NSMenuItem.separatorItem())
-                if sid:
-                    item_sub.addItem_(_make_menu_item("Resume", self._make_resume_handler(sid, cwd), d))
-                item_sub.addItem_(_make_menu_item("Remove", self._make_remove_history_handler(cwd), d))
+                if entry.session_id:
+                    item_sub.addItem_(_make_menu_item("Resume", self._make_resume_handler(entry.session_id, entry.cwd), d))
+                item_sub.addItem_(_make_menu_item("Remove", self._make_remove_history_handler(entry.cwd), d))
                 item.setSubmenu_(item_sub)
                 recent_submenu.addItem_(item)
-                track_session(cwd)  # background thread will generate summary
+                self._summary_service.track_session(entry.cwd)  # background thread will generate summary
             recent_menu_item.setSubmenu_(recent_submenu)
             self._menu.addItem_(recent_menu_item)
 
@@ -808,17 +808,17 @@ class ClaudeWatchApp:
         # Summary submenu — auto-generates in background
         summary_item = _make_menu_item("Summary", None, d)
         summary_sub = NSMenu.alloc().init()
-        cached = get_cached_summary(s.cwd)
+        cached = self._summary_service.get_cached(s.cwd)
         if cached:
             _add_summary_lines(summary_sub, cached, d)
-        elif is_generating(s.cwd):
+        elif self._summary_service.is_generating(s.cwd):
             summary_sub.addItem_(_make_menu_item("Generating…", None, d))
         else:
             summary_sub.addItem_(_make_menu_item("Pending…", None, d))
         summary_item.setSubmenu_(summary_sub)
         sub.addItem_(summary_item)
         # Usage submenu with token breakdown + Activity link
-        token_data = get_session_tokens(s.cwd)
+        token_data = self._usage_service.get_tokens(s.cwd)
         breakdown = format_tokens_breakdown(token_data)
         usage_item = _make_menu_item("Usage", None, d)
         usage_sub = NSMenu.alloc().init()
@@ -831,7 +831,7 @@ class ClaudeWatchApp:
         sub.addItem_(usage_item)
         sub.addItem_(NSMenuItem.separatorItem())
         # Track for background refresh (auto-generates summaries)
-        track_session(s.cwd)
+        self._summary_service.track_session(s.cwd)
         if pinned:
             sub.addItem_(_make_menu_item("Unpin", self._make_unpin_handler(s.cwd), d))
             sub.addItem_(_make_menu_item("Quit session", self._make_quit_handler(s), d))
@@ -842,8 +842,8 @@ class ClaudeWatchApp:
         item.setSubmenu_(sub)
         self._menu.addItem_(item)
         # Detail line: model + summary (or status as fallback)
-        model = get_session_model(s.cwd)
-        cached = get_cached_summary(s.cwd)
+        model = self._usage_service.get_model(s.cwd)
+        cached = self._summary_service.get_cached(s.cwd)
         _max_oneliner = 40
         if cached:
             oneliner = cached.replace("\n", " ").strip()
@@ -908,7 +908,7 @@ class ClaudeWatchApp:
                 modal_dismissed = threading.Event()
 
                 def _fill_summary() -> None:
-                    summary = generate_and_cache_summary(cwd)
+                    summary = self._summary_service.generate_and_cache(cwd)
                     if summary and not modal_dismissed.is_set():
                         text_field.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setStringValue:",
@@ -928,10 +928,10 @@ class ClaudeWatchApp:
                 modal_dismissed.set()
                 if result == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
-                    pin_session(sid, project, cwd, note)
-                    show_tip("pin")
+                    self._bookmark_service.pin(sid, project, cwd, note)
+                    self._onboarding_service.show_tip("pin")
                     if note:
-                        cache_summary(cwd, note)
+                        self._summary_service.cache(cwd, note)
 
                     quit_alert = NSAlert.alloc().init()
                     quit_alert.setMessageText_("Quit this session?")
@@ -954,7 +954,7 @@ class ClaudeWatchApp:
         cwd = session.cwd
         tty = session.tty
         wid = session.window_id
-        pinned = cwd in get_pinned_cwds()
+        pinned = cwd in self._bookmark_service.get_pinned_cwds()
 
         def handler(_: NSMenuItem) -> None:
             exited = False
@@ -981,7 +981,7 @@ class ClaudeWatchApp:
                 finally:
                     self._modal_active = False
             if exited:
-                threading.Thread(target=generate_and_cache_summary, args=(cwd,), daemon=True).start()
+                threading.Thread(target=self._summary_service.generate_and_cache, args=(cwd,), daemon=True).start()
             self._last_menu_key = ""
             self.update_display()
 
@@ -1000,7 +1000,7 @@ class ClaudeWatchApp:
                 alert.addButtonWithTitle_("Unpin")
                 alert.addButtonWithTitle_("Cancel")
                 if alert.runModal() == NSAlertFirstButtonReturn:
-                    unpin_session(cwd)
+                    self._bookmark_service.unpin(cwd)
             finally:
                 self._modal_active = False
                 self._last_menu_key = ""
@@ -1035,7 +1035,7 @@ class ClaudeWatchApp:
 
     def _make_remove_history_handler(self, cwd: str) -> _MenuCallback:
         def handler(_: NSMenuItem) -> None:
-            remove_history_entry(cwd)
+            self._history_service.remove(cwd)
             self._last_menu_key = ""
             self.update_display()
 
@@ -1043,10 +1043,10 @@ class ClaudeWatchApp:
 
     def _make_open_update_handler(self) -> _MenuCallback:
         def handler(_: NSMenuItem) -> None:
-            update_info = get_cached_update()
+            update_info = self._update_service.get_cached()
             if not update_info:
                 return
-            tag = update_info["tag"]
+            tag = update_info.tag
 
             app = NSApplication.sharedApplication()
             app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
@@ -1062,7 +1062,7 @@ class ClaudeWatchApp:
             def quit_app() -> None:
                 AppHelper.stopEventLoop()
 
-            success = download_and_apply_update(tag, on_ready=quit_app)
+            success = self._update_service.download_and_apply(tag, on_ready=quit_app)
             if not success:
                 # Fallback: open browser
                 webbrowser.open("https://github.com/wingatethomas/claudewatch/releases/latest")
@@ -1081,7 +1081,7 @@ class ClaudeWatchApp:
         show_preferences()
 
     def _replay_tips(self, _: NSMenuItem) -> None:
-        threading.Thread(target=replay_all_tips, daemon=True).start()
+        threading.Thread(target=self._onboarding_service.replay_all_tips, daemon=True).start()
 
     def _open_github(self, _: NSMenuItem) -> None:
         webbrowser.open("https://github.com/wingatethomas/claudewatch")
@@ -1121,6 +1121,16 @@ def main() -> None:
     signal.signal(signal.SIGINT, lambda *_: AppHelper.stopEventLoop())
 
     delegate = _AppDelegate.alloc().init()
-    app = ClaudeWatchApp(delegate)
+    app = ClaudeWatchApp(
+        delegate,
+        detection_service=get_detection_service(),
+        summary_service=get_summary_service(),
+        notification_service=get_notification_service(),
+        onboarding_service=get_onboarding_service(),
+        update_service=get_update_service(),
+        usage_service=get_usage_service(),
+        bookmark_service=get_bookmark_service(),
+        history_service=get_history_service(),
+    )
     delegate._app = app
     app.run()
