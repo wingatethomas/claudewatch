@@ -188,6 +188,22 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         _history_data.sort(key=lambda e: e.get(sort_key, ""), reverse=not ascending)
         table.reloadData()
 
+    # ── Table selection tracking ──
+
+    _actions_popup: NSPopUpButton | None = None
+
+    def tableViewSelectionDidChange_(self, notification: objc.objc_object) -> None:
+        table = notification.object()
+        popup = self._actions_popup
+        if popup is None:
+            return
+        if table.selectedRow() >= 0:
+            popup.setEnabled_(True)
+            popup.itemAtIndex_(0).setTitle_("Actions")
+        else:
+            popup.setEnabled_(False)
+            popup.itemAtIndex_(0).setTitle_("Select a row")
+
     # ── History toolbar actions (act on selected row) ──
 
     def _selected_entry(self) -> dict | None:
@@ -293,7 +309,8 @@ def _build_sessions_pane(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
         True,
     )
     actions_popup.setFont_(NSFont.systemFontOfSize_(12.0))
-    actions_popup.addItemWithTitle_("Actions")
+    actions_popup.setEnabled_(False)
+    actions_popup.addItemWithTitle_("Select a row")
     actions_popup.addItemWithTitle_("Resume")
     actions_popup.addItemWithTitle_("Activity")
     actions_popup.addItemWithTitle_("Delete")
@@ -316,7 +333,7 @@ def _build_sessions_pane(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
 
     table = NSTableView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, content_h - _bar_h))
     table.setUsesAlternatingRowBackgroundColors_(True)
-    table.setRowHeight_(24)
+    table.setRowHeight_(28)
     table.setGridStyleMask_(1)  # horizontal grid lines
 
     # Columns (all non-editable)
@@ -341,9 +358,29 @@ def _build_sessions_pane(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
     col_model.setSortDescriptorPrototype_(NSSortDescriptor.alloc().initWithKey_ascending_("model", True))
     table.addTableColumn_(col_model)
 
+    table.setColumnAutoresizingStyle_(1)  # NSTableViewUniformColumnAutoresizingStyle
+
     table.setDataSource_(delegate)
     table.setDelegate_(delegate)
     delegate._history_table = table
+    delegate._actions_popup = actions_popup
+
+    # Right-click context menu with the same actions as the dropdown
+    ctx_menu = NSMenu.alloc().init()
+    ctx_resume = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Resume", "resumeSelected:", "")
+    ctx_resume.setTarget_(delegate)
+    ctx_menu.addItem_(ctx_resume)
+    ctx_activity = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Activity", "activitySelected:", "")
+    ctx_activity.setTarget_(delegate)
+    ctx_menu.addItem_(ctx_activity)
+    ctx_menu.addItem_(NSMenuItem.separatorItem())
+    ctx_delete = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Delete", "deleteSelected:", "")
+    ctx_delete.setTarget_(delegate)
+    delete_attr = NSMutableAttributedString.alloc().initWithString_("Delete")
+    delete_attr.addAttribute_value_range_("NSColor", NSColor.systemRedColor(), NSRange(0, 6))
+    ctx_delete.setAttributedTitle_(delete_attr)
+    ctx_menu.addItem_(ctx_delete)
+    table.setMenu_(ctx_menu)
 
     scroll.setDocumentView_(table)
     view.addSubview_(scroll)
