@@ -5,6 +5,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import threading
 import time
 import webbrowser
@@ -70,6 +71,7 @@ from claudewatch.backend.services.usage import (
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
+from claudewatch.ui.welcome import should_show_welcome, show_welcome
 
 # Type alias for menu item click handlers
 _MenuCallback = Callable[[NSMenuItem], None]
@@ -384,6 +386,10 @@ class ClaudeWatchApp:
 
         # Re-render now that _status_item exists
         self.update_display()
+
+        # First-launch welcome window
+        if should_show_welcome():
+            show_welcome()
 
         # Poll timer — fires every 1s on the main run loop
         NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
@@ -784,6 +790,7 @@ class ClaudeWatchApp:
         help_item.setSubmenu_(help_submenu)
         self._menu.addItem_(help_item)
 
+        self._menu.addItem_(_make_menu_item("Restart", self._restart, d))
         self._menu.addItem_(_make_menu_item("Quit", self._quit, d))
 
     def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:  # noqa: PLR0912, PLR0915
@@ -1055,6 +1062,11 @@ class ClaudeWatchApp:
 
     def _open_github(self, _: NSMenuItem) -> None:
         webbrowser.open("https://github.com/wingatethomas/claudewatch")
+
+    def _restart(self, _: NSMenuItem) -> None:
+        log.info("app.restart")
+        AppHelper.stopEventLoop()
+        os.execv(sys.executable, [sys.executable] + sys.argv)  # noqa: S606
 
     def _quit(self, _: NSMenuItem) -> None:
         AppHelper.stopEventLoop()

@@ -1,0 +1,66 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="70%">
+      <stop offset="0%" stop-color="#1A1A2E"/>
+      <stop offset="100%" stop-color="#0D0D1A"/>
+    </radialGradient>
+
+    <!-- Soft ambient glow behind sparkle -->
+    <radialGradient id="ambient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#D4A017" stop-opacity="0.18"/>
+      <stop offset="55%" stop-color="#D4A017" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#D4A017" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Main sparkle fill: bright top → deep amber base -->
+    <linearGradient id="spkFill" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#FFE680"/>
+      <stop offset="30%" stop-color="#D4A017"/>
+      <stop offset="100%" stop-color="#9B6E00"/>
+    </linearGradient>
+
+    <!-- Bloom layer (blurred, rendered behind) -->
+    <filter id="bloom" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="28"/>
+    </filter>
+
+    <!-- Crisp inner-edge softener -->
+    <filter id="crisp" x="-4%" y="-4%" width="108%" height="108%">
+      <feGaussianBlur stdDeviation="1.5" result="b"/>
+      <feComposite in="SourceGraphic" in2="b" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="url(#bg)" style="stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+  <!-- Ambient glow circle -->
+  <ellipse cx="512" cy="512" rx="310" ry="310" fill="url(#ambient)" style="stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+  <!-- Bloom halo (blurred ghost of sparkle) -->
+  <g filter="url(#bloom)" opacity="0.6" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:0.6;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">
+    <path fill="#D4A017" d="&#10;      M512,512&#10;      C512,512 530,430 512,176&#10;      C494,430 512,512 512,512&#10;      C512,512 430,494 176,512&#10;      C430,530 512,512 512,512&#10;      C512,512 494,594 512,848&#10;      C530,594 512,512 512,512&#10;      C512,512 594,530 848,512&#10;      C594,494 512,512 512,512Z&#10;    " style="fill:rgb(212, 160, 23);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+  </g>
+
+  <!--
+    Four-pointed sparkle using cubic bezier arms.
+    Each arm: two outer curves sweeping out to a sharp tip,
+    inner curves pinch back through an hourglass waist.
+    Arms are slightly unequal (top tallest, right shortest) for a
+    natural, hand-drawn quality. Inner waist radius ~32px.
+  -->
+  <g filter="url(#crisp)" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">
+    <path fill="url(#spkFill)" d="&#10;        M512,512&#10;&#10;        C 544,500  556,460  512,172&#10;        C 468,460  480,500  512,512&#10;&#10;        C 524,544  564,556  852,512&#10;        C 564,468  524,480  512,512&#10;&#10;        C 480,524  468,564  512,852&#10;        C 556,564  544,524  512,512&#10;&#10;        C 500,480  460,468  172,512&#10;        C 460,556  500,544  512,512&#10;&#10;        Z&#10;      " style="stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+  </g>
+
+  <!-- Inner core: a small bright diamond to sell the 'hot center' -->
+  <g opacity="0.92" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:0.92;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">
+    <path fill="#FFF5C0" d="M512,512 C516,500 520,492 512,480 C504,492 508,500 512,512Z" style="fill:rgb(255, 245, 192);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+    <path fill="#FFF5C0" d="M512,512 C500,508 492,504 480,512 C492,520 500,516 512,512Z" style="fill:rgb(255, 245, 192);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+    <path fill="#FFF5C0" d="M512,512 C516,524 520,532 512,544 C504,532 508,524 512,512Z" style="fill:rgb(255, 245, 192);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+    <path fill="#FFF5C0" d="M512,512 C524,508 532,504 544,512 C532,520 524,516 512,512Z" style="fill:rgb(255, 245, 192);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+  </g>
+
+  <!-- Brightest hot-spot: tiny center circle -->
+  <circle cx="512" cy="512" r="9" fill="#FFFBE8" opacity="0.95" style="fill:rgb(255, 251, 232);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:0.95;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+</svg>
