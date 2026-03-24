@@ -45,7 +45,7 @@ from claudewatch.backend.repositories.bookmarks import get_pinned_cwds, get_pins
 from claudewatch.backend.repositories.config import get_setting
 from claudewatch.backend.repositories.history import get_history, record_session, remove_history_entry
 from claudewatch.backend.services.detection import detect_sessions
-from claudewatch.backend.services.notifications import NotificationManager
+from claudewatch.backend.services.notifications import TERMINAL_NOTIFIER, NotificationManager
 from claudewatch.backend.services.onboarding import (
     get_session_count,
     increment_session_count,
@@ -259,6 +259,16 @@ def _clean_exit_session(tty: str, pid: int, project: str, window_id: int | None 
     return True
 
 
+def _notify_paused(project: str) -> None:
+    """Send a 'session paused' notification via terminal-notifier."""
+    if not TERMINAL_NOTIFIER:
+        return
+    subprocess.Popen(  # noqa: S603
+        [TERMINAL_NOTIFIER, "-title", "Session paused", "-subtitle", project,
+         "-message", "Resume from the Pinned section"],
+    )
+
+
 def _noop(_: NSMenuItem) -> None:
     """No-op callback — keeps menu items enabled (not greyed out)."""
 
@@ -311,9 +321,9 @@ _MAX_ERRORS = 10
 class _AppDelegate(NSObject):
     """Handles NSMenuItem actions and poll timer ticks."""
 
-    _callbacks: dict[int, Callable] = {}
-    _next_tag: int = 1
-    _app: "ClaudeWatchApp | None" = None
+    _callbacks: dict[int, Callable]
+    _next_tag: int
+    _app: "ClaudeWatchApp | None"
 
     def init(self):  # noqa: ANN202
         self = objc.super(_AppDelegate, self).init()  # noqa: PLW0642
@@ -944,6 +954,7 @@ class ClaudeWatchApp:
                 _clean_exit_session(tty, pid, project, wid)
                 self._exiting_pids[pid] = time.time()
                 exited = True
+                _notify_paused(project)
             else:
                 self._modal_active = True
                 try:
