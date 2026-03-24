@@ -62,7 +62,7 @@ from claudewatch.backend.services.summarize import (
     is_generating,
     track_session,
 )
-from claudewatch.backend.services.updates import check_for_update, get_cached_update
+from claudewatch.backend.services.updates import check_for_update, download_and_apply_update, get_cached_update
 from claudewatch.backend.services.usage import (
     MODEL_DISPLAY_NAMES,
     format_tokens_breakdown,
@@ -553,7 +553,7 @@ class ClaudeWatchApp:
         if update_info:
             self._menu.addItem_(
                 _make_menu_item(
-                    f"Update available ({update_info['tag']})",
+                    f"Update to {update_info['tag']}",
                     self._make_open_update_handler(),
                     d,
                 )
@@ -1043,7 +1043,29 @@ class ClaudeWatchApp:
 
     def _make_open_update_handler(self) -> _MenuCallback:
         def handler(_: NSMenuItem) -> None:
-            webbrowser.open("https://github.com/wingatethomas/claudewatch/releases/latest")
+            update_info = get_cached_update()
+            if not update_info:
+                return
+            tag = update_info["tag"]
+
+            app = NSApplication.sharedApplication()
+            app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+            app.activateIgnoringOtherApps_(True)
+            alert = NSAlert.alloc().init()
+            alert.setMessageText_(f"Update to {tag}?")
+            alert.setInformativeText_("ClaudeWatch will download the update, quit, and relaunch automatically.")
+            alert.addButtonWithTitle_("Update")
+            alert.addButtonWithTitle_("Cancel")
+            if alert.runModal() != NSAlertFirstButtonReturn:
+                return
+
+            def quit_app() -> None:
+                AppHelper.stopEventLoop()
+
+            success = download_and_apply_update(tag, on_ready=quit_app)
+            if not success:
+                # Fallback: open browser
+                webbrowser.open("https://github.com/wingatethomas/claudewatch/releases/latest")
 
         return handler
 
