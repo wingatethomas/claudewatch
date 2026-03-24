@@ -1,15 +1,27 @@
 """Tests for token usage parsing and formatting in usage.py."""
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.services.usage import (
+    UsageService,
     _fmt_tokens,
     _token_cache,
     format_tokens,
     format_tokens_breakdown,
     get_session_tokens,
 )
+
+
+def _make_svc(
+    find_most_recent: str | None = None,
+    read_full: list[str] | None = None,
+) -> UsageService:
+    """Create a UsageService with a mocked SessionLogService."""
+    mock_log = MagicMock()
+    mock_log.find_most_recent.return_value = find_most_recent
+    mock_log.read_full.return_value = read_full or []
+    return UsageService(mock_log)
 
 
 class TestFmtTokens:
@@ -65,7 +77,89 @@ class TestFormatTokensBreakdown:
         assert format_tokens_breakdown(tokens) == []
 
 
+class TestUsageServiceGetTokens:
+    """Tests for UsageService.get_tokens."""
+
+    def test_returns_empty_when_no_jsonl(self):
+        svc = _make_svc(find_most_recent=None)
+        result = svc.get_tokens("/Users/dev/myapp")
+        assert result == {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
+
+    def test_returns_empty_when_file_gone(self, tmp_path):
+        svc = _make_svc(find_most_recent=str(tmp_path / "gone.jsonl"))
+        result = svc.get_tokens("/Users/dev/myapp")
+        assert result == {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
+
+    def test_parses_usage_from_lines(self, tmp_path):
+        # Need a real file for os.path.getmtime
+        jsonl_file = tmp_path / "session.jsonl"
+        lines = [
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 50,
+                        "cache_creation_input_tokens": 200,
+                        "cache_read_input_tokens": 300,
+                    }
+                },
+            }),
+            json.dumps({
+                "type": "assistant",
+                "message": {"usage": {"input_tokens": 10, "output_tokens": 5}},
+            }),
+        ]
+        jsonl_file.write_text("\n".join(lines) + "\n")
+
+        svc = _make_svc(find_most_recent=str(jsonl_file), read_full=lines)
+        result = svc.get_tokens("/Users/dev/myapp")
+        assert result["input"] == 110
+        assert result["output"] == 55
+        assert result["cache_create"] == 200
+        assert result["cache_read"] == 300
+
+    def test_caches_by_mtime(self, tmp_path):
+        jsonl_file = tmp_path / "session.jsonl"
+        line = json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 42, "output_tokens": 10}}})
+        jsonl_file.write_text(line + "\n")
+
+        svc = _make_svc(find_most_recent=str(jsonl_file), read_full=[line])
+        r1 = svc.get_tokens("/Users/dev/myapp")
+        r2 = svc.get_tokens("/Users/dev/myapp")
+        assert r1 == r2
+        assert r1["input"] == 42
+        # read_full should only be called once (second call uses cache)
+        assert svc._session_log_svc.read_full.call_count == 1
+
+    def test_skips_invalid_json(self, tmp_path):
+        jsonl_file = tmp_path / "session.jsonl"
+        lines = [
+            "not json",
+            json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 5, "output_tokens": 3}}}),
+        ]
+        jsonl_file.write_text("\n".join(lines) + "\n")
+
+        svc = _make_svc(find_most_recent=str(jsonl_file), read_full=lines)
+        result = svc.get_tokens("/Users/dev/myapp")
+        assert result["input"] == 5
+
+    def test_instance_cache_is_isolated(self, tmp_path):
+        """Each UsageService instance has its own cache."""
+        jsonl_file = tmp_path / "session.jsonl"
+        line = json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 7, "output_tokens": 2}}})
+        jsonl_file.write_text(line + "\n")
+
+        svc1 = _make_svc(find_most_recent=str(jsonl_file), read_full=[line])
+        svc2 = _make_svc(find_most_recent=str(jsonl_file), read_full=[line])
+        svc1.get_tokens("/Users/dev/myapp")
+        assert len(svc1._token_cache) == 1
+        assert len(svc2._token_cache) == 0
+
+
 class TestGetSessionTokens:
+    """Tests for legacy get_session_tokens function."""
+
     def test_parses_usage_from_jsonl(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
         proj_dir.mkdir(parents=True)
