@@ -19,8 +19,9 @@ from claudewatch.backend.services.jsonl import find_most_recent_jsonl, read_json
 log = logging.getLogger("claudewatch")
 
 _MAX_CONTEXT_CHARS = 8000
-_TIMEOUT_SECONDS = 15
+_TIMEOUT_SECONDS = 45
 _REFRESH_INTERVAL = 60  # seconds between background refresh cycles
+_MAX_FAILURES = 3  # stop retrying after this many consecutive failures per CWD
 _STORE_PATH = SUMMARIES_PATH
 
 _PROMPT = (
@@ -41,6 +42,10 @@ _in_progress_lock = threading.Lock()
 # PIDs of our own claude -p subprocesses (for detection filtering)
 _our_pids: set[int] = set()
 _our_pids_lock = threading.Lock()
+
+# Failure tracking — stop retrying after _MAX_FAILURES consecutive failures per CWD
+_failures: dict[str, int] = {}
+_failures_lock = threading.Lock()
 
 # Background thread
 _bg_thread: threading.Thread | None = None
@@ -116,11 +121,16 @@ def is_generating(cwd: str) -> bool:
 def generate_and_cache_summary(cwd: str) -> str:
     """Generate a summary via claude -p and persist it.
 
-    Skips if already cached and fresh, or if another generation is in progress.
+    Skips if already cached and fresh, if another generation is in progress,
+    or if this CWD has failed too many times consecutively.
     """
     cached = get_cached_summary(cwd)
     if cached is not None:
         return cached
+
+    with _failures_lock:
+        if _failures.get(cwd, 0) >= _MAX_FAILURES:
+            return ""
 
     with _in_progress_lock:
         if cwd in _in_progress:
@@ -134,6 +144,14 @@ def generate_and_cache_summary(cwd: str) -> str:
             summary = _call_claude(cwd)
             if summary:
                 cache_summary(cwd, summary)
+                with _failures_lock:
+                    _failures.pop(cwd, None)
+            else:
+                with _failures_lock:
+                    _failures[cwd] = _failures.get(cwd, 0) + 1
+                    count = _failures[cwd]
+                if count >= _MAX_FAILURES:
+                    log.warning("summarize: giving up on %s after %d failures", os.path.basename(cwd), count)
             return summary
         finally:
             _generating.release()
@@ -143,11 +161,13 @@ def generate_and_cache_summary(cwd: str) -> str:
 
 
 def invalidate_cache(cwd: str) -> None:
-    """Remove a CWD from the summary store."""
+    """Remove a CWD from the summary store and reset failure count."""
     with _store_lock:
         _load_store()
         _store.pop(cwd, None)
         _save_store()
+    with _failures_lock:
+        _failures.pop(cwd, None)
 
 
 # ── Background refresh ────────────────────────────────────────────────
