@@ -6,7 +6,6 @@ import json
 import os
 
 from claudewatch.backend.core.base_service import BaseService
-from claudewatch.backend.core.session_log.jsonl import find_most_recent_jsonl, read_jsonl_full, read_jsonl_tail
 from claudewatch.backend.core.session_log.service import SessionLogService
 
 # Model display names — keep factual
@@ -150,83 +149,3 @@ class UsageService(BaseService):
         }
         self._token_cache[cwd] = (result, mtime)
         return result
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible module-level API (delegates to a default instance).
-# Will be removed in Task 7 when all callers switch to injected services.
-# ---------------------------------------------------------------------------
-
-# Module-level cache shared by legacy functions
-_token_cache: dict[str, tuple[dict[str, int], float]] = {}
-
-
-def get_session_model(cwd: str) -> str:
-    """Legacy wrapper — delegates to raw jsonl functions."""
-    path = find_most_recent_jsonl(cwd)
-    if not path:
-        return ""
-
-    tail = read_jsonl_tail(path)
-    if not tail:
-        return ""
-
-    last_model = ""
-    for line in tail.strip().splitlines():
-        try:
-            d = json.loads(line)
-            msg = d.get("message", {})
-            if isinstance(msg, dict):
-                model = msg.get("model", "")
-                if model:
-                    last_model = model
-        except (json.JSONDecodeError, AttributeError):
-            continue
-
-    return MODEL_DISPLAY_NAMES.get(last_model, last_model)
-
-
-def get_session_tokens(cwd: str) -> dict[str, int]:
-    """Legacy wrapper — delegates to raw jsonl functions."""
-    path = find_most_recent_jsonl(cwd)
-    if not path:
-        return dict(_EMPTY_TOKENS)
-
-    try:
-        mtime = os.path.getmtime(path)
-    except OSError:
-        return dict(_EMPTY_TOKENS)
-
-    cached = _token_cache.get(cwd)
-    if cached and cached[1] >= mtime:
-        return cached[0]
-
-    lines = read_jsonl_full(path)
-    total_in = 0
-    total_out = 0
-    total_cache_create = 0
-    total_cache_read = 0
-    for line in lines:
-        try:
-            d = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
-            continue
-        msg = d.get("message", {})
-        if not isinstance(msg, dict):
-            continue
-        usage = msg.get("usage", {})
-        if not isinstance(usage, dict):
-            continue
-        total_in += usage.get("input_tokens", 0)
-        total_cache_create += usage.get("cache_creation_input_tokens", 0)
-        total_cache_read += usage.get("cache_read_input_tokens", 0)
-        total_out += usage.get("output_tokens", 0)
-
-    result = {
-        "input": total_in,
-        "output": total_out,
-        "cache_create": total_cache_create,
-        "cache_read": total_cache_read,
-    }
-    _token_cache[cwd] = (result, mtime)
-    return result
