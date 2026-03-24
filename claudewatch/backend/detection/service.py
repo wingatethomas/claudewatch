@@ -13,19 +13,8 @@ from claudewatch.backend.core.models import (
     HostApp,
     SessionStatus,
 )
-from claudewatch.backend.core.services.process import ProcessService
-from claudewatch.backend.core.services.session_log import SessionLogService
-from claudewatch.backend.services.jsonl import (
-    find_most_recent_jsonl,
-    get_session_id_from_path,
-    read_jsonl_tail,
-)
-from claudewatch.backend.services.procinfo import (
-    get_cwds,
-    get_ppid,
-    get_process_info,
-    get_single_process_info,
-)
+from claudewatch.backend.core.process.service import ProcessService
+from claudewatch.backend.core.session_log.service import SessionLogService
 
 log = logging.getLogger("claudewatch")
 
@@ -37,11 +26,8 @@ _JSONL_MIN_AGE = 1
 _WIN_SPLIT_FIELDS = 3
 _TERMINAL_CACHE_TTL = 3  # seconds between AppleScript refreshes
 
-# Legacy module-level caches — kept for backward compatibility with tests
-# that import and clear these directly.
+# Module-level cache — kept because tests import and clear it directly.
 _host_app_cache: dict[int, HostApp] = {}
-_terminal_cache: dict[str, tuple[str, int]] | None = None
-_terminal_cache_time: float = 0
 
 
 class DetectionService(BaseService):
@@ -503,167 +489,3 @@ def _match_terminal_window(
                 return tw_title, tw_wid, host_app
 
     return host_app.value, None, host_app
-
-
-# ── Backward-compatible module-level wrappers ─────────────────────────
-# These functions delegate to module-level state or create helper
-# wrappers so existing callers (menubar, tests) continue to work.
-
-
-def _batch_ps_info(pids: list[int]) -> dict[int, dict]:
-    """Get tty + ppid + comm for all PIDs via native libproc calls."""
-    return get_process_info(pids)
-
-
-def _batch_lsof_cwds(pids: list[int]) -> dict[int, str]:
-    """Get CWD for all PIDs via native libproc calls."""
-    return get_cwds(pids)
-
-
-def _detect_host_app(pid: int, all_ps: dict[int, dict]) -> HostApp:
-    """Walk PPID chain to find the host app. Results are cached by PID."""
-    if pid in _host_app_cache:
-        return _host_app_cache[pid]
-
-    current = pid
-    for _ in range(20):
-        info = all_ps.get(current)
-        ppid = info["ppid"] if info else 0
-
-        if not ppid:
-            ppid = get_ppid(current)
-
-        if ppid <= 1:
-            break
-
-        if ppid in all_ps:
-            comm = os.path.basename(all_ps[ppid]["comm"])
-        else:
-            pinfo = get_single_process_info(ppid)
-            if pinfo:
-                parent_ppid = pinfo["ppid"]
-                raw_comm = pinfo["comm"]
-            else:
-                parent_ppid = 0
-                raw_comm = ""
-            comm = os.path.basename(raw_comm)
-            all_ps[ppid] = {"tty": "", "ppid": parent_ppid, "comm": raw_comm}
-
-        comm_lower = comm.lower()
-        if comm_lower.startswith("tmux"):
-            _host_app_cache[pid] = HostApp.TMUX
-            return HostApp.TMUX
-        for name, app in HOST_PROCESS_NAMES.items():
-            if name in comm_lower:
-                _host_app_cache[pid] = app
-                return app
-        current = ppid
-
-    _host_app_cache[pid] = HostApp.OTHER
-    return HostApp.OTHER
-
-
-def _check_jsonl_for_idle(cwd: str) -> SessionStatus:
-    """Determine idle/working status from JSONL."""
-    path = find_most_recent_jsonl(cwd)
-    if not path:
-        return SessionStatus.WORKING
-
-    _active_threshold = 5
-    try:
-        age = time.time() - os.path.getmtime(path)
-        if age < _active_threshold:
-            return SessionStatus.WORKING
-    except OSError:
-        pass
-
-    tail = read_jsonl_tail(path, tail_bytes=5120)
-    if not tail:
-        return SessionStatus.WORKING
-
-    last_type = ""
-    for line in tail.strip().splitlines():
-        try:
-            d = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
-            continue
-        dtype = d.get("type", "")
-        if dtype in ("user", "assistant"):
-            last_type = dtype
-
-    if last_type == "assistant":
-        return SessionStatus.IDLE
-    return SessionStatus.WORKING
-
-
-def _get_session_id(cwd: str) -> str:
-    """Get the most recent session ID for a CWD from the JSONL filename."""
-    path = find_most_recent_jsonl(cwd)
-    return get_session_id_from_path(path) if path else ""
-
-
-def _check_jsonl_for_pending_tool(cwd: str) -> tuple[bool, str, str]:  # noqa: PLR0911, PLR0912
-    """Check if the most recent JSONL for this CWD has a pending tool_use."""
-    path = find_most_recent_jsonl(cwd)
-    if not path:
-        return False, "", ""
-
-    try:
-        age = time.time() - os.path.getmtime(path)
-        if age > _JSONL_MAX_AGE or age < _JSONL_MIN_AGE:
-            return False, "", ""
-    except OSError:
-        return False, "", ""
-
-    tail = read_jsonl_tail(path)
-    if not tail:
-        return False, "", ""
-
-    lines = tail.strip().splitlines()
-    for line in reversed(lines[-20:]):
-        try:
-            d = json.loads(line)
-            dtype = d.get("type")
-
-            if dtype in ("system", "last-prompt", "pr-link", "queue-operation", "file-history-snapshot"):
-                continue
-
-            if dtype == "user":
-                return False, "", ""
-
-            if dtype == "assistant":
-                content = d.get("message", {}).get("content", [])
-                tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
-                if tool_uses:
-                    one_line, ctx = _format_tool_use(tool_uses[-1])
-                    return True, one_line, ctx
-                return False, "", ""
-
-            if dtype == "progress":
-                msg = d["data"]["message"]
-                if msg.get("type") == "user":
-                    return False, "", ""
-                if msg.get("type") == "assistant":
-                    content = msg.get("message", {}).get("content", [])
-                    tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
-                    if tool_uses:
-                        one_line, ctx = _format_tool_use(tool_uses[-1])
-                        return True, one_line, ctx
-                    return False, "", ""
-
-        except (json.JSONDecodeError, KeyError, TypeError):
-            continue
-    return False, "", ""
-
-
-def detect_sessions() -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
-    """Backward-compatible module-level function.
-
-    Creates a DetectionService with default ProcessService and SessionLogService
-    and delegates to it. Syncs the module-level _host_app_cache for tests that
-    inspect it directly.
-    """
-    svc = DetectionService(ProcessService(), SessionLogService())
-    # Seed instance cache from module-level cache for continuity
-    svc._host_app_cache = _host_app_cache
-    return svc.detect()

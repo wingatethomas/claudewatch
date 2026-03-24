@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from claudewatch.backend.services.procinfo import (
+from claudewatch.backend.core.process.procinfo import (
     _dev_to_tty,
     get_cwds,
     get_ppid,
@@ -55,7 +55,7 @@ class TestGetCwds:
 class TestGetPpid:
     """Tests for get_ppid()."""
 
-    @patch("claudewatch.backend.services.procinfo._libproc")
+    @patch("claudewatch.backend.core.process.procinfo._libproc")
     def test_returns_zero_on_failure(self, mock_libproc):
         mock_libproc.proc_pidinfo.return_value = 0
         assert get_ppid(99999) == 0
@@ -64,7 +64,7 @@ class TestGetPpid:
 class TestGetSingleProcessInfo:
     """Tests for get_single_process_info()."""
 
-    @patch("claudewatch.backend.services.procinfo._libproc")
+    @patch("claudewatch.backend.core.process.procinfo._libproc")
     def test_returns_none_on_failure(self, mock_libproc):
         mock_libproc.proc_pidinfo.return_value = 0
         assert get_single_process_info(99999) is None
@@ -73,8 +73,8 @@ class TestGetSingleProcessInfo:
 class TestListAllProcesses:
     """Tests for list_all_processes()."""
 
-    @patch("claudewatch.backend.services.procinfo._list_all_pids")
-    @patch("claudewatch.backend.services.procinfo._libproc")
+    @patch("claudewatch.backend.core.process.procinfo._list_all_pids")
+    @patch("claudewatch.backend.core.process.procinfo._libproc")
     def test_returns_empty_for_no_pids(self, mock_libproc, mock_list_all):
         mock_list_all.return_value = []
         assert list_all_processes() == []

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.core.dto import ActivityEventDTO
-from claudewatch.backend.core.services.session_log import SessionLogService
+from claudewatch.backend.core.session_log.service import SessionLogService
 
 
 @dataclass

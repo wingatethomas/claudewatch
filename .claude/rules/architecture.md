@@ -2,73 +2,87 @@
 
 ```
 backend/
-├── core/               # Shared infrastructure — no imports from services/ or repositories/
-│   ├── models.py       # Data structures, enums, constants (ClaudeSession, SessionStatus, HostApp)
-│   ├── dto.py          # BaseDTO + all shared DTOs (frozen dataclasses, suffixed *DTO)
-│   ├── helpers.py      # AppleScript runner, escaping, shell utilities
-│   ├── paths.py        # Centralized file paths (~/Library/Application Support/ClaudeWatch/)
-│   ├── base_service.py # BaseService with ImportConstraint enforcement
-│   └── services/       # Core services — can import from core/ only
-│       ├── process.py      # ProcessService — PID lookup + child PID registry
-│       └── session_log.py  # SessionLogService — JSONL discovery/reading
-├── repositories/       # Persistence — can import from core/
-│   ├── config.py       # Settings (infrastructure, accessed directly by services)
-│   ├── bookmarks.py    # Pinned session bookmarks
-│   └── history.py      # Session history
-└── services/           # Domain services — can import from core/ and repositories/
-    ├── detection.py        # DetectionService
-    ├── summary.py          # SummaryService
-    ├── updates.py          # UpdateService
-    ├── notifications.py    # NotificationService
-    ├── onboarding.py       # OnboardingService
-    ├── usage.py            # UsageService
-    ├── activity.py         # ActivityService
-    ├── bookmark.py         # BookmarkService (wraps bookmarks repo for UI)
-    └── history.py          # HistoryService (wraps history repo for UI)
+├── core/                       # Shared infrastructure — no imports from domains or repositories/
+│   ├── models.py               # ClaudeSession, enums, constants
+│   ├── dto.py                  # BaseDTO + shared DTOs (frozen dataclasses, *DTO suffix)
+│   ├── helpers.py              # AppleScript runner, escaping
+│   ├── paths.py                # Centralized file paths
+│   ├── base_service.py         # BaseService with ImportConstraint
+│   ├── process/                # ProcessService — PID lookup + child PID registry
+│   │   ├── service.py
+│   │   ├── dependencies.py     # get_process_service()
+│   │   └── procinfo.py         # libproc ctypes bindings (implementation detail)
+│   └── session_log/            # SessionLogService — JSONL discovery/reading
+│       ├── service.py
+│       ├── dependencies.py     # get_session_log_service()
+│       └── jsonl.py            # JSONL file operations (implementation detail)
+├── repositories/               # Persistence — can import from core/
+│   ├── config.py               # Settings (infrastructure — UI may access directly)
+│   ├── bookmarks.py            # Pinned session bookmarks
+│   └── history.py              # Session history
+├── detection/                  # DetectionService — find running Claude sessions
+│   ├── service.py
+│   └── dependencies.py         # get_detection_service()
+├── summary/                    # SummaryService — generate/cache session summaries
+│   ├── service.py
+│   └── dependencies.py         # get_summary_service()
+├── notifications/              # NotificationService — macOS notifications
+│   ├── service.py
+│   └── dependencies.py         # get_notification_service()
+├── onboarding/                 # OnboardingService — first-run tips
+│   ├── service.py
+│   └── dependencies.py         # get_onboarding_service()
+├── updates/                    # UpdateService — GitHub release checker + self-update
+│   ├── service.py
+│   └── dependencies.py         # get_update_service()
+├── usage/                      # UsageService — token counts, model names
+│   ├── service.py
+│   └── dependencies.py         # get_usage_service()
+├── activity/                   # ActivityService — session timeline from JSONL
+│   ├── service.py
+│   └── dependencies.py         # get_activity_service()
+├── bookmark/                   # BookmarkService — wraps bookmarks repo for UI
+│   ├── service.py
+│   └── dependencies.py         # get_bookmark_service()
+└── history/                    # HistoryService — wraps history repo for UI
+    ├── service.py
+    └── dependencies.py         # get_history_service()
 ```
 
 ## Import Rules
 
-| From \ To | core/ | core/services/ | repositories/ | services/ | ui/ |
-|-----------|-------|----------------|---------------|-----------|-----|
+| From \ To | core/ | core/services | repositories/ | domains | ui/ |
+|-----------|-------|---------------|---------------|---------|-----|
 | **core/** | self | NO | NO | NO | NO |
-| **core/services/** | YES | self | NO | NO | NO |
+| **core/services** | YES | self | NO | NO | NO |
 | **repositories/** | YES | NO | self | NO | NO |
-| **services/** | YES | YES | YES | self | NO |
-| **ui/** | YES (DTOs/models) | NO | **NEVER** | YES | self |
+| **domains** | YES | YES | YES | peers (via deps) | NO |
+| **ui/** | YES (DTOs/models) | NO | config only | YES (via deps) | self |
 
 - `BaseService` enforces import constraints at runtime via `ImportConstraint`.
-- UI **never** imports from `repositories/` — always goes through a service.
-- Config repo is infrastructure — services import it directly (no wrapper needed).
+- UI **never** imports from `repositories/` (except config, which is infrastructure).
+- UI imports services via `get_*_service()` factory functions from each domain's `dependencies.py`.
+
+## Domain Package Convention
+
+Each domain is a Python package with:
+- `service.py` — service class extending `BaseService`, receives dependencies via constructor
+- `dependencies.py` — `@lru_cache(maxsize=1)` factory function `get_*_service()` that wires dependencies
+
+Dependencies flow through factory functions, not direct construction. Example:
+```python
+# detection/dependencies.py
+@lru_cache(maxsize=1)
+def get_detection_service() -> DetectionService:
+    return DetectionService(get_process_service(), get_session_log_service())
+```
 
 ## DTO Convention
 
-- All DTOs are frozen dataclasses inheriting `BaseDTO`, suffixed with `DTO` (e.g. `SessionDTO`, `PinDTO`, `HistoryEntryDTO`).
-- DTOs flow across layer boundaries: service → UI, service → service.
-- Models (e.g. `ClaudeSession`) live in `core/models.py` and are used internally by services.
-- Services return DTOs to external consumers (UI), not raw models or dicts.
-
-## Service Convention
-
-- All services extend `BaseService`.
-- Dependencies are injected via constructor (no global singletons).
-- Service instances are wired in `main()` and passed to `ClaudeWatchApp`.
-- Module-level state (caches, locks, threads) becomes instance state.
-
-## Module Responsibilities
-
-- **models.py** — data structures, enums, path mapping (`cwd_to_proj_key()` / `proj_key_to_cwd()`). Longest-match for hyphenated directory names.
-- **paths.py** — centralized app data directory. Auto-migrates legacy files from `~/.claude/claudewatch-*`. Import paths from here, never hardcode.
-- **helpers.py** — shared AppleScript runner, escaping, shell utilities.
-- **DetectionService** — finds running Claude processes. Runs on background thread, results collected on main thread via `Future.result()`.
-- **SummaryService** — conversation summaries via `claude -p`. Max 1 concurrent. Failures tracked per CWD — gives up after 3. Background thread refreshes every 60s.
-- **UpdateService** — checks GitHub Releases every 6 hours. Downloads and applies self-updates.
-- **NotificationService** — macOS notifications via terminal-notifier.
-- **OnboardingService** — first-run tips. One tip per poll cycle.
-- **ProcessService** — PID lookup via libproc + child PID registry (shared by detection and summary).
-- **SessionLogService** — JSONL discovery, symlink validation, reading.
-- **BookmarkService** — pin/unpin/list, wraps bookmarks repo.
-- **HistoryService** — record/list/remove, wraps history repo, seeds from JSONL.
+- All DTOs inherit `BaseDTO` (frozen dataclass), suffixed with `DTO` (e.g. `PinDTO`, `HistoryEntryDTO`)
+- DTOs flow from services to UI across layer boundaries
+- `ClaudeSession` from `core/models.py` is the shared session model (not a DTO — it's mutable and used internally)
+- Services that wrap repos return DTOs, not raw dicts
 
 ## Threading Rules
 
