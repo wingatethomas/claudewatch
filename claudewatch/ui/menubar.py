@@ -5,6 +5,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import threading
 import time
 import webbrowser
@@ -789,6 +790,7 @@ class ClaudeWatchApp:
         help_item.setSubmenu_(help_submenu)
         self._menu.addItem_(help_item)
 
+        self._menu.addItem_(_make_menu_item("Restart", self._restart, d))
         self._menu.addItem_(_make_menu_item("Quit", self._quit, d))
 
     def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:  # noqa: PLR0912, PLR0915
@@ -1060,6 +1062,11 @@ class ClaudeWatchApp:
 
     def _open_github(self, _: NSMenuItem) -> None:
         webbrowser.open("https://github.com/wingatethomas/claudewatch")
+
+    def _restart(self, _: NSMenuItem) -> None:
+        log.info("app.restart")
+        AppHelper.stopEventLoop()
+        os.execv(sys.executable, [sys.executable] + sys.argv)  # noqa: S606
 
     def _quit(self, _: NSMenuItem) -> None:
         AppHelper.stopEventLoop()
