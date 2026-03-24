@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, UsageService, get_session_model
 
 
-def _make_svc(
+def _make_service(
     find_most_recent: str | None = None,
     read_tail: str = "",
     read_full: list[str] | None = None,
@@ -33,21 +33,21 @@ class TestUsageServiceGetModel:
     """Tests for UsageService.get_model."""
 
     def test_returns_empty_when_no_jsonl_found(self):
-        svc = _make_svc(find_most_recent=None)
+        svc = _make_service(find_most_recent=None)
         assert svc.get_model("/Users/dev/myapp") == ""
 
     def test_returns_empty_when_tail_empty(self):
-        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail="")
+        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail="")
         assert svc.get_model("/Users/dev/myapp") == ""
 
     def test_returns_display_name_for_known_model(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
-        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
 
     def test_returns_raw_model_for_unknown(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "claude-future-99"}}) + "\n"
-        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "claude-future-99"
 
     def test_uses_last_model_in_file(self):
@@ -55,7 +55,7 @@ class TestUsageServiceGetModel:
             json.dumps({"type": "assistant", "message": {"model": "claude-sonnet-4-6"}}) + "\n"
             + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
         )
-        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
 
     def test_handles_invalid_json_lines(self):
@@ -63,17 +63,17 @@ class TestUsageServiceGetModel:
             "not json\n"
             + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
         )
-        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
 
     def test_handles_non_dict_message(self):
         tail = json.dumps({"type": "assistant", "message": "string"}) + "\n"
-        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == ""
 
     def test_returns_empty_for_no_model_field(self):
         tail = json.dumps({"type": "user", "message": {"content": "hello"}}) + "\n"
-        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == ""
 
 

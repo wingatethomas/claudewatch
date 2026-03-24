@@ -24,20 +24,20 @@ class ActivityEntry:
 class ActivityService(BaseService):
     """Parses session JSONL logs into activity timelines."""
 
-    def __init__(self, session_log_svc: SessionLogService) -> None:
+    def __init__(self, session_log_service: SessionLogService) -> None:
         super().__init__()
-        self._session_log_svc = session_log_svc
+        self._session_log_service = session_log_service
 
     def parse(self, cwd: str, max_entries: int = 100) -> list[ActivityEventDTO]:  # noqa: PLR0912
         """Parse the most recent JSONL for a CWD into an activity timeline.
 
         Returns newest-first list of ActivityEventDTO objects.
         """
-        path = self._session_log_svc.find_most_recent(cwd)
+        path = self._session_log_service.find_most_recent(cwd)
         if not path:
             return []
 
-        lines = self._session_log_svc.read_full(path)
+        lines = self._session_log_service.read_full(path)
         if not lines:
             return []
 

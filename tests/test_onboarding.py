@@ -16,7 +16,7 @@ from claudewatch.backend.services.onboarding import (
 _MOD = "claudewatch.backend.services.onboarding"
 
 
-def _make_svc() -> OnboardingService:
+def _make_service() -> OnboardingService:
     """Create an OnboardingService with a default NotificationService."""
     return OnboardingService(NotificationService())
 
@@ -25,13 +25,13 @@ class TestOnboardingServiceIsBaseService:
     """OnboardingService extends BaseService."""
 
     def test_instance_is_onboarding_service(self):
-        svc = _make_svc()
+        svc = _make_service()
         assert isinstance(svc, OnboardingService)
 
     def test_accepts_notification_service(self):
         nsvc = NotificationService()
         svc = OnboardingService(nsvc)
-        assert svc._notification_svc is nsvc
+        assert svc._notification_service is nsvc
 
 
 class TestTipTracking:
@@ -54,7 +54,7 @@ class TestTipTracking:
             assert not is_tip_shown("welcome")
 
     def test_service_is_tip_shown(self):
-        svc = _make_svc()
+        svc = _make_service()
         with patch(f"{_MOD}.get_setting", return_value=["attention"]):
             assert svc.is_tip_shown("attention")
             assert not svc.is_tip_shown("welcome")
@@ -156,7 +156,7 @@ class TestShowTip:
         assert result is False
 
     def test_service_show_tip(self):
-        svc = _make_svc()
+        svc = _make_service()
         mock_run = MagicMock()
 
         def _get(key):
@@ -213,12 +213,12 @@ class TestSessionCount:
         mock_set.assert_called_once_with("onboarding_session_count", 1)
 
     def test_service_get_session_count(self):
-        svc = _make_svc()
+        svc = _make_service()
         with patch(f"{_MOD}.get_setting", return_value=42):
             assert svc.get_session_count() == 42
 
     def test_service_increment_session_count(self):
-        svc = _make_svc()
+        svc = _make_service()
         mock_set = MagicMock()
         with (
             patch(f"{_MOD}.get_setting", return_value=10),
@@ -233,7 +233,7 @@ class TestMarkWelcomeShown:
     """mark_welcome_shown wraps config repo."""
 
     def test_mark_welcome_shown(self):
-        svc = _make_svc()
+        svc = _make_service()
         mock_set = MagicMock()
         with patch(f"{_MOD}.set_setting", mock_set):
             svc.mark_welcome_shown()

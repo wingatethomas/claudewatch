@@ -68,9 +68,9 @@ def format_tokens_breakdown(tokens: dict[str, int]) -> list[str]:
 class UsageService(BaseService):
     """Parses model identity and token usage from Claude Code session logs."""
 
-    def __init__(self, session_log_svc: SessionLogService) -> None:
+    def __init__(self, session_log_service: SessionLogService) -> None:
         super().__init__()
-        self._session_log_svc = session_log_svc
+        self._session_log_service = session_log_service
         # CWD -> (tokens_dict, jsonl_mtime)
         self._token_cache: dict[str, tuple[dict[str, int], float]] = {}
 
@@ -80,11 +80,11 @@ class UsageService(BaseService):
         Reads the last assistant message from the JSONL to find the model.
         Returns a display name like 'opus 4.6' or empty string if unavailable.
         """
-        path = self._session_log_svc.find_most_recent(cwd)
+        path = self._session_log_service.find_most_recent(cwd)
         if not path:
             return ""
 
-        tail = self._session_log_svc.read_tail(path)
+        tail = self._session_log_service.read_tail(path)
         if not tail:
             return ""
 
@@ -108,7 +108,7 @@ class UsageService(BaseService):
         Returns {input, output, cache_create, cache_read} summed across all messages.
         Cached by JSONL mtime — only re-reads when the file changes.
         """
-        path = self._session_log_svc.find_most_recent(cwd)
+        path = self._session_log_service.find_most_recent(cwd)
         if not path:
             return dict(_EMPTY_TOKENS)
 
@@ -121,7 +121,7 @@ class UsageService(BaseService):
         if cached and cached[1] >= mtime:
             return cached[0]
 
-        lines = self._session_log_svc.read_full(path)
+        lines = self._session_log_service.read_full(path)
         total_in = 0
         total_out = 0
         total_cache_create = 0
