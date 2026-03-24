@@ -1,5 +1,7 @@
 """Check GitHub Releases for newer versions of ClaudeWatch."""
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -11,14 +13,19 @@ import time
 from collections.abc import Callable
 
 from claudewatch import __version__
+from claudewatch.backend.core.base_service import BaseService
+from claudewatch.backend.core.dto import UpdateInfoDTO
 
 log = logging.getLogger("claudewatch")
 
 _CHECK_INTERVAL = 6 * 60 * 60  # 6 hours
 
-_cache_lock = threading.Lock()
-_cached_update: dict[str, str] | None = None  # {"tag": "v0.6.0"} or None
-_last_check: float = 0.0
+_REPO = "wingatethomas/claudewatch"
+
+
+# ---------------------------------------------------------------------------
+# Pure / stateless helpers — kept at module level
+# ---------------------------------------------------------------------------
 
 
 def _parse_version(tag: str) -> tuple[int, ...]:
@@ -66,44 +73,6 @@ def _fetch_latest_tag() -> str | None:
     return None
 
 
-def check_for_update() -> dict[str, str] | None:
-    """Check for a newer release. Updates module cache. Safe to call from any thread."""
-    global _cached_update, _last_check  # noqa: PLW0603
-
-    now = time.time()
-    with _cache_lock:
-        if now - _last_check < _CHECK_INTERVAL:
-            return _cached_update
-
-    tag = _fetch_latest_tag()
-    if not tag:
-        with _cache_lock:
-            _last_check = now
-        return None
-
-    current = _parse_version(__version__)
-    latest = _parse_version(tag)
-
-    with _cache_lock:
-        _last_check = now
-        if latest > current:
-            _cached_update = {"tag": tag}
-            log.info("update available: %s (current: %s)", tag, __version__)
-        else:
-            _cached_update = None
-
-    return _cached_update
-
-
-def get_cached_update() -> dict[str, str] | None:
-    """Return the cached update info without hitting the network."""
-    with _cache_lock:
-        return _cached_update
-
-
-_REPO = "wingatethomas/claudewatch"
-
-
 def _get_download_url(tag: str) -> str:
     """Build the release asset URL for a given tag."""
     return f"https://github.com/{_REPO}/releases/download/{tag}/ClaudeWatch-{tag}-arm64.zip"
@@ -121,64 +90,112 @@ def _find_app_bundle() -> str | None:
     return None
 
 
-def download_and_apply_update(tag: str, on_ready: Callable[[], None] | None = None) -> bool:
-    """Download a release and prepare the swap. Returns True if swap is staged.
+# ---------------------------------------------------------------------------
+# UpdateService class
+# ---------------------------------------------------------------------------
 
-    Call on_ready() (which should quit the app) after staging succeeds.
-    The swap script runs after the app exits.
-    """
-    app_path = _find_app_bundle()
-    if not app_path:
-        log.warning("update: not running from a .app bundle, cannot self-update")
-        return False
 
-    url = _get_download_url(tag)
-    tmp_dir = tempfile.mkdtemp(prefix="claudewatch-update-")
-    zip_path = os.path.join(tmp_dir, "update.zip")
+class UpdateService(BaseService):
+    """Checks GitHub Releases for newer versions and applies self-updates."""
 
-    log.info("update: downloading %s", url)
-    try:
-        result = subprocess.run(  # noqa: S603, S607
-            ["curl", "-fSL", "--max-time", "60", "-o", zip_path, url],
-            capture_output=True,
-            text=True,
-            timeout=90,
-            check=False,
-        )
-        if result.returncode != 0:
-            log.warning("update: download failed: %s", result.stderr.strip())
+    def __init__(self) -> None:
+        super().__init__()
+        self._cache_lock = threading.Lock()
+        self._cached_update: UpdateInfoDTO | None = None
+        self._last_check: float = 0.0
+
+    def check(self) -> UpdateInfoDTO | None:
+        """Check for a newer release. Updates instance cache. Thread-safe."""
+        now = time.time()
+        with self._cache_lock:
+            if now - self._last_check < _CHECK_INTERVAL:
+                return self._cached_update
+
+        tag = _fetch_latest_tag()
+        if not tag:
+            with self._cache_lock:
+                self._last_check = now
+            return None
+
+        current = _parse_version(__version__)
+        latest = _parse_version(tag)
+
+        with self._cache_lock:
+            self._last_check = now
+            if latest > current:
+                self._cached_update = UpdateInfoDTO(
+                    tag=tag,
+                    download_url=_get_download_url(tag),
+                )
+                log.info("update available: %s (current: %s)", tag, __version__)
+            else:
+                self._cached_update = None
+
+        return self._cached_update
+
+    def get_cached(self) -> UpdateInfoDTO | None:
+        """Return the cached update info without hitting the network."""
+        with self._cache_lock:
+            return self._cached_update
+
+    def download_and_apply(self, tag: str, on_ready: Callable[[], None] | None = None) -> bool:
+        """Download a release and prepare the swap. Returns True if swap is staged.
+
+        Call on_ready() (which should quit the app) after staging succeeds.
+        The swap script runs after the app exits.
+        """
+        app_path = _find_app_bundle()
+        if not app_path:
+            log.warning("update: not running from a .app bundle, cannot self-update")
             return False
-    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-        log.warning("update: download failed: %s", e)
-        return False
 
-    # Unzip
-    extract_dir = os.path.join(tmp_dir, "extracted")
-    os.makedirs(extract_dir)
-    try:
-        subprocess.run(  # noqa: S603, S607
-            ["unzip", "-q", zip_path, "-d", extract_dir],
-            capture_output=True,
-            timeout=30,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-        log.warning("update: unzip failed: %s", e)
-        return False
+        url = _get_download_url(tag)
+        tmp_dir = tempfile.mkdtemp(prefix="claudewatch-update-")
+        zip_path = os.path.join(tmp_dir, "update.zip")
 
-    # Find the .app inside the extracted directory
-    new_app = None
-    for name in os.listdir(extract_dir):
-        if name.endswith(".app"):
-            new_app = os.path.join(extract_dir, name)
-            break
-    if not new_app:
-        log.warning("update: no .app found in zip")
-        return False
+        log.info("update: downloading %s", url)
+        try:
+            result = subprocess.run(  # noqa: S603, S607
+                ["curl", "-fSL", "--max-time", "60", "-o", zip_path, url],
+                capture_output=True,
+                text=True,
+                timeout=90,
+                check=False,
+            )
+            if result.returncode != 0:
+                log.warning("update: download failed: %s", result.stderr.strip())
+                return False
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            log.warning("update: download failed: %s", e)
+            return False
 
-    # Stage the swap script — runs after our process exits
-    pid = os.getpid()
-    script = f"""#!/bin/bash
+        # Unzip
+        extract_dir = os.path.join(tmp_dir, "extracted")
+        os.makedirs(extract_dir)
+        try:
+            subprocess.run(  # noqa: S603, S607
+                ["unzip", "-q", zip_path, "-d", extract_dir],
+                capture_output=True,
+                timeout=30,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            log.warning("update: unzip failed: %s", e)
+            return False
+
+        # Find the .app inside the extracted directory
+        new_app = None
+        for name in os.listdir(extract_dir):
+            if name.endswith(".app"):
+                new_app = os.path.join(extract_dir, name)
+                break
+        if not new_app:
+            log.warning("update: no .app found in zip")
+            return False
+
+        # Stage the swap script — runs after our process exits
+        pid = os.getpid()
+        script = f"""#!/bin/bash
 # Wait for ClaudeWatch to exit (max 30s)
 for i in $(seq 1 60); do
     kill -0 {pid} 2>/dev/null || break
@@ -192,20 +209,48 @@ open "{app_path}"
 # Cleanup
 rm -rf "{tmp_dir}"
 """
-    script_path = os.path.join(tmp_dir, "swap.sh")
-    with open(script_path, "w") as f:
-        f.write(script)
-    os.chmod(script_path, 0o755)  # noqa: S103
+        script_path = os.path.join(tmp_dir, "swap.sh")
+        with open(script_path, "w") as f:
+            f.write(script)
+        os.chmod(script_path, 0o755)  # noqa: S103
 
-    # Launch the swap script detached from our process
-    subprocess.Popen(  # noqa: S603
-        [script_path],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    log.info("update: swap script staged, quitting for update to %s", tag)
+        # Launch the swap script detached from our process
+        subprocess.Popen(  # noqa: S603
+            [script_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        log.info("update: swap script staged, quitting for update to %s", tag)
 
-    if on_ready:
-        on_ready()
-    return True
+        if on_ready:
+            on_ready()
+        return True
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible module-level functions (used by UI layer)
+# ---------------------------------------------------------------------------
+
+_default_service = UpdateService()
+
+
+def check_for_update() -> dict[str, str] | None:
+    """Check for a newer release. Delegates to the default UpdateService instance."""
+    dto = _default_service.check()
+    if dto is None:
+        return None
+    return {"tag": dto.tag}
+
+
+def get_cached_update() -> dict[str, str] | None:
+    """Return the cached update info without hitting the network."""
+    dto = _default_service.get_cached()
+    if dto is None:
+        return None
+    return {"tag": dto.tag}
+
+
+def download_and_apply_update(tag: str, on_ready: Callable[[], None] | None = None) -> bool:
+    """Download a release and prepare the swap. Delegates to the default UpdateService instance."""
+    return _default_service.download_and_apply(tag, on_ready)
