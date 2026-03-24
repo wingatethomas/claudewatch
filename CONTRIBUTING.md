@@ -35,26 +35,28 @@ Pre-commit hooks run ruff automatically on each commit.
 ```
 claudewatch/
 ├── backend/
-│   ├── models.py              # Data models: HostApp, SessionStatus, ClaudeSession
-│   ├── helpers.py             # Shared utilities: AppleScript, escaping
-│   ├── services/              # Business logic
-│   │   ├── detection.py       # Session discovery via libproc + AppleScript
-│   │   ├── notifications.py   # Native macOS notifications (NSUserNotification)
-│   │   ├── procinfo.py        # Native macOS libproc bindings (ctypes)
-│   │   ├── usage.py           # Session metadata from JSONL logs (model name)
-│   │   └── activity.py        # Session activity timeline from JSONL
+│   ├── core/                  # Shared infrastructure (no service/repo/UI imports)
+│   │   ├── models.py          # Data models, enums, constants
+│   │   ├── dto.py             # BaseDTO + all shared DTOs (*DTO suffix)
+│   │   ├── helpers.py         # AppleScript runner, escaping
+│   │   ├── paths.py           # Centralized file paths
+│   │   ├── base_service.py    # BaseService with import constraint enforcement
+│   │   └── services/          # Core services (process, session log)
+│   ├── dependencies.py        # Service factory functions (get_*_service())
+│   ├── services/              # Domain services (extend BaseService)
 │   └── repositories/          # Data persistence
-│       ├── config.py          # App settings (~/.claude/claudewatch.json)
+│       ├── config.py          # App settings (infrastructure)
 │       ├── bookmarks.py       # Pinned session bookmarks
-│       └── history.py         # Session history (auto-recorded)
+│       └── history.py         # Session history
 └── ui/
     ├── menubar.py             # Menu bar view (AppKit NSStatusBar)
     ├── focus.py               # Window focusing (AppleScript, CGEvent)
     ├── preferences.py         # Preferences window (PyObjC NSWindow)
+    ├── welcome.py             # First-launch permissions guide
     └── activity.py            # Activity feed window
 ```
 
-**services/** = business logic (detection, notifications). **repositories/** = data persistence (config, bookmarks). **ui/** = presentation (menu bar, preferences, window focus). **models.py** and **helpers.py** are shared across layers.
+**Layer rules:** `core/` has no imports from `services/`, `repositories/`, or `ui/`. `services/` can import from `core/` and `repositories/`. `ui/` imports from `services/` and `core/` (DTOs/models only), never `repositories/` (except config, which is infrastructure).
 
 ## PR Guidelines
 

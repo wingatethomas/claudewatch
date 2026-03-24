@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from claudewatch.backend.models import HostApp, SessionStatus
+from claudewatch.backend.core.models import HostApp, SessionStatus
 from claudewatch.backend.services.detection import (
     _batch_lsof_cwds,
     _batch_ps_info,
