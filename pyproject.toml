@@ -63,6 +63,8 @@ source = ["claudewatch"]
 omit = [
     "claudewatch/__main__.py",
     "claudewatch/ui/*",
+    "claudewatch/backend/*/dependencies.py",
+    "claudewatch/backend/core/*/dependencies.py",
 ]
 
 [tool.coverage.report]
