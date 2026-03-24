@@ -37,15 +37,6 @@ def _fmt_tokens(n: int) -> str:
     return str(n)
 
 
-def format_tokens(tokens: dict[str, int]) -> str:
-    """Compact one-line format for detail line: '42K in · 3K out'."""
-    total_in = tokens["input"] + tokens["cache_create"] + tokens["cache_read"]
-    total_out = tokens["output"]
-    if total_in + total_out == 0:
-        return ""
-    return f"{_fmt_tokens(total_in)} in · {_fmt_tokens(total_out)} out"
-
-
 def format_tokens_breakdown(tokens: dict[str, int]) -> list[str]:
     """Detailed breakdown lines for a submenu."""
     total_in = tokens["input"] + tokens["cache_create"] + tokens["cache_read"]
