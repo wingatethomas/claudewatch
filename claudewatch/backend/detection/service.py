@@ -13,19 +13,19 @@ from claudewatch.backend.core.models import (
     HostApp,
     SessionStatus,
 )
-from claudewatch.backend.core.services.process import ProcessService
-from claudewatch.backend.core.services.session_log import SessionLogService
-from claudewatch.backend.services.jsonl import (
-    find_most_recent_jsonl,
-    get_session_id_from_path,
-    read_jsonl_tail,
-)
-from claudewatch.backend.services.procinfo import (
+from claudewatch.backend.core.process.procinfo import (
     get_cwds,
     get_ppid,
     get_process_info,
     get_single_process_info,
 )
+from claudewatch.backend.core.process.service import ProcessService
+from claudewatch.backend.core.session_log.jsonl import (
+    find_most_recent_jsonl,
+    get_session_id_from_path,
+    read_jsonl_tail,
+)
+from claudewatch.backend.core.session_log.service import SessionLogService
 
 log = logging.getLogger("claudewatch")
 

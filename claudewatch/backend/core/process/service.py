@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 
 from claudewatch.backend.core.base_service import BaseService
-from claudewatch.backend.services import procinfo
+from claudewatch.backend.core.process import procinfo
 
 
 class ProcessService(BaseService):

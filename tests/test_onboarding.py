@@ -1,9 +1,9 @@
-"""Tests for claudewatch.backend.services.onboarding."""
+"""Tests for claudewatch.backend.onboarding.service."""
 
 from unittest.mock import MagicMock, patch
 
-from claudewatch.backend.services.notifications import NotificationService
-from claudewatch.backend.services.onboarding import (
+from claudewatch.backend.notifications.service import NotificationService
+from claudewatch.backend.onboarding.service import (
     TIPS,
     OnboardingService,
     get_session_count,
@@ -13,7 +13,7 @@ from claudewatch.backend.services.onboarding import (
 )
 
 # All patches target the onboarding module's references
-_MOD = "claudewatch.backend.services.onboarding"
+_MOD = "claudewatch.backend.onboarding.service"
 
 
 def _make_service() -> OnboardingService:

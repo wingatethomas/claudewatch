@@ -1,12 +1,12 @@
-"""Tests for claudewatch.backend.services.notifications."""
+"""Tests for claudewatch.backend.notifications.service."""
 
 import time
 from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.core.models import ClaudeSession, HostApp, SessionStatus
-from claudewatch.backend.services.notifications import NotificationManager, NotificationService
+from claudewatch.backend.notifications.service import NotificationManager, NotificationService
 
-_MOD = "claudewatch.backend.services.notifications"
+_MOD = "claudewatch.backend.notifications.service"
 
 
 def _make_session(**kwargs):

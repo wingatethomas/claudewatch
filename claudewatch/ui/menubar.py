@@ -35,6 +35,8 @@ from AppKit import (
 from Foundation import NSMakeRect, NSMakeSize, NSRange, NSTimer
 from PyObjCTools import AppHelper
 
+from claudewatch.backend.bookmark.dependencies import get_bookmark_service
+from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.models import (
     HOST_APP_PATH,
@@ -43,25 +45,21 @@ from claudewatch.backend.core.models import (
     SessionStatus,
 )
 from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
-from claudewatch.backend.dependencies import (
-    get_bookmark_service,
-    get_detection_service,
-    get_history_service,
-    get_notification_service,
-    get_onboarding_service,
-    get_summary_service,
-    get_update_service,
-    get_usage_service,
-)
+from claudewatch.backend.detection.dependencies import get_detection_service
+from claudewatch.backend.detection.service import DetectionService
+from claudewatch.backend.history.dependencies import get_history_service
+from claudewatch.backend.history.service import HistoryService
+from claudewatch.backend.notifications.dependencies import get_notification_service
+from claudewatch.backend.notifications.service import TERMINAL_NOTIFIER, NotificationService
+from claudewatch.backend.onboarding.dependencies import get_onboarding_service
+from claudewatch.backend.onboarding.service import OnboardingService
 from claudewatch.backend.repositories.config import get_setting
-from claudewatch.backend.services.bookmark import BookmarkService
-from claudewatch.backend.services.detection import DetectionService
-from claudewatch.backend.services.history import HistoryService
-from claudewatch.backend.services.notifications import TERMINAL_NOTIFIER, NotificationService
-from claudewatch.backend.services.onboarding import OnboardingService
-from claudewatch.backend.services.summary import SummaryService
-from claudewatch.backend.services.updates import UpdateService
-from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, UsageService, format_tokens_breakdown
+from claudewatch.backend.summary.dependencies import get_summary_service
+from claudewatch.backend.summary.service import SummaryService
+from claudewatch.backend.updates.dependencies import get_update_service
+from claudewatch.backend.updates.service import UpdateService
+from claudewatch.backend.usage.dependencies import get_usage_service
+from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, UsageService, format_tokens_breakdown
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences

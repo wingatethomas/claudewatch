@@ -3,7 +3,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from claudewatch.backend.services.usage import (
+from claudewatch.backend.usage.service import (
     UsageService,
     _fmt_tokens,
     _token_cache,
@@ -192,7 +192,7 @@ class TestGetSessionTokens:
 
         _token_cache.clear()
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = get_session_tokens("/Users/dev/myapp")
         assert result["input"] == 110
         assert result["output"] == 55
@@ -200,7 +200,7 @@ class TestGetSessionTokens:
         assert result["cache_read"] == 300
 
     def test_returns_empty_for_missing(self, tmp_path):
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
             result = get_session_tokens("/Users/dev/myapp")
         assert result == {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
 
@@ -214,7 +214,7 @@ class TestGetSessionTokens:
 
         _token_cache.clear()
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             r1 = get_session_tokens("/Users/dev/myapp")
             r2 = get_session_tokens("/Users/dev/myapp")
         assert r1 == r2
@@ -232,6 +232,6 @@ class TestGetSessionTokens:
 
         _token_cache.clear()
 
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = get_session_tokens("/Users/dev/myapp")
         assert result["input"] == 5

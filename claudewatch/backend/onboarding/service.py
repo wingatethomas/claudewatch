@@ -10,8 +10,8 @@ import subprocess
 import time
 
 from claudewatch.backend.core.base_service import BaseService
+from claudewatch.backend.notifications.service import TERMINAL_NOTIFIER, NotificationService
 from claudewatch.backend.repositories.config import get_setting, set_setting
-from claudewatch.backend.services.notifications import TERMINAL_NOTIFIER, NotificationService
 
 log = logging.getLogger("claudewatch")
 
