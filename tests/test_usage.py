@@ -2,9 +2,22 @@
 
 import json
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, get_session_model
+from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES, UsageService, get_session_model
+
+
+def _make_svc(
+    find_most_recent: str | None = None,
+    read_tail: str = "",
+    read_full: list[str] | None = None,
+) -> UsageService:
+    """Create a UsageService with a mocked SessionLogService."""
+    mock_log = MagicMock()
+    mock_log.find_most_recent.return_value = find_most_recent
+    mock_log.read_tail.return_value = read_tail
+    mock_log.read_full.return_value = read_full or []
+    return UsageService(mock_log)
 
 
 class TestModelDisplayNames:
@@ -16,8 +29,56 @@ class TestModelDisplayNames:
         assert MODEL_DISPLAY_NAMES["claude-haiku-4-5"] == "haiku 4.5"
 
 
+class TestUsageServiceGetModel:
+    """Tests for UsageService.get_model."""
+
+    def test_returns_empty_when_no_jsonl_found(self):
+        svc = _make_svc(find_most_recent=None)
+        assert svc.get_model("/Users/dev/myapp") == ""
+
+    def test_returns_empty_when_tail_empty(self):
+        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail="")
+        assert svc.get_model("/Users/dev/myapp") == ""
+
+    def test_returns_display_name_for_known_model(self):
+        tail = json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
+        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
+
+    def test_returns_raw_model_for_unknown(self):
+        tail = json.dumps({"type": "assistant", "message": {"model": "claude-future-99"}}) + "\n"
+        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        assert svc.get_model("/Users/dev/myapp") == "claude-future-99"
+
+    def test_uses_last_model_in_file(self):
+        tail = (
+            json.dumps({"type": "assistant", "message": {"model": "claude-sonnet-4-6"}}) + "\n"
+            + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
+        )
+        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
+
+    def test_handles_invalid_json_lines(self):
+        tail = (
+            "not json\n"
+            + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
+        )
+        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
+
+    def test_handles_non_dict_message(self):
+        tail = json.dumps({"type": "assistant", "message": "string"}) + "\n"
+        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        assert svc.get_model("/Users/dev/myapp") == ""
+
+    def test_returns_empty_for_no_model_field(self):
+        tail = json.dumps({"type": "user", "message": {"content": "hello"}}) + "\n"
+        svc = _make_svc(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        assert svc.get_model("/Users/dev/myapp") == ""
+
+
 class TestGetSessionModel:
-    """Tests for get_session_model."""
+    """Tests for legacy get_session_model function."""
 
     def test_returns_empty_for_missing_project_dir(self, tmp_path):
         with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
