@@ -43,8 +43,16 @@ from claudewatch.backend.core.models import (
     SessionStatus,
 )
 from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
-from claudewatch.backend.core.services.process import ProcessService
-from claudewatch.backend.core.services.session_log import SessionLogService
+from claudewatch.backend.dependencies import (
+    get_bookmark_service,
+    get_detection_service,
+    get_history_service,
+    get_notification_service,
+    get_onboarding_service,
+    get_summary_service,
+    get_update_service,
+    get_usage_service,
+)
 from claudewatch.backend.repositories.config import get_setting
 from claudewatch.backend.services.bookmark import BookmarkService
 from claudewatch.backend.services.detection import DetectionService
@@ -1112,29 +1120,17 @@ def main() -> None:
 
     signal.signal(signal.SIGINT, lambda *_: AppHelper.stopEventLoop())
 
-    # Wire services
-    process_svc = ProcessService()
-    session_log_svc = SessionLogService()
-    notification_svc = NotificationService()
-    onboarding_svc = OnboardingService(notification_svc)
-    usage_svc = UsageService(session_log_svc)
-    summary_svc = SummaryService(session_log_svc, process_svc)
-    detection_svc = DetectionService(process_svc, session_log_svc)
-    update_svc = UpdateService()
-    bookmark_svc = BookmarkService()
-    history_svc = HistoryService()
-
     delegate = _AppDelegate.alloc().init()
     app = ClaudeWatchApp(
         delegate,
-        detection_svc=detection_svc,
-        summary_svc=summary_svc,
-        notification_svc=notification_svc,
-        onboarding_svc=onboarding_svc,
-        update_svc=update_svc,
-        usage_svc=usage_svc,
-        bookmark_svc=bookmark_svc,
-        history_svc=history_svc,
+        detection_svc=get_detection_service(),
+        summary_svc=get_summary_service(),
+        notification_svc=get_notification_service(),
+        onboarding_svc=get_onboarding_service(),
+        update_svc=get_update_service(),
+        usage_svc=get_usage_service(),
+        bookmark_svc=get_bookmark_service(),
+        history_svc=get_history_service(),
     )
     delegate._app = app
     app.run()
