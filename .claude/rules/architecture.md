@@ -1,10 +1,15 @@
 - **Layered structure:** `backend/services/` (business logic), `backend/repositories/` (persistence), `ui/` (views).
 - **backend/** has no UI imports. Never import from `ui/` in backend code.
+- **paths.py** — centralized app data directory (`~/Library/Application Support/ClaudeWatch/`). All file paths for settings, pins, history, summaries, and logs are defined here. Auto-migrates legacy files from `~/.claude/claudewatch-*` on first run. Import paths from here, never hardcode.
 - **helpers.py** — shared AppleScript runner, escaping, shell utilities.
-- **models.py** — data structures, enums, and path mapping (`cwd_to_proj_key()` / `proj_key_to_cwd()`).
+- **models.py** — data structures, enums, and path mapping (`cwd_to_proj_key()` / `proj_key_to_cwd()`). Path resolution uses longest-match for hyphenated directory names.
 - **jsonl.py** — all JSONL discovery, symlink validation, and reading. Never do inline JSONL file discovery — use `find_most_recent_jsonl()`, `read_jsonl_tail()`, `is_safe_jsonl_path()`.
-- **summarize.py** — conversation summaries via `claude -p`. Subprocess calls must use `Popen` with PID tracking (never `shell=True`). Summaries persist to `~/.claude/claudewatch-summaries.json`. Background thread refreshes every 60s. Max 1 concurrent `claude -p`. Own PIDs tracked in `_our_pids` set and filtered from detection.
+- **summarize.py** — conversation summaries via `claude -p`. Subprocess calls must use `Popen` with PID tracking (never `shell=True`). Background thread refreshes every 60s. Max 1 concurrent `claude -p`. Own PIDs tracked in `_our_pids` set and filtered from detection. Failures tracked per CWD — gives up after 3 consecutive failures.
+- **updates.py** — checks GitHub Releases for newer versions every 6 hours. Uses `gh` CLI with curl fallback. Thread-safe cache with lock.
 - **onboarding.py** — feature discovery tips via terminal-notifier. Tracks shown tips and session count in config. One tip per poll cycle.
+- **menubar.py** — menu bar app using direct AppKit (`NSStatusBar`, `NSMenu`, `NSMenuItem`, `NSTimer`). `_AppDelegate` bridges NSMenuItem actions to Python callbacks via integer tags.
+- **welcome.py** — first-launch window explaining permissions and data access. Shown once, tracked via `welcome_shown` setting.
+- **preferences.py** — preferences window with settings and session history table.
 - `detect_sessions()` runs on a background thread. Results are collected on the main thread via `Future.result()`. All `self.sessions` access happens on the main thread.
 - Set `_modal_active = True` during any modal dialog to pause polling. Reset in `finally`.
 - Never generate summaries or do I/O during menu build — only read from caches. Background threads handle generation.
