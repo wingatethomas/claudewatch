@@ -38,6 +38,7 @@ from Foundation import NSMakeRect, NSObject, NSRange, NSSortDescriptor
 
 from claudewatch import __version__
 from claudewatch.backend.helpers import escape_applescript, run_applescript
+from claudewatch.backend.paths import LOG_PATH
 from claudewatch.backend.repositories.bookmarks import get_pinned_cwds
 from claudewatch.backend.repositories.config import get_available_sounds, get_setting, set_setting
 from claudewatch.backend.repositories.history import get_history, remove_history_entry
@@ -83,7 +84,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         set_setting("pin_expiry_days", days)
 
     def viewAuditLog_(self, sender: objc.objc_object) -> None:
-        log_path = os.path.expanduser("~/.claude/claudewatch.log")
+        log_path = LOG_PATH
         if os.path.exists(log_path):
             subprocess.run(["open", "-a", "Console", log_path], check=False)  # noqa: S603, S607
 
