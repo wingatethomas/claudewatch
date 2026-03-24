@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from claudewatch.backend.core.models import HostApp, SessionStatus
-
 
 @dataclass(frozen=True)
 class BaseDTO:
@@ -17,25 +15,6 @@ class BaseDTO:
 
     def to_dict(self) -> dict:
         return asdict(self)
-
-
-@dataclass(frozen=True)
-class SessionDTO(BaseDTO):
-    """Session info returned by DetectionService."""
-
-    pid: int
-    project: str
-    cwd: str
-    status: SessionStatus
-    host_app: HostApp
-    session_id: str
-    tty: str
-    window_id: int | None
-    menu_label: str
-    detail_line: str
-    task_summary: str
-    last_output: str
-    needs_attention: bool
 
 
 @dataclass(frozen=True)
@@ -77,15 +56,3 @@ class ActivityEventDTO(BaseDTO):
     summary: str
     detail: str
     timestamp: str
-
-
-@dataclass(frozen=True)
-class TokenUsageDTO(BaseDTO):
-    """Token usage returned by UsageService."""
-
-    input_tokens: int
-    output_tokens: int
-    cache_read: int
-    cache_write: int
-    model: str
-    breakdown_lines: tuple[str, ...]

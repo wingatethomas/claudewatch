@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 from claudewatch.backend.usage.service import (
     UsageService,
     _fmt_tokens,
-    format_tokens,
     format_tokens_breakdown,
 )
 
@@ -40,18 +39,6 @@ class TestFmtTokens:
 
     def test_exact_thousand(self):
         assert _fmt_tokens(1000) == "1K"
-
-
-class TestFormatTokens:
-    def test_normal(self):
-        tokens = {"input": 10000, "output": 3000, "cache_create": 5000, "cache_read": 20000}
-        result = format_tokens(tokens)
-        assert "35K in" in result
-        assert "3K out" in result
-
-    def test_zeros(self):
-        tokens = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
-        assert format_tokens(tokens) == ""
 
 
 class TestFormatTokensBreakdown:
