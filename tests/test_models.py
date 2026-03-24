@@ -209,6 +209,20 @@ class TestPathMapping:
     def test_proj_key_without_leading_dash(self):
         assert proj_key_to_cwd("relative-path") == "relative/path"
 
+    def test_prefers_longest_hyphenated_match(self, tmp_path):
+        """When both 'foo-bar' and 'foo-bar-baz' exist, prefer the longer match."""
+        (tmp_path / "foo-bar").mkdir()
+        (tmp_path / "foo-bar-baz").mkdir()
+        key = cwd_to_proj_key(str(tmp_path / "foo-bar-baz"))
+        assert proj_key_to_cwd(key) == str(tmp_path / "foo-bar-baz")
+
+    def test_short_match_when_subdirs_exist(self, tmp_path):
+        """When only 'foo-bar' exists, correctly split remaining as subdirs."""
+        base = tmp_path / "foo-bar" / "sub"
+        base.mkdir(parents=True)
+        key = cwd_to_proj_key(str(base))
+        assert proj_key_to_cwd(key) == str(base)
+
     def test_falls_back_to_slash_when_no_dir_exists(self):
         # When path doesn't exist on disk, defaults to slash separator
         result = proj_key_to_cwd("-nonexistent-path-with-hyphens")
