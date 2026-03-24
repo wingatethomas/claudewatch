@@ -1,12 +1,12 @@
-"""Tests for claudewatch.backend.services.summary.SummaryService."""
+"""Tests for claudewatch.backend.summary.service.SummaryService."""
 
 import json
 import subprocess
 from unittest.mock import MagicMock, patch
 
-from claudewatch.backend.core.services.process import ProcessService
-from claudewatch.backend.core.services.session_log import SessionLogService
-from claudewatch.backend.services.summary import SummaryService
+from claudewatch.backend.core.process.service import ProcessService
+from claudewatch.backend.core.session_log.service import SessionLogService
+from claudewatch.backend.summary.service import SummaryService
 
 
 def _make_service(tmp_path, projects_dir=None):
@@ -34,7 +34,7 @@ class TestExtractConversationText:
             [{"type": "user", "message": {"content": "fix the login bug"}, "timestamp": ""}],
         )
         svc, _ = _make_service(tmp_path)
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc._extract_conversation_text("/Users/dev/myapp")
         assert "User: fix the login bug" in result
 
@@ -52,7 +52,7 @@ class TestExtractConversationText:
             ],
         )
         svc, _ = _make_service(tmp_path)
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc._extract_conversation_text("/Users/dev/myapp")
         assert "Assistant: I'll help you fix that" in result
 
@@ -62,13 +62,13 @@ class TestExtractConversationText:
         entries = [{"type": "user", "message": {"content": "x" * 2000}, "timestamp": ""} for _ in range(10)]
         _write_jsonl(proj_dir / "session.jsonl", entries)
         svc, _ = _make_service(tmp_path)
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc._extract_conversation_text("/Users/dev/myapp")
         assert len(result) <= 25000
 
     def test_returns_empty_for_missing_project(self, tmp_path):
         svc, _ = _make_service(tmp_path)
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
             result = svc._extract_conversation_text("/Users/dev/myapp")
         assert result == ""
 
@@ -80,7 +80,7 @@ class TestExtractConversationText:
             f.write("not json\n")
             f.write(json.dumps({"type": "user", "message": {"content": "valid"}, "timestamp": ""}) + "\n")
         svc, _ = _make_service(tmp_path)
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc._extract_conversation_text("/Users/dev/myapp")
         assert "valid" in result
 
@@ -92,7 +92,7 @@ class TestExtractConversationText:
             [{"type": "user", "message": "string-not-dict", "timestamp": ""}],
         )
         svc, _ = _make_service(tmp_path)
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc._extract_conversation_text("/Users/dev/myapp")
         assert result == ""
 
@@ -102,15 +102,15 @@ class TestCallClaude:
 
     def test_returns_empty_when_claude_not_found(self, tmp_path):
         svc, _ = _make_service(tmp_path)
-        with patch("claudewatch.backend.services.summary.shutil.which", return_value=None):
+        with patch("claudewatch.backend.summary.service.shutil.which", return_value=None):
             result = svc._call_claude("/Users/dev/myapp")
         assert result == ""
 
     def test_returns_empty_when_no_conversation(self, tmp_path):
         svc, _ = _make_service(tmp_path)
         with (
-            patch("claudewatch.backend.services.summary.shutil.which", return_value="/usr/bin/claude"),
-            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")),
+            patch("claudewatch.backend.summary.service.shutil.which", return_value="/usr/bin/claude"),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")),
         ):
             result = svc._call_claude("/Users/dev/myapp")
         assert result == ""
@@ -128,9 +128,9 @@ class TestCallClaude:
         mock_proc.returncode = 0
         svc, _ = _make_service(tmp_path)
         with (
-            patch("claudewatch.backend.services.summary.shutil.which", return_value="/usr/bin/claude"),
-            patch("claudewatch.backend.services.summary.subprocess.Popen", return_value=mock_proc),
-            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.shutil.which", return_value="/usr/bin/claude"),
+            patch("claudewatch.backend.summary.service.subprocess.Popen", return_value=mock_proc),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
             result = svc._call_claude("/Users/dev/myapp")
         assert result == "Fixed auth middleware"
@@ -148,9 +148,9 @@ class TestCallClaude:
         mock_proc.returncode = 0
         svc, _ = _make_service(tmp_path)
         with (
-            patch("claudewatch.backend.services.summary.shutil.which", return_value="/usr/bin/claude"),
-            patch("claudewatch.backend.services.summary.subprocess.Popen", return_value=mock_proc),
-            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.shutil.which", return_value="/usr/bin/claude"),
+            patch("claudewatch.backend.summary.service.subprocess.Popen", return_value=mock_proc),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
             svc._call_claude("/Users/dev/myapp")
         # After call, PID should be unregistered
@@ -168,9 +168,9 @@ class TestCallClaude:
         mock_proc.communicate.side_effect = subprocess.TimeoutExpired("claude", 15)
         svc, _ = _make_service(tmp_path)
         with (
-            patch("claudewatch.backend.services.summary.shutil.which", return_value="/usr/bin/claude"),
-            patch("claudewatch.backend.services.summary.subprocess.Popen", return_value=mock_proc),
-            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.shutil.which", return_value="/usr/bin/claude"),
+            patch("claudewatch.backend.summary.service.subprocess.Popen", return_value=mock_proc),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
             result = svc._call_claude("/Users/dev/myapp")
         assert result == ""
@@ -188,9 +188,9 @@ class TestCallClaude:
         mock_proc.returncode = 1
         svc, _ = _make_service(tmp_path)
         with (
-            patch("claudewatch.backend.services.summary.shutil.which", return_value="/usr/bin/claude"),
-            patch("claudewatch.backend.services.summary.subprocess.Popen", return_value=mock_proc),
-            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.shutil.which", return_value="/usr/bin/claude"),
+            patch("claudewatch.backend.summary.service.subprocess.Popen", return_value=mock_proc),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
             result = svc._call_claude("/Users/dev/myapp")
         assert result == ""
@@ -243,7 +243,7 @@ class TestCacheSummary:
 
         store_file = tmp_path / "store.json"
         svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             svc.cache("/test", "test summary")
             result = svc.get_cached("/test")
         assert result == "test summary"
@@ -257,7 +257,7 @@ class TestCacheSummary:
         svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(tmp_path / "store.json"))
         svc._store_loaded = True
         svc._store = {"/test": {"summary": "old", "mtime": 1.0}}
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.get_cached("/test")
         # mtime of jsonl > cached mtime of 1.0, so stale
         assert result is None
@@ -279,7 +279,7 @@ class TestPriorityQueue:
         svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(tmp_path / "s.json"))
         svc._store_loaded = True
         with (
-            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")),
             patch.object(svc, "_ensure_bg_thread"),
         ):
             svc.track_session("/new-cwd")
@@ -294,7 +294,7 @@ class TestPriorityQueue:
         store_file = tmp_path / "store.json"
         svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
         with (
-            patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
             patch.object(svc, "_ensure_bg_thread"),
         ):
             svc.cache("/cached", "already done")
@@ -315,7 +315,7 @@ class TestInvalidateCache:
 
         store_file = tmp_path / "store.json"
         svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
-        with patch("claudewatch.backend.services.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             svc.cache("/test", "summary")
             assert svc.get_cached("/test") == "summary"
             svc.invalidate_cache("/test")

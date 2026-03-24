@@ -1,7 +1,7 @@
 """SessionLogService — JSONL discovery, symlink validation, reading."""
 
 from claudewatch.backend.core.base_service import BaseService
-from claudewatch.backend.services import jsonl
+from claudewatch.backend.core.session_log import jsonl
 
 
 class SessionLogService(BaseService):

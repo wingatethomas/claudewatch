@@ -1,9 +1,9 @@
-"""Tests for claudewatch.backend.services.bookmark.BookmarkService."""
+"""Tests for claudewatch.backend.bookmark.service.BookmarkService."""
 
 from unittest.mock import patch
 
+from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core.dto import PinDTO
-from claudewatch.backend.services.bookmark import BookmarkService
 
 
 class TestBookmarkService:
@@ -12,17 +12,17 @@ class TestBookmarkService:
     def setup_method(self) -> None:
         self.svc = BookmarkService()
 
-    @patch("claudewatch.backend.services.bookmark.bookmarks_repo")
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_pin_delegates_to_repo(self, mock_repo):
         self.svc.pin("sid-1", "myproject", "/tmp/cwd", "a note")
         mock_repo.pin_session.assert_called_once_with("sid-1", "myproject", "/tmp/cwd", "a note")
 
-    @patch("claudewatch.backend.services.bookmark.bookmarks_repo")
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_unpin_delegates_to_repo(self, mock_repo):
         self.svc.unpin("/tmp/cwd")
         mock_repo.unpin_session.assert_called_once_with("/tmp/cwd")
 
-    @patch("claudewatch.backend.services.bookmark.bookmarks_repo")
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_get_pins_returns_pin_dtos(self, mock_repo):
         mock_repo.get_pins.return_value = [
             {
@@ -47,12 +47,12 @@ class TestBookmarkService:
         assert result[0].cwd == "/tmp/a"
         assert result[1].note == "n2"
 
-    @patch("claudewatch.backend.services.bookmark.bookmarks_repo")
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_get_pins_handles_empty(self, mock_repo):
         mock_repo.get_pins.return_value = []
         assert self.svc.get_pins() == []
 
-    @patch("claudewatch.backend.services.bookmark.bookmarks_repo")
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_get_pins_handles_missing_fields(self, mock_repo):
         mock_repo.get_pins.return_value = [{"session_id": "s1"}]
         result = self.svc.get_pins()
@@ -63,14 +63,14 @@ class TestBookmarkService:
         assert result[0].note == ""
         assert result[0].timestamp == ""
 
-    @patch("claudewatch.backend.services.bookmark.bookmarks_repo")
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_get_pinned_cwds_delegates_to_repo(self, mock_repo):
         mock_repo.get_pinned_cwds.return_value = {"/tmp/a", "/tmp/b"}
         result = self.svc.get_pinned_cwds()
         assert result == {"/tmp/a", "/tmp/b"}
         mock_repo.get_pinned_cwds.assert_called_once()
 
-    @patch("claudewatch.backend.services.bookmark.bookmarks_repo")
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_get_pins_returns_frozen_dtos(self, mock_repo):
         mock_repo.get_pins.return_value = [
             {

@@ -37,12 +37,12 @@ from AppKit import NSScrollView as AppKitScrollView
 from Foundation import NSMakeRect, NSObject, NSRange, NSSortDescriptor
 
 from claudewatch import __version__
+from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.paths import LOG_PATH
-from claudewatch.backend.repositories.bookmarks import get_pinned_cwds
+from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.repositories.config import get_available_sounds, get_setting, set_setting
-from claudewatch.backend.repositories.history import get_history, remove_history_entry
-from claudewatch.backend.services.usage import MODEL_DISPLAY_NAMES
+from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES
 from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
@@ -110,7 +110,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         alert.addButtonWithTitle_("Delete")
         alert.addButtonWithTitle_("Cancel")
         if alert.runModal() == NSAlertFirstButtonReturn:
-            remove_history_entry(cwd)
+            get_history_service().remove(cwd)
             _reload_history_data()
             self._history_table.reloadData()
 
@@ -163,7 +163,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         entry = _history_data[row]
         col_id = str(col.identifier())
         if col_id == "project":
-            pinned = entry.get("cwd", "") in get_pinned_cwds()
+            pinned = entry.get("cwd", "") in get_bookmark_service().get_pinned_cwds()
             return f"{entry.get('project', 'unknown')}{'  ★' if pinned else ''}"
         if col_id == "date":
             return entry.get("ended_at", "")[:16].replace("T", " ")
@@ -232,7 +232,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
 def _reload_history_data() -> None:
     global _history_data  # noqa: PLW0603
-    _history_data = get_history()
+    _history_data = [e.to_dict() for e in get_history_service().get_all()]
 
 
 def _make_context_menu(delegate: _PrefsDelegate, entry: dict) -> NSMenu:

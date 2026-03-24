@@ -1,12 +1,12 @@
-"""Tests for claudewatch.backend.services.notifications."""
+"""Tests for claudewatch.backend.notifications.service."""
 
 import time
 from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.core.models import ClaudeSession, HostApp, SessionStatus
-from claudewatch.backend.services.notifications import NotificationManager, NotificationService
+from claudewatch.backend.notifications.service import NotificationService
 
-_MOD = "claudewatch.backend.services.notifications"
+_MOD = "claudewatch.backend.notifications.service"
 
 
 def _make_session(**kwargs):
@@ -24,28 +24,25 @@ def _make_session(**kwargs):
 
 
 class TestNotificationServiceIsBaseService:
-    """NotificationService extends BaseService and has backward-compat alias."""
-
-    def test_notification_manager_is_alias(self):
-        assert NotificationManager is NotificationService
+    """NotificationService extends BaseService."""
 
     def test_instance_is_notification_service(self):
         svc = NotificationService()
         assert isinstance(svc, NotificationService)
 
 
-class TestNotificationManagerBasics:
+class TestNotificationServiceBasics:
     """Basic notification manager behavior."""
 
     def test_no_terminal_notifier_skips(self):
-        mgr = NotificationManager()
+        mgr = NotificationService()
         with patch(f"{_MOD}.TERMINAL_NOTIFIER", None):
             s = _make_session(status=SessionStatus.ATTENTION)
             mgr.notify_if_needed([s])
         assert s.pid not in mgr._notified_pids
 
     def test_notifications_disabled_skips(self):
-        mgr = NotificationManager()
+        mgr = NotificationService()
         with (
             patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
             patch(f"{_MOD}.get_setting", return_value=False),
@@ -55,7 +52,7 @@ class TestNotificationManagerBasics:
         assert s.pid not in mgr._notified_pids
 
     def test_no_attention_sessions_clears_dead_pids(self):
-        mgr = NotificationManager()
+        mgr = NotificationService()
         mgr._notified_pids = {999}
         with (
             patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
@@ -66,7 +63,7 @@ class TestNotificationManagerBasics:
         assert 999 not in mgr._notified_pids
 
     def test_already_notified_pid_skipped(self):
-        mgr = NotificationManager()
+        mgr = NotificationService()
         mgr._notified_pids = {100}
         mock_run = MagicMock()
         with (
@@ -80,11 +77,11 @@ class TestNotificationManagerBasics:
         mock_run.assert_not_called()
 
 
-class TestNotificationManagerCooldown:
+class TestNotificationServiceCooldown:
     """Cooldown prevents notification spam."""
 
     def test_cooldown_prevents_second_notification(self):
-        mgr = NotificationManager()
+        mgr = NotificationService()
         mgr.cooldown = 30.0
         mgr.last_notification_time = time.time()
         mock_run = MagicMock()
@@ -99,7 +96,7 @@ class TestNotificationManagerCooldown:
         mock_run.assert_not_called()
 
     def test_notification_sent_after_cooldown(self):
-        mgr = NotificationManager()
+        mgr = NotificationService()
         mgr.cooldown = 30.0
         mgr.last_notification_time = time.time() - 60
         mock_run = MagicMock()
@@ -114,11 +111,11 @@ class TestNotificationManagerCooldown:
         mock_run.assert_called_once()
 
 
-class TestNotificationManagerFrontWindow:
+class TestNotificationServiceFrontWindow:
     """Skip notifications when the session window is already in focus."""
 
     def test_skip_when_project_is_frontmost(self):
-        mgr = NotificationManager()
+        mgr = NotificationService()
         mgr.last_notification_time = 0.0
         mock_run = MagicMock()
         with (
@@ -135,7 +132,7 @@ class TestNotificationManagerFrontWindow:
         mock_run.assert_not_called()
 
     def test_notify_when_different_project_is_frontmost(self):
-        mgr = NotificationManager()
+        mgr = NotificationService()
         mgr.last_notification_time = 0.0
         mock_run = MagicMock()
         with (
@@ -156,7 +153,7 @@ class TestNotificationSend:
     """Verify subprocess call and send() method."""
 
     def test_pid_added_to_notified_set(self):
-        mgr = NotificationManager()
+        mgr = NotificationService()
         mgr.last_notification_time = 0.0
         mock_run = MagicMock()
         with (

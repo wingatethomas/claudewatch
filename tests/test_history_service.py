@@ -1,9 +1,9 @@
-"""Tests for claudewatch.backend.services.history.HistoryService."""
+"""Tests for claudewatch.backend.history.service.HistoryService."""
 
 from unittest.mock import patch
 
 from claudewatch.backend.core.dto import HistoryEntryDTO
-from claudewatch.backend.services.history import HistoryService
+from claudewatch.backend.history.service import HistoryService
 
 
 class TestHistoryService:
@@ -12,14 +12,14 @@ class TestHistoryService:
     def setup_method(self) -> None:
         self.svc = HistoryService()
 
-    @patch("claudewatch.backend.services.history.history_repo")
+    @patch("claudewatch.backend.history.service.history_repo")
     def test_record_delegates_to_repo(self, mock_repo):
         self.svc.record("sid-1", "myproject", "/tmp/cwd", "opus-4", "Terminal")
         mock_repo.record_session.assert_called_once_with(
             "sid-1", "myproject", "/tmp/cwd", "opus-4", "Terminal"
         )
 
-    @patch("claudewatch.backend.services.history.history_repo")
+    @patch("claudewatch.backend.history.service.history_repo")
     def test_get_all_returns_history_entry_dtos(self, mock_repo):
         mock_repo.get_history.return_value = [
             {
@@ -46,12 +46,12 @@ class TestHistoryService:
         assert result[0].model == "opus-4"
         assert result[1].host_app == "VSCode"
 
-    @patch("claudewatch.backend.services.history.history_repo")
+    @patch("claudewatch.backend.history.service.history_repo")
     def test_get_all_handles_empty(self, mock_repo):
         mock_repo.get_history.return_value = []
         assert self.svc.get_all() == []
 
-    @patch("claudewatch.backend.services.history.history_repo")
+    @patch("claudewatch.backend.history.service.history_repo")
     def test_get_all_handles_missing_fields(self, mock_repo):
         mock_repo.get_history.return_value = [{"session_id": "s1"}]
         result = self.svc.get_all()
@@ -63,12 +63,12 @@ class TestHistoryService:
         assert result[0].host_app == ""
         assert result[0].ended_at == ""
 
-    @patch("claudewatch.backend.services.history.history_repo")
+    @patch("claudewatch.backend.history.service.history_repo")
     def test_remove_delegates_to_repo(self, mock_repo):
         self.svc.remove("/tmp/cwd")
         mock_repo.remove_history_entry.assert_called_once_with("/tmp/cwd")
 
-    @patch("claudewatch.backend.services.history.history_repo")
+    @patch("claudewatch.backend.history.service.history_repo")
     def test_get_all_returns_frozen_dtos(self, mock_repo):
         mock_repo.get_history.return_value = [
             {
