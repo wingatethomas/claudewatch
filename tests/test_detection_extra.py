@@ -5,7 +5,7 @@ import os
 import time
 from unittest.mock import patch
 
-from claudewatch.backend.models import SessionStatus
+from claudewatch.backend.core.models import SessionStatus
 from claudewatch.backend.services.detection import (
     _check_jsonl_for_idle,
     _determine_status,

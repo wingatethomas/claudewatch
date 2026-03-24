@@ -3,7 +3,7 @@
 import time
 from unittest.mock import MagicMock, patch
 
-from claudewatch.backend.models import ClaudeSession, HostApp, SessionStatus
+from claudewatch.backend.core.models import ClaudeSession, HostApp, SessionStatus
 from claudewatch.backend.services.notifications import NotificationManager, NotificationService
 
 _MOD = "claudewatch.backend.services.notifications"
