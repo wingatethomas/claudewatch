@@ -70,6 +70,7 @@ from claudewatch.backend.services.usage import (
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.preferences import show_preferences
+from claudewatch.ui.welcome import should_show_welcome, show_welcome
 
 # Type alias for menu item click handlers
 _MenuCallback = Callable[[NSMenuItem], None]
@@ -384,6 +385,10 @@ class ClaudeWatchApp:
 
         # Re-render now that _status_item exists
         self.update_display()
+
+        # First-launch welcome window
+        if should_show_welcome():
+            show_welcome()
 
         # Poll timer — fires every 1s on the main run loop
         NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
