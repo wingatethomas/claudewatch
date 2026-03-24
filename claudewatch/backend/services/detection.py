@@ -4,10 +4,8 @@ import os
 import time
 
 from claudewatch.backend.core.base_service import BaseService
-from claudewatch.backend.core.services.process import ProcessService
-from claudewatch.backend.core.services.session_log import SessionLogService
-from claudewatch.backend.helpers import _shell, run_applescript
-from claudewatch.backend.models import (
+from claudewatch.backend.core.helpers import _shell, run_applescript
+from claudewatch.backend.core.models import (
     HOST_PROCESS_NAMES,
     IDLE_INDICATOR,
     PROMPT_KEYWORDS,
@@ -15,6 +13,8 @@ from claudewatch.backend.models import (
     HostApp,
     SessionStatus,
 )
+from claudewatch.backend.core.services.process import ProcessService
+from claudewatch.backend.core.services.session_log import SessionLogService
 from claudewatch.backend.services.jsonl import (
     find_most_recent_jsonl,
     get_session_id_from_path,

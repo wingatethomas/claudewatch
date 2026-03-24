@@ -15,8 +15,8 @@ import subprocess
 import time
 
 from claudewatch.backend.core.base_service import BaseService
-from claudewatch.backend.helpers import run_applescript
-from claudewatch.backend.models import ClaudeSession, HostApp
+from claudewatch.backend.core.helpers import run_applescript
+from claudewatch.backend.core.models import ClaudeSession, HostApp
 from claudewatch.backend.repositories.config import get_setting
 
 _BUNDLE_IDS: dict[HostApp, str] = {

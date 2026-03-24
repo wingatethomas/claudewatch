@@ -37,8 +37,8 @@ from AppKit import NSScrollView as AppKitScrollView
 from Foundation import NSMakeRect, NSObject, NSRange, NSSortDescriptor
 
 from claudewatch import __version__
-from claudewatch.backend.helpers import escape_applescript, run_applescript
-from claudewatch.backend.paths import LOG_PATH
+from claudewatch.backend.core.helpers import escape_applescript, run_applescript
+from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.repositories.bookmarks import get_pinned_cwds
 from claudewatch.backend.repositories.config import get_available_sounds, get_setting, set_setting
 from claudewatch.backend.repositories.history import get_history, remove_history_entry
