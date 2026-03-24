@@ -1,12 +1,13 @@
-"""App configuration stored at ~/.claude/claudewatch.json."""
+"""App configuration stored in ~/Library/Application Support/ClaudeWatch/."""
 
 import json
 import logging
-import os
+
+from claudewatch.backend.paths import SETTINGS_PATH
 
 log = logging.getLogger("claudewatch")
 
-_SETTINGS_PATH = os.path.expanduser("~/.claude/claudewatch.json")
+_SETTINGS_PATH = SETTINGS_PATH
 
 _DEFAULTS: dict[str, object] = {
     "notifications_enabled": True,

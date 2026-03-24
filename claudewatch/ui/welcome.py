@@ -166,8 +166,7 @@ def show_welcome() -> None:  # noqa: PLR0915
     y = _body(content, (
         "\u2022 ~/.claude/projects/ \u2014 JSONL session files to detect active sessions, "
         "read conversation history, and extract model/token usage\n"
-        "\u2022 ~/.claude/claudewatch.json \u2014 your ClaudeWatch preferences\n"
-        "\u2022 ~/.claude/claudewatch-*.json \u2014 pinned sessions, history, cached summaries\n"
+        "\u2022 ~/Library/Application Support/ClaudeWatch/ \u2014 preferences, pins, history, summaries\n"
         "\u2022 Process table (via libproc) \u2014 finds running Claude Code processes by PID"
     ), y)
 
@@ -176,11 +175,12 @@ def show_welcome() -> None:  # noqa: PLR0915
     # ── What ClaudeWatch writes ──────────────────────────────────
     y = _heading(content, "What it writes", y)
     y = _body(content, (
-        "\u2022 ~/.claude/claudewatch.json \u2014 preferences and onboarding state\n"
-        "\u2022 ~/.claude/claudewatch-pins.json \u2014 pinned session bookmarks\n"
-        "\u2022 ~/.claude/claudewatch-history.json \u2014 ended session history\n"
-        "\u2022 ~/.claude/claudewatch-summaries.json \u2014 cached session summaries\n"
-        "\u2022 ~/.claude/claudewatch.log \u2014 audit log (rotated, max 1 MB)"
+        "All written to ~/Library/Application Support/ClaudeWatch/:\n"
+        "\u2022 settings.json \u2014 preferences and onboarding state\n"
+        "\u2022 pins.json \u2014 pinned session bookmarks\n"
+        "\u2022 history.json \u2014 ended session history\n"
+        "\u2022 summaries.json \u2014 cached session summaries\n"
+        "\u2022 claudewatch.log \u2014 audit log (rotated, max 1 MB)"
     ), y)
 
     y = _separator(content, y)

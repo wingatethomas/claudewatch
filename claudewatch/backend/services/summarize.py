@@ -13,6 +13,7 @@ import subprocess
 import threading
 import time
 
+from claudewatch.backend.paths import SUMMARIES_PATH
 from claudewatch.backend.services.jsonl import find_most_recent_jsonl, read_jsonl_tail
 
 log = logging.getLogger("claudewatch")
@@ -21,7 +22,7 @@ _MAX_CONTEXT_CHARS = 8000
 _TIMEOUT_SECONDS = 45
 _REFRESH_INTERVAL = 60  # seconds between background refresh cycles
 _MAX_FAILURES = 3  # stop retrying after this many consecutive failures per CWD
-_STORE_PATH = os.path.expanduser("~/.claude/claudewatch-summaries.json")
+_STORE_PATH = SUMMARIES_PATH
 
 _PROMPT = (
     "Summarize in under 50 characters. Action verb, no fluff. "
