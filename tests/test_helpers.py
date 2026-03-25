@@ -1,24 +1,8 @@
-"""Tests for claudewatch.backend.core.helpers — _shell and escape_applescript."""
+"""Tests for claudewatch.backend.core.helpers — escape_applescript and run_applescript."""
 
-import subprocess
 from unittest.mock import MagicMock, patch
 
-from claudewatch.backend.core.helpers import _shell, escape_applescript, run_applescript
-
-
-class TestShell:
-    def test_returns_stdout(self):
-        with patch("claudewatch.backend.core.helpers.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout="  hello world  ")
-            assert _shell("echo hello") == "hello world"
-
-    def test_returns_empty_on_timeout(self):
-        with patch("claudewatch.backend.core.helpers.subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 5)):
-            assert _shell("sleep 100") == ""
-
-    def test_returns_empty_on_oserror(self):
-        with patch("claudewatch.backend.core.helpers.subprocess.run", side_effect=OSError("nope")):
-            assert _shell("bad") == ""
+from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 
 
 class TestRunApplescript:
