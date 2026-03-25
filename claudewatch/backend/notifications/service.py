@@ -95,7 +95,7 @@ class NotificationService(BaseService):
                 check=False,
             )
 
-    def notify_if_needed(self, sessions: list[ClaudeSession]) -> None:
+    def notify_if_needed(self, sessions: list[ClaudeSession]) -> None:  # noqa: PLR0912
         """Send notifications for sessions that need attention."""
         if not TERMINAL_NOTIFIER or not get_setting("notifications_enabled"):
             return
@@ -122,9 +122,16 @@ class NotificationService(BaseService):
         self.last_notification_time = now
 
         for s in new_attention:
-            title = "Claude needs approval"
+            title = "Claude needs attention"
             subtitle = s.project
-            message = s.prompt_text if s.prompt_text else "Waiting for permission"
+            if s.prompt_text:
+                message = s.prompt_text
+            elif s.task_summary:
+                message = s.task_summary
+            elif s.last_output:
+                message = s.last_output
+            else:
+                message = "Waiting for input"
 
             log.info(
                 "notification.sent project=%s action=%s host=%s pid=%d",
