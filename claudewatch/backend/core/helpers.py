@@ -1,19 +1,8 @@
 import logging
-import subprocess
 
 from Foundation import NSAppleScript
 
 log = logging.getLogger("claudewatch")
-
-
-def _shell(cmd: str) -> str:
-    """Run a shell command and return stdout. Internal use only — callers must ensure
-    all interpolated values are validated (e.g. integer PIDs from isdigit() checks)."""
-    try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5, check=False)  # noqa: S602
-        return r.stdout.strip()
-    except (subprocess.TimeoutExpired, OSError):
-        return ""
 
 
 def run_applescript(source: str) -> str:
