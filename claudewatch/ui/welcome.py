@@ -18,7 +18,7 @@ from AppKit import (
 )
 from Foundation import NSMakeRect
 
-from claudewatch.backend.repositories.config import get_setting, set_setting
+from claudewatch.backend.core.settings import get_setting, set_setting
 
 _W = 500
 _H = 520

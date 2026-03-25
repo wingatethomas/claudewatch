@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
-from claudewatch.backend.repositories import bookmarks
+from claudewatch.backend.bookmark import repository as bookmarks
 
 
 class TestBookmarkSaveAndGetAll:

@@ -45,6 +45,7 @@ from claudewatch.backend.core.models import (
     SessionStatus,
 )
 from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
+from claudewatch.backend.core.settings import get_setting
 from claudewatch.backend.detection.dependencies import get_detection_service
 from claudewatch.backend.detection.service import DetectionService
 from claudewatch.backend.history.dependencies import get_history_service
@@ -53,7 +54,6 @@ from claudewatch.backend.notifications.dependencies import get_notification_serv
 from claudewatch.backend.notifications.service import NotificationService, set_focus_callback
 from claudewatch.backend.onboarding.dependencies import get_onboarding_service
 from claudewatch.backend.onboarding.service import OnboardingService
-from claudewatch.backend.repositories.config import get_setting
 from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.summary.service import SummaryService
 from claudewatch.backend.updates.dependencies import get_update_service

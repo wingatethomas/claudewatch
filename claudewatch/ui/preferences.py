@@ -40,8 +40,8 @@ from claudewatch import __version__
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.paths import LOG_PATH
+from claudewatch.backend.core.settings import get_available_sounds, get_setting, set_setting
 from claudewatch.backend.history.dependencies import get_history_service
-from claudewatch.backend.repositories.config import get_available_sounds, get_setting, set_setting
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES
 from claudewatch.ui.activity import show_activity
 

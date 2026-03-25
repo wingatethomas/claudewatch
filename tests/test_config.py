@@ -3,7 +3,7 @@
 import json
 from unittest.mock import patch
 
-from claudewatch.backend.repositories import config
+from claudewatch.backend.core import settings as config
 
 
 class TestConfigLoadSave:

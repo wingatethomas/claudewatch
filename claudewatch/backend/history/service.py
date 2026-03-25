@@ -2,7 +2,7 @@
 
 from claudewatch.backend.core.dto import HistoryEntryDTO
 from claudewatch.backend.core.service import BaseService
-from claudewatch.backend.repositories import history as history_repo
+from claudewatch.backend.history import repository as history_repo
 
 
 class HistoryService(BaseService):
