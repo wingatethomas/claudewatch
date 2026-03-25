@@ -14,7 +14,7 @@ DATA_DIR = os.path.expanduser("~/Library/Application Support/ClaudeWatch")
 LOG_DIR = DATA_DIR
 
 # Individual file paths
-SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
+SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")  # Legacy — kept for migration only
 PINS_PATH = os.path.join(DATA_DIR, "pins.json")
 HISTORY_PATH = os.path.join(DATA_DIR, "history.json")
 SUMMARIES_PATH = os.path.join(DATA_DIR, "summaries.json")

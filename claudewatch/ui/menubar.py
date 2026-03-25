@@ -45,7 +45,7 @@ from claudewatch.backend.core.models import (
     SessionStatus,
 )
 from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
-from claudewatch.backend.core.settings import get_setting
+from claudewatch.backend.core.settings import ensure_defaults_migrated, get_setting
 from claudewatch.backend.detection.dependencies import get_detection_service
 from claudewatch.backend.detection.service import DetectionService
 from claudewatch.backend.history.dependencies import get_history_service
@@ -1125,6 +1125,7 @@ def main() -> None:
     logger.propagate = False  # prevent root logger from printing to stderr
 
     ensure_data_dir()
+    ensure_defaults_migrated()
     if not os.path.exists(LOG_PATH):
         os.open(LOG_PATH, os.O_CREAT | os.O_WRONLY, 0o600)
     file_handler = logging.handlers.RotatingFileHandler(
