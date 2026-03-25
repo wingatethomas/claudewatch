@@ -1,11 +1,10 @@
 import json
 import logging
 import os
-import subprocess
 import time
 
 from claudewatch.backend.core.base_service import BaseService
-from claudewatch.backend.core.helpers import run_applescript
+from claudewatch.backend.core.helpers import _shell, run_applescript
 from claudewatch.backend.core.models import (
     HOST_PROCESS_NAMES,
     IDLE_INDICATOR,
@@ -26,6 +25,9 @@ _JSONL_MAX_AGE = 300  # 5 min — Claude can wait for approval a long time
 _JSONL_MIN_AGE = 1
 _WIN_SPLIT_FIELDS = 3
 _TERMINAL_CACHE_TTL = 3  # seconds between AppleScript refreshes
+
+# Module-level cache — kept because tests import and clear it directly.
+_host_app_cache: dict[int, HostApp] = {}
 
 
 class DetectionService(BaseService):
@@ -284,13 +286,7 @@ class DetectionService(BaseService):
 
     def detect(self) -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
         """Detect all running Claude Code sessions."""
-        try:
-            r = subprocess.run(  # noqa: S603, S607
-                ["pgrep", "-x", "claude"], capture_output=True, text=True, timeout=5, check=False,
-            )
-            pids_out = r.stdout.strip()
-        except (subprocess.TimeoutExpired, OSError):
-            pids_out = ""
+        pids_out = _shell("pgrep -x claude")
         raw_pids = [int(p) for p in pids_out.splitlines() if p.strip().isdigit()]
         child_pids = self._process_service.get_child_pids()
         pids = [p for p in raw_pids if p not in child_pids][:_MAX_SESSIONS]
