@@ -2,81 +2,69 @@
 
 macOS menu bar app that monitors all your running [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions and lets you switch between them with a click.
 
-## Requirements
-
-- macOS 13+
-- Python 3.13+
-- [uv](https://docs.astral.sh/uv/) (package manager)
-- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (optional, for notifications): `brew install terminal-notifier`
-
 ## Install
+
+### Download the App (recommended)
+
+Download `ClaudeWatch-v0.6.0-arm64.zip` from the [latest release](https://github.com/wingatethomas/claudewatch/releases/latest), unzip, and drag to `/Applications`.
+
+On first launch, a welcome window explains what permissions are needed.
+
+### From Source
 
 ```bash
 git clone https://github.com/wingatethomas/claudewatch.git
 cd claudewatch
 uv sync
-```
-
-## Run
-
-```bash
 uv run claudewatch
 ```
 
-## What it does
+Requires macOS 13+, Python 3.13+, and [uv](https://docs.astral.sh/uv/).
 
-ClaudeWatch polls every second and shows all active Claude Code sessions in your menu bar, grouped by status:
+## What It Does
 
-- **⚠ Attention** (red dot) — session is waiting for permission
-- **✦ Working** (green dot) — Claude is actively running
-- **⏸ Idle** (yellow dot) — session is waiting for user input
+ClaudeWatch shows all active Claude Code sessions in your menu bar, grouped by status:
 
-Each session shows its model (e.g. opus 4.6) and host app. Click any session to focus its window.
+- **⚠ Attention** (red) — session is waiting for permission or input
+- **✦ Working** (green) — Claude is actively running
+- **⏸ Idle** (yellow) — session is idle
 
-### Supported Environments
+Click any session to focus its window. Hover for actions: Activity log, Pin, Quit.
 
-- **Terminal.app** — focuses the exact window
-- **PyCharm** — focuses the window and switches to the correct terminal tab
-- **VS Code** — focuses the window and switches to the correct terminal tab
-- **tmux** — matches sessions by project name in the window title
+### Features
 
-### Activity Feed
+- **Multi-environment** — Terminal.app, PyCharm, VS Code, tmux
+- **Activity feed** — timeline of user messages, assistant responses, and tool calls
+- **Pinned sessions** — bookmark sessions to resume later with ★
+- **Notifications** — native macOS alerts when sessions need attention, with context about what's being asked
+- **Session summaries** — auto-generated one-line summaries via `claude -p`
+- **Token usage** — input/output/cache token breakdown per session
+- **Self-update** — checks GitHub Releases every 6 hours, one-click update from the menu
+- **Preferences** — notifications, sounds, session history with search and sort
 
-Right-click any session and select **Activity** to see a timeline of what Claude did — user messages, assistant responses, and every tool call with inputs.
+### Permissions
 
-### Pinned Sessions
+ClaudeWatch needs two permissions (prompted on first launch):
 
-Pin sessions you want to come back to later. Pinned sessions show ★ when active, and appear in a separate "Pinned" section when paused. Click a pinned session to resume it in a new Terminal tab. Pins persist across app restarts with a 30-day TTL.
+| Permission | Why |
+|-----------|-----|
+| **Accessibility** | Focus terminal windows when you click a session |
+| **Automation (Terminal)** | List Terminal.app windows, resume sessions, close tabs |
 
-### Notifications
+Optional: `brew install terminal-notifier` for native macOS notifications.
 
-Native macOS notifications when a session needs attention. Shows the project name and what Claude is asking for. Notifications are suppressed if the session's window is already in front, with a 30-second cooldown.
+**Privacy:** ClaudeWatch only reads `~/.claude/` for session data and writes to `~/Library/Application Support/ClaudeWatch/`. It does not access Photos, Music, Documents, or any other personal files.
 
-### Preferences
+### How It Works
 
-Accessible from the dropdown menu. Configure notifications on/off and alert sound.
-
-### How it works
-
-1. Native `libproc` calls find running Claude processes, TTYs, CWDs, and parent process info (no subprocess forks)
+1. Native `libproc` calls find running Claude processes, TTYs, CWDs, and parent process info
 2. PPID chain walking identifies the host app (Terminal, PyCharm, VS Code)
-3. For Terminal.app: AppleScript reads window titles and terminal buffers to detect permission prompts
+3. For Terminal.app: AppleScript reads window titles and buffers to detect permission prompts
 4. For IDEs: JSONL session logs (`~/.claude/projects/`) are checked for pending tool_use requests
-
-### macOS Permissions
-
-ClaudeWatch needs **Accessibility** access (System Settings → Privacy & Security → Accessibility) to:
-- Read terminal window titles and content
-- Focus and raise windows
-- Click PyCharm/VS Code terminal tabs
 
 ### Audit Log
 
-ClaudeWatch writes an audit log to `~/.claude/claudewatch.log` (owner-readable only). It records session starts/ends, status transitions, and notifications — never terminal content or sensitive data. Viewable from Preferences → Audit Log.
-
-```bash
-tail -f ~/.claude/claudewatch.log
-```
+ClaudeWatch writes a rotating audit log to `~/Library/Application Support/ClaudeWatch/claudewatch.log`. Viewable from Preferences.
 
 ## Development
 
