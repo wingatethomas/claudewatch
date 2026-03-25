@@ -280,6 +280,22 @@ def _make_menu_item(title: str, callback: _MenuCallback | None, delegate: "_AppD
     return item
 
 
+def _disabled_item(title: str) -> NSMenuItem:
+    """Create a non-selectable, non-interactive menu item (for headers/labels)."""
+    item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
+    item.setEnabled_(False)
+    return item
+
+
+def _sf_icon(name: str, size: float = 14.0) -> NSImage | None:
+    """Load an SF Symbol as an NSImage for menu items."""
+    img = NSImage.imageWithSystemSymbolName_accessibilityDescription_(name, None)
+    if img:
+        img = img.copy()
+        img.setSize_((size, size))
+    return img
+
+
 def _add_summary_lines(submenu: NSMenu, text: str, delegate: "_AppDelegate") -> None:
     """Split a summary into wrapped menu items — non-interactive, readable text."""
     _wrap = 55
@@ -555,7 +571,7 @@ class ClaudeWatchApp:
         d = self._delegate
 
         # App title
-        self._menu.addItem_(_make_menu_item("ClaudeWatch", None, d))
+        self._menu.addItem_(_disabled_item("ClaudeWatch"))
         self._menu.addItem_(NSMenuItem.separatorItem())
 
         # Update available?
@@ -582,9 +598,9 @@ class ClaudeWatchApp:
 
         if not self.sessions:
             if self._has_polled:
-                self._menu.addItem_(_make_menu_item("No running Claude sessions", None, d))
+                self._menu.addItem_(_disabled_item("No running Claude sessions"))
             else:
-                self._menu.addItem_(_make_menu_item("Scanning for Claude sessions…", None, d))
+                self._menu.addItem_(_disabled_item("Scanning for Claude sessions…"))
         else:
             # Build suffix map to disambiguate duplicate labels
             seen_labels: dict[str, int] = {}
@@ -602,7 +618,7 @@ class ClaudeWatchApp:
                     suffixes[s.pid] = ""
 
             if attention:
-                header = _make_menu_item("⚠ Needs Attention", None, d)
+                header = _disabled_item("⚠ Needs Attention")
                 header.setAttributedTitle_(
                     _make_header_title("⚠ Needs Attention", SessionStatus.ATTENTION, len(attention)),
                 )
@@ -615,7 +631,7 @@ class ClaudeWatchApp:
                 self._menu.addItem_(NSMenuItem.separatorItem())
 
             if working:
-                header = _make_menu_item("✦ Working", None, d)
+                header = _disabled_item("✦ Working")
                 header.setAttributedTitle_(
                     _make_header_title("✦ Working", SessionStatus.WORKING, len(working)),
                 )
@@ -628,7 +644,7 @@ class ClaudeWatchApp:
                 self._menu.addItem_(NSMenuItem.separatorItem())
 
             if idle:
-                header = _make_menu_item("⏸ Idle", None, d)
+                header = _disabled_item("⏸ Idle")
                 header.setAttributedTitle_(
                     _make_header_title("⏸ Idle", SessionStatus.IDLE, len(idle)),
                 )
@@ -642,7 +658,7 @@ class ClaudeWatchApp:
         inactive_pins = [p for p in pins if p.cwd not in active_cwds]
         if inactive_pins:
             self._menu.addItem_(NSMenuItem.separatorItem())
-            self._menu.addItem_(_make_menu_item(f"★ Pinned ({len(inactive_pins)})", None, d))
+            self._menu.addItem_(_disabled_item(f"★ Pinned ({len(inactive_pins)})"))
             for pin in inactive_pins:
                 _max_note = 25
                 label = f"  {pin.project}"
@@ -675,7 +691,7 @@ class ClaudeWatchApp:
                 if model:
                     detail_parts.append(model)
                 if detail_parts:
-                    self._menu.addItem_(_make_menu_item(f"      {' · '.join(detail_parts)}", None, d))
+                    self._menu.addItem_(_disabled_item(f"      {' · '.join(detail_parts)}"))
 
         # Recent sessions (last 3 days, not active, not pinned)
         _recent_days = 3
@@ -746,9 +762,12 @@ class ClaudeWatchApp:
             self._menu.addItem_(recent_menu_item)
 
         self._menu.addItem_(NSMenuItem.separatorItem())
-        self._menu.addItem_(_make_menu_item("Preferences...", self._open_preferences, d))
+        prefs_item = _make_menu_item("Preferences...", self._open_preferences, d)
+        prefs_item.setImage_(_sf_icon("gearshape"))
+        self._menu.addItem_(prefs_item)
 
         help_item = _make_menu_item("Help", None, d)
+        help_item.setImage_(_sf_icon("questionmark.circle"))
         help_submenu = NSMenu.alloc().init()
         for tip in (
             "Click → focus window",
@@ -789,8 +808,12 @@ class ClaudeWatchApp:
         help_item.setSubmenu_(help_submenu)
         self._menu.addItem_(help_item)
 
-        self._menu.addItem_(_make_menu_item("Restart", self._restart, d))
-        self._menu.addItem_(_make_menu_item("Quit", self._quit, d))
+        restart_item = _make_menu_item("Restart", self._restart, d)
+        restart_item.setImage_(_sf_icon("arrow.clockwise"))
+        self._menu.addItem_(restart_item)
+        quit_item = _make_menu_item("Quit", self._quit, d)
+        quit_item.setImage_(_sf_icon("xmark.circle"))
+        self._menu.addItem_(quit_item)
 
     def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:  # noqa: PLR0912, PLR0915
         """Add a session entry + detail line to the menu."""
@@ -851,7 +874,7 @@ class ClaudeWatchApp:
             oneliner = s.detail_line
         detail_parts = [p for p in [model, oneliner] if p]
         if detail_parts:
-            self._menu.addItem_(_make_menu_item(f"      {' · '.join(detail_parts)}", None, d))
+            self._menu.addItem_(_disabled_item(f"      {' · '.join(detail_parts)}"))
 
     def _make_activity_handler(self, session: ClaudeSession) -> _MenuCallback:
         project = session.project
@@ -1086,6 +1109,11 @@ class ClaudeWatchApp:
 
     def _restart(self, _: NSMenuItem) -> None:
         log.info("app.restart")
+        # Remove the status bar item before replacing the process,
+        # otherwise the old icon lingers in the menu bar
+        if self._status_item is not None:
+            NSStatusBar.systemStatusBar().removeStatusItem_(self._status_item)
+            self._status_item = None
         AppHelper.stopEventLoop()
         os.execv(sys.executable, [sys.executable] + sys.argv)  # noqa: S606
 
