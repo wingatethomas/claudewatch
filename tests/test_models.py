@@ -6,9 +6,8 @@ from claudewatch.backend.core.models import (
     ClaudeSession,
     HostApp,
     SessionStatus,
-    cwd_to_proj_key,
-    proj_key_to_cwd,
 )
+from claudewatch.backend.core.paths import cwd_to_proj_key, proj_key_to_cwd
 
 
 class TestClaudeSession:

@@ -6,9 +6,6 @@ import time
 
 from claudewatch.backend.core.helpers import run_applescript
 from claudewatch.backend.core.models import (
-    HOST_PROCESS_NAMES,
-    IDLE_INDICATOR,
-    PROMPT_KEYWORDS,
     ClaudeSession,
     HostApp,
     SessionStatus,
@@ -16,6 +13,7 @@ from claudewatch.backend.core.models import (
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
+from claudewatch.backend.detection.constants import HOST_PROCESS_NAMES, IDLE_INDICATOR, PROMPT_KEYWORDS
 
 log = logging.getLogger("claudewatch")
 
