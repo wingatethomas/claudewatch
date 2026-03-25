@@ -45,5 +45,5 @@ jobs:
           enable-cache: true
       - name: Audit dependencies for known vulnerabilities
         run: |
-          uv export --no-hashes | grep -v '^pyobjc' > requirements.txt
+          uv export --no-hashes | grep -vi 'pyobjc' > requirements.txt
           uvx pip-audit -r requirements.txt
