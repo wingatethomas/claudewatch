@@ -22,7 +22,7 @@ PACKAGE_NAME = "claudewatch"
 # Layer classification
 # ---------------------------------------------------------------------------
 
-# Domain directories (siblings of core/ and repositories/ under backend/)
+# Domain directories (siblings of core/ under backend/)
 DOMAIN_DIRS = frozenset(
     {
         "detection",
@@ -50,8 +50,6 @@ def _classify_backend(parts: list[str]) -> str:
         if len(parts) >= _MIN_CORE_SUBPACKAGE_PARTS and parts[1] in _CORE_SERVICE_PACKAGES:
             return "core/services"
         return "core"
-    if parts[0] == "repositories":
-        return "repositories"
     return "domain" if parts[0] in DOMAIN_DIRS else "other"
 
 
@@ -61,7 +59,6 @@ def _classify(module_path: str) -> str:
     Tags:
         "core"           -- backend/core (excluding services)
         "core/services"  -- backend/core/process, backend/core/session_log
-        "repositories"   -- backend/repositories
         "domain"         -- any domain package under backend/
         "ui"             -- ui/
         "other"          -- anything else (e.g. __main__)
@@ -83,45 +80,26 @@ def _classify(module_path: str) -> str:
     return "other"
 
 
-def _is_config_import(module_path: str) -> bool:
-    """Return True if the import targets repositories/config specifically."""
-    parts = module_path.split(".")
-    if PACKAGE_NAME in parts:
-        parts = parts[parts.index(PACKAGE_NAME) + 1 :]
-    return parts[:3] == ["backend", "repositories", "config"]
-
-
 # ---------------------------------------------------------------------------
 # Layer rules: (from_layer, to_layer) -> forbidden unless exception applies
 # ---------------------------------------------------------------------------
 
 # Pairs that are always forbidden (no exceptions)
 _FORBIDDEN_PAIRS: set[tuple[str, str]] = {
-    # core/ must not import from domains, repositories, or ui
+    # core/ must not import from domains or ui
     ("core", "domain"),
-    ("core", "repositories"),
     ("core", "ui"),
-    # core/services must not import from domains, repositories, or ui
+    # core/services must not import from domains or ui
     ("core/services", "domain"),
-    ("core/services", "repositories"),
     ("core/services", "ui"),
-    # repositories must not import from domains or ui
-    ("repositories", "domain"),
-    ("repositories", "ui"),
     # domains must not import from ui
     ("domain", "ui"),
-    # ui must not import from repositories (exception handled below)
-    ("ui", "repositories"),
 }
 
 
-def _is_violation(from_layer: str, to_layer: str, to_module: str) -> bool:
-    """Return True if importing *to_module* from *from_layer* to *to_layer* is a violation."""
-    pair = (from_layer, to_layer)
-    if pair not in _FORBIDDEN_PAIRS:
-        return False
-    # Exception: ui may import from repositories/config
-    return not (pair == ("ui", "repositories") and _is_config_import(to_module))
+def _is_violation(from_layer: str, to_layer: str) -> bool:
+    """Return True if importing from *from_layer* to *to_layer* is a violation."""
+    return (from_layer, to_layer) in _FORBIDDEN_PAIRS
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +173,7 @@ def find_violations(graph: dict[str, list[str]]) -> list[dict[str, str]]:
             to_layer = _classify(imp)
             if to_layer == "other":
                 continue
-            if _is_violation(from_layer, to_layer, imp):
+            if _is_violation(from_layer, to_layer):
                 violations.append(
                     {
                         "module": module,
