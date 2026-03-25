@@ -31,9 +31,7 @@ jobs:
           uvx ruff check .
           uvx ruff format --check .
       - name: Check layer rules
-        run: |
-          uv sync --no-install-workspace --only-group dev
-          uv run python scripts/audit_imports.py --check
+        run: python3 scripts/audit_imports.py --check
 
   test:
     runs-on: macos-14  # ARM64 — PyObjC requires macOS
@@ -55,5 +53,5 @@ jobs:
           enable-cache: true
       - name: Audit dependencies for known vulnerabilities
         run: |
-          uv export --no-hashes | grep -vi 'pyobjc' > requirements.txt
+          uv export --no-hashes --no-emit-project | grep -vi 'pyobjc' > requirements.txt
           uvx pip-audit -r requirements.txt --no-deps
