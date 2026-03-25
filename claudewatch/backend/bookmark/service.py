@@ -1,7 +1,7 @@
 """BookmarkService — facade over the bookmarks repository for UI consumption."""
 
-from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.core.dto import PinDTO
+from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.repositories import bookmarks as bookmarks_repo
 
 

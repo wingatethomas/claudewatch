@@ -7,7 +7,7 @@ Each tip is shown at most once; shown tip IDs are persisted in config.
 import logging
 import time
 
-from claudewatch.backend.core.base_service import BaseService
+from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.notifications.service import NotificationService
 from claudewatch.backend.repositories.config import get_setting, set_setting
 

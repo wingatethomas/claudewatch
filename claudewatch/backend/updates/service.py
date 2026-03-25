@@ -14,8 +14,8 @@ import time
 from collections.abc import Callable
 
 from claudewatch import __version__
-from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.core.dto import UpdateInfoDTO
+from claudewatch.backend.core.service import BaseService
 
 log = logging.getLogger("claudewatch")
 

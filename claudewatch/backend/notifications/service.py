@@ -9,9 +9,9 @@ import time
 
 from Foundation import NSObject, NSUserNotification, NSUserNotificationCenter
 
-from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.core.helpers import run_applescript
 from claudewatch.backend.core.models import ClaudeSession
+from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.repositories.config import get_setting
 
 log = logging.getLogger("claudewatch")

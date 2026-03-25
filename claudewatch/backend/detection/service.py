@@ -4,7 +4,6 @@ import os
 import subprocess
 import time
 
-from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.core.helpers import run_applescript
 from claudewatch.backend.core.models import (
     HOST_PROCESS_NAMES,
@@ -15,6 +14,7 @@ from claudewatch.backend.core.models import (
     SessionStatus,
 )
 from claudewatch.backend.core.process.service import ProcessService
+from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
 
 log = logging.getLogger("claudewatch")

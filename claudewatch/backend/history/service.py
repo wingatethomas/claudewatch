@@ -1,7 +1,7 @@
 """HistoryService — facade over the history repository for UI consumption."""
 
-from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.core.dto import HistoryEntryDTO
+from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.repositories import history as history_repo
 
 
