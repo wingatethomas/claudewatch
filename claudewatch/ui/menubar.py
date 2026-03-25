@@ -1,4 +1,3 @@
-import ctypes
 import logging
 import logging.handlers
 import os
@@ -9,39 +8,26 @@ import sys
 import threading
 import time
 import webbrowser
-from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
 
-import objc
 from AppKit import (
     NSAlert,
     NSAlertFirstButtonReturn,
     NSApplication,
     NSApplicationActivationPolicyAccessory,
-    NSBezierPath,
-    NSColor,
-    NSFont,
-    NSImage,
     NSMenu,
     NSMenuItem,
-    NSMutableAttributedString,
-    NSObject,
     NSStatusBar,
-    NSString,
     NSTextField,
-    NSWorkspace,
+    NSTimer,
 )
-from Foundation import NSMakeRect, NSMakeSize, NSRange, NSTimer
 from PyObjCTools import AppHelper
 
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.models import (
-    HOST_APP_PATH,
     ClaudeSession,
-    HostApp,
     SessionStatus,
 )
 from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
@@ -59,299 +45,27 @@ from claudewatch.backend.summary.service import SummaryService
 from claudewatch.backend.updates.dependencies import get_update_service
 from claudewatch.backend.updates.service import UpdateService
 from claudewatch.backend.usage.dependencies import get_usage_service
-from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, UsageService, format_tokens_breakdown
+from claudewatch.backend.usage.service import UsageService
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
+from claudewatch.ui.menu_builder import MenuBuilder
+from claudewatch.ui.menu_helpers import AppDelegate, MenuCallback, make_menu_item
 from claudewatch.ui.preferences import show_preferences
+from claudewatch.ui.session_actions import clean_exit_session, is_accessibility_trusted, notify_paused
 from claudewatch.ui.welcome import should_show_welcome, show_welcome
-
-# Type alias for menu item click handlers
-_MenuCallback = Callable[[NSMenuItem], None]
 
 log = logging.getLogger("claudewatch")
 
 # Background thread pool for detection (single worker — prevents overlapping polls)
 _executor = ThreadPoolExecutor(max_workers=1)
 
-# Status colors — the Digital Color Meter samples were display-rendered values,
-# not sRGB input. Use brighter sRGB values that render to match Claude Code on screen.
-_STATUS_COLORS = {
-    SessionStatus.ATTENTION: NSColor.colorWithSRGBRed_green_blue_alpha_(0.85, 0.30, 0.28, 1.0),  # warm red
-    SessionStatus.WORKING: NSColor.colorWithSRGBRed_green_blue_alpha_(0.25, 0.65, 0.30, 1.0),  # forest green
-    SessionStatus.IDLE: NSColor.colorWithSRGBRed_green_blue_alpha_(0.85, 0.65, 0.15, 1.0),  # warm amber
-}
-
-# Cache for scaled NSImage icons
-_app_icon_cache: dict[HostApp, NSImage | None] = {}
-
-# Cache for status dot images
-_status_dot_cache: dict[SessionStatus, NSImage] = {}
-
-
-def _make_header_title(text: str, status: SessionStatus, count: int) -> NSMutableAttributedString:
-    """Create an attributed string like '⚠ Needs Attention (3)  •••' with small colored dots."""
-    dots = "●" * count
-    full = f"{text} ({count})  {dots}"
-    attr_str = NSMutableAttributedString.alloc().initWithString_(full)
-    # Style the dots: colored, smaller font, baseline-shifted up to center vertically
-    dot_start = len(full) - len(dots)
-    dot_range = NSRange(dot_start, len(dots))
-    color = _STATUS_COLORS.get(status, NSColor.secondaryLabelColor())
-    attr_str.addAttribute_value_range_("NSColor", color, dot_range)
-    attr_str.addAttribute_value_range_("NSFont", NSFont.systemFontOfSize_(7.0), dot_range)
-    attr_str.addAttribute_value_range_("NSBaselineOffset", 2.0, dot_range)
-    return attr_str
-
-
-def _render_dot_row(status: SessionStatus, count: int) -> NSImage:
-    """Render a row of colored dots as an NSImage for section headers."""
-    _dot_diameter = 6.0
-    _dot_gap = 3.0
-    _dot_step = _dot_diameter + _dot_gap
-    _height = 12.0
-
-    width = max(count * _dot_step - _dot_gap, 1)
-    img = NSImage.alloc().initWithSize_(NSMakeSize(width, _height))
-    img.lockFocus()
-    try:
-        color = _STATUS_COLORS.get(status, NSColor.secondaryLabelColor())
-        color.set()
-        center_y = (_height - _dot_diameter) / 2.0
-        for i in range(count):
-            x = i * _dot_step
-            NSBezierPath.bezierPathWithOvalInRect_(
-                NSMakeRect(x, center_y, _dot_diameter, _dot_diameter),
-            ).fill()
-    finally:
-        img.unlockFocus()
-    img.setTemplate_(False)
-    return img
-
-
-def _render_status_icon(  # noqa: PLR0914
-    attention: list[ClaudeSession],
-    working: list[ClaudeSession],
-    idle: list[ClaudeSession],
-) -> NSImage:
-    """Render a menu bar icon: ✦ symbol + colored dots (max 12, 2 rows of 4+)."""
-    _dot_radius = 2.0
-    _dot_gap = 2.0
-    _dot_step = _dot_radius * 2 + _dot_gap
-    _dots_per_row = 4
-    _row_height = 7.0
-    _symbol_width = 18.0
-    _icon_height = 18.0
-    _max_dots = 12
-
-    # Build dot list: attention first (red), then working (green), then idle (yellow)
-    dots: list[NSColor] = []
-    for _ in attention:
-        dots.append(_STATUS_COLORS[SessionStatus.ATTENTION])
-    for _ in working:
-        dots.append(_STATUS_COLORS[SessionStatus.WORKING])
-    for _ in idle:
-        dots.append(_STATUS_COLORS[SessionStatus.IDLE])
-    dots = dots[:_max_dots]
-
-    n_dots = len(dots)
-    two_rows = n_dots > _dots_per_row
-    cols = min(n_dots, _dots_per_row)
-    dots_width = cols * _dot_step - _dot_gap if cols else 0
-    width = _symbol_width + dots_width + 2.0
-
-    img = NSImage.alloc().initWithSize_(NSMakeSize(width, _icon_height))
-    img.lockFocus()
-    try:
-        # Draw ✦ symbol
-        attrs = {
-            "NSFont": NSFont.systemFontOfSize_(15.0),
-            "NSColor": NSColor.labelColor(),
-        }
-        symbol = NSString.stringWithString_("✦")
-        symbol.drawAtPoint_withAttributes_((0.0, 0.0), attrs)
-
-        # Draw dots in a grid — 1 or 2 rows
-        if two_rows:
-            top_y = _icon_height / 2.0 + 1.0
-            bot_y = top_y - _row_height
-        else:
-            top_y = _icon_height / 2.0 - _dot_radius + 1.0
-            bot_y = top_y  # unused
-
-        for i, color in enumerate(dots):
-            col = i % _dots_per_row
-            row_y = top_y if i < _dots_per_row else bot_y
-            x = _symbol_width + col * _dot_step
-            color.set()
-            NSBezierPath.bezierPathWithOvalInRect_(
-                NSMakeRect(x, row_y, _dot_radius * 2, _dot_radius * 2),
-            ).fill()
-    finally:
-        img.unlockFocus()
-    img.setTemplate_(False)
-    return img
-
-
-def _get_app_icon(app: HostApp, size: int = 16) -> NSImage | None:
-    """Get the actual macOS app icon, scaled to menu size. Cached."""
-    if app in _app_icon_cache:
-        return _app_icon_cache[app]
-    path = HOST_APP_PATH.get(app)
-    if not path:
-        _app_icon_cache[app] = None
-        return None
-    icon = NSWorkspace.sharedWorkspace().iconForFile_(path)
-    if icon:
-        icon = icon.copy()
-        icon.setSize_((size, size))
-    _app_icon_cache[app] = icon
-    return icon
-
-
-def _is_accessibility_trusted() -> bool:
-    """Check if the app has Accessibility permissions via AXIsProcessTrusted."""
-    try:
-        lib = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
-        lib.AXIsProcessTrusted.restype = ctypes.c_bool
-        return lib.AXIsProcessTrusted()
-    except OSError:
-        return False
-
-
-def _clean_exit_session(tty: str, pid: int, project: str, window_id: int | None = None) -> bool:
-    """Send SIGINT to exit Claude Code, then close the Terminal tab.
-
-    Claude Code handles SIGINT gracefully — saves session state,
-    making it resumable with --resume.
-    """
-    try:
-        os.kill(pid, signal.SIGINT)
-        log.info("session.exit project=%s pid=%d tty=%s", project, pid, tty)
-    except OSError:
-        log.warning("session.exit failed project=%s pid=%d", project, pid)
-        return False
-
-    # Close the terminal tab after Claude actually exits
-    if window_id is not None:
-        # window_id is always int — validated via isdigit() in detection.py
-        def _close_tab() -> None:
-            # Poll until the process exits (max 10s, check every 0.5s)
-            _max_wait = 20
-            for _ in range(_max_wait):
-                time.sleep(0.5)
-                try:
-                    os.kill(pid, 0)  # 0 signal = check if alive
-                except OSError:
-                    break  # process has exited
-            run_applescript(f"""
-                tell application "Terminal"
-                    close window id {window_id} saving no
-                end tell
-            """)
-
-        threading.Thread(target=_close_tab, daemon=True).start()
-    return True
-
-
-def _notify_paused(project: str) -> None:
-    """Send a 'session paused' notification."""
-    get_notification_service().send("Session paused", project, "Resume from the Pinned section")
-
-
-def _noop(_: NSMenuItem) -> None:
-    """No-op callback — keeps menu items enabled (not greyed out)."""
-
-
-def _make_menu_item(title: str, callback: _MenuCallback | None, delegate: "_AppDelegate") -> NSMenuItem:
-    """Create an NSMenuItem, wiring its callback through the delegate."""
-    item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
-    if callback is not None:
-        tag = delegate._next_tag
-        delegate._next_tag += 1
-        item.setTag_(tag)
-        item.setTarget_(delegate)
-        item.setAction_("menuItemClicked:")
-        delegate._callbacks[tag] = callback
-    return item
-
-
-def _disabled_item(title: str) -> NSMenuItem:
-    """Create a non-selectable, non-interactive menu item (for headers/labels)."""
-    item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
-    item.setEnabled_(False)
-    return item
-
-
-def _sf_icon(name: str, size: float = 14.0) -> NSImage | None:
-    """Load an SF Symbol as an NSImage for menu items."""
-    img = NSImage.imageWithSystemSymbolName_accessibilityDescription_(name, None)
-    if img:
-        img = img.copy()
-        img.setSize_((size, size))
-    return img
-
-
-def _add_summary_lines(submenu: NSMenu, text: str, delegate: "_AppDelegate") -> None:
-    """Split a summary into wrapped menu items — non-interactive, readable text."""
-    _wrap = 55
-    words = text.split()
-    line = ""
-    for word in words:
-        if line and len(line) + 1 + len(word) > _wrap:
-            item = _make_menu_item(f"  {line}", None, delegate)
-            _style_summary_item(item)
-            submenu.addItem_(item)
-            line = word
-        else:
-            line = f"{line} {word}" if line else word
-    if line:
-        item = _make_menu_item(f"  {line}", None, delegate)
-        _style_summary_item(item)
-        submenu.addItem_(item)
-
-
-def _style_summary_item(item: NSMenuItem) -> None:
-    """Apply readable font styling to a summary menu item."""
-    text = str(item.title())
-    attr = NSMutableAttributedString.alloc().initWithString_(text)
-    r = NSRange(0, len(text))
-    attr.addAttribute_value_range_("NSFont", NSFont.systemFontOfSize_(12.0), r)
-    attr.addAttribute_value_range_("NSColor", NSColor.labelColor(), r)
-    item.setAttributedTitle_(attr)
-
-
 _MAX_ERRORS = 10
-
-
-class _AppDelegate(NSObject):
-    """Handles NSMenuItem actions and poll timer ticks."""
-
-    _callbacks: dict[int, Callable]
-    _next_tag: int
-    _app: "ClaudeWatchApp | None"
-
-    def init(self):  # noqa: ANN202
-        self = objc.super(_AppDelegate, self).init()  # noqa: PLW0642
-        if self is not None:
-            self._callbacks = {}
-            self._next_tag = 1
-            self._app = None
-        return self
-
-    def menuItemClicked_(self, sender: NSMenuItem) -> None:  # noqa: N802
-        cb = self._callbacks.get(sender.tag())
-        if cb:
-            cb(sender)
-
-    def pollTick_(self, timer: object) -> None:  # noqa: N802, ARG002
-        if self._app:
-            self._app.poll()
 
 
 class ClaudeWatchApp:
     def __init__(  # noqa: PLR0913
         self,
-        delegate: _AppDelegate,
+        delegate: AppDelegate,
         *,
         detection_service: DetectionService,
         summary_service: SummaryService,
@@ -386,6 +100,7 @@ class ClaudeWatchApp:
         self._exiting_pids: dict[int, float] = {}  # PID → time of quit signal
         self._has_polled = False
         self._check_accessibility()
+        self._menu_builder = MenuBuilder(self, self._menu, delegate)
         # Run first detection synchronously so menu has data immediately
         try:
             self.sessions = self._detection_service.detect()
@@ -492,7 +207,7 @@ class ClaudeWatchApp:
 
     def _check_accessibility(self) -> None:
         """Show a warning if Accessibility permissions are not granted."""
-        if not _is_accessibility_trusted():
+        if not is_accessibility_trusted():
             log.warning("Accessibility permission not granted")
             self._accessibility_warning = True
         else:
@@ -533,9 +248,9 @@ class ClaudeWatchApp:
                     self._menu.removeAllItems()
                     self._delegate._callbacks.clear()
                     self._delegate._next_tag = 1
-                    self._menu.addItem_(_make_menu_item("Too many errors — restart app", None, self._delegate))
+                    self._menu.addItem_(make_menu_item("Too many errors — restart app", None, self._delegate))
                     self._menu.addItem_(NSMenuItem.separatorItem())
-                    self._menu.addItem_(_make_menu_item("Quit", self._quit, self._delegate))
+                    self._menu.addItem_(make_menu_item("Quit", self._quit, self._delegate))
             self._future = None
 
         # Dispatch new detection to background thread
@@ -544,335 +259,10 @@ class ClaudeWatchApp:
     def _menu_key(self) -> str:
         return "|".join(f"{s.pid}:{s.status.value}:{s.project}:{s.task_summary}:{s.last_output}" for s in self.sessions)
 
-    def update_display(self) -> None:  # noqa: PLR0912, PLR0915
-        attention = [s for s in self.sessions if s.status == SessionStatus.ATTENTION]
-        working = [s for s in self.sessions if s.status == SessionStatus.WORKING]
-        idle = [s for s in self.sessions if s.status == SessionStatus.IDLE]
+    def update_display(self) -> None:
+        self._menu_builder.build(self.sessions)
 
-        # Menu bar icon — ✦ with colored dots for each state
-        status_icon = _render_status_icon(attention, working, idle)
-        if self._status_item is not None:
-            self._status_item.setImage_(status_icon)
-            self._status_item.setTitle_("")
-
-        key = self._menu_key()
-        if key == self._last_menu_key:
-            return
-        self._last_menu_key = key
-
-        self._menu.removeAllItems()
-        self._delegate._callbacks.clear()
-        self._delegate._next_tag = 1
-        d = self._delegate
-
-        # App title
-        self._menu.addItem_(_disabled_item("ClaudeWatch"))
-        self._menu.addItem_(NSMenuItem.separatorItem())
-
-        # Update available?
-        update_info = self._update_service.get_cached()
-        if update_info:
-            self._menu.addItem_(
-                _make_menu_item(
-                    f"Update to {update_info.tag}",
-                    self._make_open_update_handler(),
-                    d,
-                )
-            )
-            self._menu.addItem_(NSMenuItem.separatorItem())
-
-        # Show accessibility warning if needed
-        if self._accessibility_warning:
-            self._menu.addItem_(
-                _make_menu_item("⚠️ Grant Accessibility in System Settings", self._open_accessibility, d)
-            )
-            self._menu.addItem_(NSMenuItem.separatorItem())
-
-        pinned_cwds = self._bookmark_service.get_pinned_cwds()
-        active_cwds = {s.cwd for s in self.sessions}
-
-        if not self.sessions:
-            if self._has_polled:
-                self._menu.addItem_(_disabled_item("No running Claude sessions"))
-            else:
-                self._menu.addItem_(_disabled_item("Scanning for Claude sessions…"))
-        else:
-            # Build suffix map to disambiguate duplicate labels
-            seen_labels: dict[str, int] = {}
-            suffixes: dict[int, str] = {}
-            for s in self.sessions:
-                label = s.menu_label
-                seen_labels[label] = seen_labels.get(label, 0) + 1
-            label_counters: dict[str, int] = {}
-            for s in self.sessions:
-                label = s.menu_label
-                if seen_labels[label] > 1:
-                    label_counters[label] = label_counters.get(label, 0) + 1
-                    suffixes[s.pid] = f" #{label_counters[label]}"
-                else:
-                    suffixes[s.pid] = ""
-
-            if attention:
-                header = _disabled_item("⚠ Needs Attention")
-                header.setAttributedTitle_(
-                    _make_header_title("⚠ Needs Attention", SessionStatus.ATTENTION, len(attention)),
-                )
-                self._menu.addItem_(header)
-                for s in attention:
-                    is_pinned = s.cwd in pinned_cwds
-                    self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
-
-            if attention and (working or idle):
-                self._menu.addItem_(NSMenuItem.separatorItem())
-
-            if working:
-                header = _disabled_item("✦ Working")
-                header.setAttributedTitle_(
-                    _make_header_title("✦ Working", SessionStatus.WORKING, len(working)),
-                )
-                self._menu.addItem_(header)
-                for s in working:
-                    is_pinned = s.cwd in pinned_cwds
-                    self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
-
-            if working and idle:
-                self._menu.addItem_(NSMenuItem.separatorItem())
-
-            if idle:
-                header = _disabled_item("⏸ Idle")
-                header.setAttributedTitle_(
-                    _make_header_title("⏸ Idle", SessionStatus.IDLE, len(idle)),
-                )
-                self._menu.addItem_(header)
-                for s in idle:
-                    is_pinned = s.cwd in pinned_cwds
-                    self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
-
-        # Pinned sessions that are NOT currently active
-        pins = self._bookmark_service.get_pins()
-        inactive_pins = [p for p in pins if p.cwd not in active_cwds]
-        if inactive_pins:
-            self._menu.addItem_(NSMenuItem.separatorItem())
-            self._menu.addItem_(_disabled_item(f"★ Pinned ({len(inactive_pins)})"))
-            for pin in inactive_pins:
-                _max_note = 25
-                label = f"  {pin.project}"
-                if pin.note:
-                    short_note = pin.note[:_max_note] + "…" if len(pin.note) > _max_note else pin.note
-                    label += f" — {short_note}"
-                item = _make_menu_item(label, self._make_resume_handler(pin.session_id, pin.cwd), d)
-                # Summary submenu
-                summary_menu = NSMenu.alloc().init()
-                summary_item = _make_menu_item("Summary", None, d)
-                cached = self._summary_service.get_cached(pin.cwd)
-                if cached:
-                    _add_summary_lines(summary_menu, cached, d)
-                elif pin.note:
-                    _add_summary_lines(summary_menu, pin.note, d)
-                else:
-                    summary_menu.addItem_(_make_menu_item("No summary available", None, d))
-                summary_item.setSubmenu_(summary_menu)
-                sub = NSMenu.alloc().init()
-                sub.addItem_(summary_item)
-                sub.addItem_(NSMenuItem.separatorItem())
-                sub.addItem_(_make_menu_item("Unpin", self._make_unpin_handler(pin.cwd), d))
-                item.setSubmenu_(sub)
-                self._menu.addItem_(item)
-                # Date + model
-                detail_parts = []
-                if pin.timestamp:
-                    detail_parts.append(pin.timestamp[:10])
-                model = self._usage_service.get_model(pin.cwd)
-                if model:
-                    detail_parts.append(model)
-                if detail_parts:
-                    self._menu.addItem_(_disabled_item(f"      {' · '.join(detail_parts)}"))
-
-        # Recent sessions (last 3 days, not active, not pinned)
-        _recent_days = 3
-        _recent_limit = 10
-        cutoff = datetime.now(tz=UTC) - timedelta(days=_recent_days)
-        history = self._history_service.get_all()  # newest-first
-        recent_entries = []
-        for entry in history:
-            if len(recent_entries) >= _recent_limit:
-                break
-            if entry.cwd in active_cwds or entry.cwd in pinned_cwds:
-                continue
-            try:
-                ended_dt = datetime.fromisoformat(entry.ended_at)
-                if ended_dt < cutoff:
-                    continue
-            except (ValueError, TypeError):
-                continue
-            recent_entries.append(entry)
-
-        if recent_entries:
-            self._menu.addItem_(NSMenuItem.separatorItem())
-            recent_menu_item = _make_menu_item(f"Recent ({len(recent_entries)})", None, d)
-            recent_menu_item.setImage_(_sf_icon("clock.arrow.circlepath"))
-            recent_submenu = NSMenu.alloc().init()
-            for entry in recent_entries:
-                model = MODEL_DISPLAY_NAMES.get(entry.model, entry.model)
-
-                detail_parts = [p for p in [entry.ended_at[:10] if entry.ended_at else "", model] if p]
-                label = entry.project
-                if detail_parts:
-                    label += f"  ({' · '.join(detail_parts)})"
-                item = _make_menu_item(label, _noop, d)
-                item_sub = NSMenu.alloc().init()
-                # Summary submenu
-                summary_text = self._summary_service.get_cached(entry.cwd)
-                if summary_text:
-                    summary_item = _make_menu_item("Summary", None, d)
-                    summary_sub = NSMenu.alloc().init()
-                    _add_summary_lines(summary_sub, summary_text, d)
-                    summary_item.setSubmenu_(summary_sub)
-                    item_sub.addItem_(summary_item)
-                # Usage submenu with token breakdown + Activity
-                token_data = self._usage_service.get_tokens(entry.cwd)
-                breakdown = format_tokens_breakdown(token_data)
-                usage_item = _make_menu_item("Usage", None, d)
-                usage_sub = NSMenu.alloc().init()
-                if breakdown:
-                    for uline in breakdown:
-                        usage_sub.addItem_(_make_menu_item(f"  {uline}", None, d))
-                    usage_sub.addItem_(NSMenuItem.separatorItem())
-                usage_sub.addItem_(
-                    _make_menu_item(
-                        "View session activity log",
-                        self._make_history_activity_handler(entry.project, entry.cwd),
-                        d,
-                    )
-                )
-                usage_item.setSubmenu_(usage_sub)
-                item_sub.addItem_(usage_item)
-                item_sub.addItem_(NSMenuItem.separatorItem())
-                if entry.session_id:
-                    item_sub.addItem_(_make_menu_item("Resume", self._make_resume_handler(entry.session_id, entry.cwd), d))
-                item_sub.addItem_(_make_menu_item("Remove", self._make_remove_history_handler(entry.cwd), d))
-                item.setSubmenu_(item_sub)
-                recent_submenu.addItem_(item)
-                self._summary_service.track_session(entry.cwd)  # background thread will generate summary
-            recent_menu_item.setSubmenu_(recent_submenu)
-            self._menu.addItem_(recent_menu_item)
-
-        self._menu.addItem_(NSMenuItem.separatorItem())
-        prefs_item = _make_menu_item("Preferences...", self._open_preferences, d)
-        prefs_item.setImage_(_sf_icon("gearshape"))
-        self._menu.addItem_(prefs_item)
-
-        help_item = _make_menu_item("Help", None, d)
-        help_item.setImage_(_sf_icon("questionmark.circle"))
-        help_submenu = NSMenu.alloc().init()
-        for tip in (
-            "Click → focus window",
-            "Hover → Activity · Pin · Quit",
-            "★ = pinned (resume later)",
-        ):
-            help_submenu.addItem_(_make_menu_item(f"  {tip}", None, d))
-
-        # Color legend with actual colored dots
-        legend = _make_menu_item("  Status dots", None, d)
-        legend_text = NSMutableAttributedString.alloc().initWithString_("")
-        _legend_font = NSFont.menuFontOfSize_(13.0)
-        for label, status in (
-            ("  ● attention  ", SessionStatus.ATTENTION),
-            ("● working  ", SessionStatus.WORKING),
-            ("● idle", SessionStatus.IDLE),
-        ):
-            seg = NSMutableAttributedString.alloc().initWithString_(label)
-            r = NSRange(0, len(label))
-            seg.addAttribute_value_range_("NSFont", _legend_font, r)
-            dot_end = label.index("●") + 1
-            seg.addAttribute_value_range_(
-                "NSColor",
-                _STATUS_COLORS[status],
-                NSRange(label.index("●"), 1),
-            )
-            seg.addAttribute_value_range_(
-                "NSColor",
-                NSColor.secondaryLabelColor(),
-                NSRange(dot_end, len(label) - dot_end),
-            )
-            legend_text.appendAttributedString_(seg)
-        legend.setAttributedTitle_(legend_text)
-        help_submenu.addItem_(legend)
-        help_submenu.addItem_(NSMenuItem.separatorItem())
-        help_submenu.addItem_(_make_menu_item("Show Tips", self._replay_tips, d))
-        help_submenu.addItem_(_make_menu_item("GitHub", self._open_github, d))
-        help_item.setSubmenu_(help_submenu)
-        self._menu.addItem_(help_item)
-
-        restart_item = _make_menu_item("Restart", self._restart, d)
-        restart_item.setImage_(_sf_icon("arrow.clockwise"))
-        self._menu.addItem_(restart_item)
-        quit_item = _make_menu_item("Quit", self._quit, d)
-        quit_item.setImage_(_sf_icon("xmark.circle"))
-        self._menu.addItem_(quit_item)
-
-    def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:  # noqa: PLR0912, PLR0915
-        """Add a session entry + detail line to the menu."""
-        d = self._delegate
-        pin_mark = " ★" if pinned else ""
-        label = s.menu_label + suffix + pin_mark
-        item = _make_menu_item(label, self._make_click_handler(s), d)
-        icon = _get_app_icon(s.host_app)
-        if icon:
-            item.setImage_(icon)
-        # Build submenu for this session
-        sub = NSMenu.alloc().init()
-        # Summary submenu — auto-generates in background
-        summary_item = _make_menu_item("Summary", None, d)
-        summary_sub = NSMenu.alloc().init()
-        cached = self._summary_service.get_cached(s.cwd)
-        if cached:
-            _add_summary_lines(summary_sub, cached, d)
-        elif self._summary_service.is_generating(s.cwd):
-            summary_sub.addItem_(_make_menu_item("Generating…", None, d))
-        else:
-            summary_sub.addItem_(_make_menu_item("Pending…", None, d))
-        summary_item.setSubmenu_(summary_sub)
-        sub.addItem_(summary_item)
-        # Usage submenu with token breakdown + Activity link
-        token_data = self._usage_service.get_tokens(s.cwd)
-        breakdown = format_tokens_breakdown(token_data)
-        usage_item = _make_menu_item("Usage", None, d)
-        usage_sub = NSMenu.alloc().init()
-        if breakdown:
-            for line in breakdown:
-                usage_sub.addItem_(_make_menu_item(f"  {line}", None, d))
-            usage_sub.addItem_(NSMenuItem.separatorItem())
-        usage_sub.addItem_(_make_menu_item("View session activity log", self._make_activity_handler(s), d))
-        usage_item.setSubmenu_(usage_sub)
-        sub.addItem_(usage_item)
-        sub.addItem_(NSMenuItem.separatorItem())
-        # Track for background refresh (auto-generates summaries)
-        self._summary_service.track_session(s.cwd)
-        if pinned:
-            sub.addItem_(_make_menu_item("Unpin", self._make_unpin_handler(s.cwd), d))
-            sub.addItem_(_make_menu_item("Quit session", self._make_quit_handler(s), d))
-        else:
-            if s.session_id:
-                sub.addItem_(_make_menu_item("Pin session...", self._make_pin_handler(s), d))
-            sub.addItem_(_make_menu_item("Quit session", self._make_quit_handler(s), d))
-        item.setSubmenu_(sub)
-        self._menu.addItem_(item)
-        # Detail line: model + summary (or status as fallback)
-        model = self._usage_service.get_model(s.cwd)
-        cached = self._summary_service.get_cached(s.cwd)
-        _max_oneliner = 40
-        if cached:
-            oneliner = cached.replace("\n", " ").strip()
-            if len(oneliner) > _max_oneliner:
-                oneliner = oneliner[: _max_oneliner - 1] + "…"
-        else:
-            oneliner = s.detail_line
-        detail_parts = [p for p in [model, oneliner] if p]
-        if detail_parts:
-            self._menu.addItem_(_disabled_item(f"      {' · '.join(detail_parts)}"))
-
-    def _make_activity_handler(self, session: ClaudeSession) -> _MenuCallback:
+    def _make_activity_handler(self, session: ClaudeSession) -> MenuCallback:
         project = session.project
         cwd = session.cwd
 
@@ -881,7 +271,7 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_click_handler(self, session: ClaudeSession) -> _MenuCallback:
+    def _make_click_handler(self, session: ClaudeSession) -> MenuCallback:
         pid = session.pid
 
         def handler(_: NSMenuItem) -> None:
@@ -893,7 +283,7 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_pin_handler(self, session: ClaudeSession) -> _MenuCallback:  # noqa: PLR0915
+    def _make_pin_handler(self, session: ClaudeSession) -> MenuCallback:  # noqa: PLR0915
         sid = session.session_id
         project = session.project
         cwd = session.cwd
@@ -956,7 +346,7 @@ class ClaudeWatchApp:
                     quit_alert.addButtonWithTitle_("Quit Session")
                     quit_alert.addButtonWithTitle_("Keep Running")
                     if quit_alert.runModal() == NSAlertFirstButtonReturn:
-                        _clean_exit_session(tty, pid, project, wid)
+                        clean_exit_session(tty, pid, project, wid)
                         self._exiting_pids[pid] = time.time()
             finally:
                 self._modal_active = False
@@ -965,7 +355,7 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_quit_handler(self, session: ClaudeSession) -> _MenuCallback:
+    def _make_quit_handler(self, session: ClaudeSession) -> MenuCallback:
         pid = session.pid
         project = session.project
         cwd = session.cwd
@@ -976,10 +366,10 @@ class ClaudeWatchApp:
         def handler(_: NSMenuItem) -> None:
             exited = False
             if pinned:
-                _clean_exit_session(tty, pid, project, wid)
+                clean_exit_session(tty, pid, project, wid)
                 self._exiting_pids[pid] = time.time()
                 exited = True
-                _notify_paused(project)
+                notify_paused(project)
             else:
                 self._modal_active = True
                 try:
@@ -992,7 +382,7 @@ class ClaudeWatchApp:
                     alert.addButtonWithTitle_("Quit")
                     alert.addButtonWithTitle_("Cancel")
                     if alert.runModal() == NSAlertFirstButtonReturn:
-                        _clean_exit_session(tty, pid, project, wid)
+                        clean_exit_session(tty, pid, project, wid)
                         self._exiting_pids[pid] = time.time()
                         exited = True
                 finally:
@@ -1004,7 +394,7 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_unpin_handler(self, cwd: str) -> _MenuCallback:
+    def _make_unpin_handler(self, cwd: str) -> MenuCallback:
         def handler(_: NSMenuItem) -> None:
             self._modal_active = True
             try:
@@ -1025,7 +415,7 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_resume_handler(self, session_id: str, cwd: str = "") -> _MenuCallback:
+    def _make_resume_handler(self, session_id: str, cwd: str = "") -> MenuCallback:
         def handler(_: NSMenuItem) -> None:
             # Validate session ID is a UUID to prevent command injection
             if not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", session_id):
@@ -1044,13 +434,13 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_history_activity_handler(self, project: str, cwd: str) -> _MenuCallback:
+    def _make_history_activity_handler(self, project: str, cwd: str) -> MenuCallback:
         def handler(_: NSMenuItem) -> None:
             show_activity(project, cwd)
 
         return handler
 
-    def _make_remove_history_handler(self, cwd: str) -> _MenuCallback:
+    def _make_remove_history_handler(self, cwd: str) -> MenuCallback:
         def handler(_: NSMenuItem) -> None:
             self._history_service.remove(cwd)
             self._last_menu_key = ""
@@ -1058,7 +448,7 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_open_update_handler(self) -> _MenuCallback:
+    def _make_open_update_handler(self) -> MenuCallback:
         def handler(_: NSMenuItem) -> None:
             update_info = self._update_service.get_cached()
             if not update_info:
@@ -1143,7 +533,7 @@ def main() -> None:
 
     signal.signal(signal.SIGINT, lambda *_: AppHelper.stopEventLoop())
 
-    delegate = _AppDelegate.alloc().init()
+    delegate = AppDelegate.alloc().init()
     app = ClaudeWatchApp(
         delegate,
         detection_service=get_detection_service(),
