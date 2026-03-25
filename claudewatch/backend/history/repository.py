@@ -5,8 +5,7 @@ import logging
 import os
 from datetime import UTC, datetime
 
-from claudewatch.backend.core.models import CLAUDE_PROJECTS_DIR, proj_key_to_cwd
-from claudewatch.backend.core.paths import HISTORY_PATH
+from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, HISTORY_PATH, proj_key_to_cwd
 from claudewatch.backend.core.session_log.jsonl import is_safe_jsonl_path, read_jsonl_tail
 
 log = logging.getLogger("claudewatch")

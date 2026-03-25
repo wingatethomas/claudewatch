@@ -51,17 +51,16 @@ class TestUsageServiceGetModel:
 
     def test_uses_last_model_in_file(self):
         tail = (
-            json.dumps({"type": "assistant", "message": {"model": "claude-sonnet-4-6"}}) + "\n"
-            + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
+            json.dumps({"type": "assistant", "message": {"model": "claude-sonnet-4-6"}})
+            + "\n"
+            + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}})
+            + "\n"
         )
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "o4.6"
 
     def test_handles_invalid_json_lines(self):
-        tail = (
-            "not json\n"
-            + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
-        )
+        tail = "not json\n" + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "o4.6"
 
@@ -74,5 +73,3 @@ class TestUsageServiceGetModel:
         tail = json.dumps({"type": "user", "message": {"content": "hello"}}) + "\n"
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == ""
-
-

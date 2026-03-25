@@ -35,12 +35,14 @@ Pre-commit hooks run ruff automatically on each commit.
 ```
 claudewatch/
 ├── backend/
-│   ├── core/                      # Shared infrastructure — no domain/repo/UI imports
+│   ├── core/                      # Shared infrastructure — no domain/UI imports
 │   │   ├── models.py              # Data models, enums, constants
 │   │   ├── dto.py                 # BaseDTO + shared DTOs (*DTO suffix)
 │   │   ├── helpers.py             # AppleScript runner, escaping
 │   │   ├── paths.py               # Centralized file paths
-│   │   ├── base_service.py        # BaseService with import constraint enforcement
+│   │   ├── service.py             # BaseService with import constraint enforcement
+│   │   ├── settings.py            # App settings (config)
+│   │   ├── features.py            # Feature flags
 │   │   ├── process/               # ProcessService — PID lookup + child PID registry
 │   │   │   ├── service.py
 │   │   │   ├── dependencies.py
@@ -49,10 +51,6 @@ claudewatch/
 │   │       ├── service.py
 │   │       ├── dependencies.py
 │   │       └── jsonl.py
-│   ├── repositories/              # Data persistence — can import from core/
-│   │   ├── config.py
-│   │   ├── bookmarks.py
-│   │   └── history.py
 │   ├── detection/                 # Each domain: service.py + dependencies.py
 │   ├── summary/
 │   ├── notifications/
@@ -60,8 +58,8 @@ claudewatch/
 │   ├── updates/
 │   ├── usage/
 │   ├── activity/
-│   ├── bookmark/
-│   └── history/
+│   ├── bookmark/                  # Includes repository.py for persistence
+│   └── history/                   # Includes repository.py for persistence
 └── ui/
     ├── menubar.py                 # Menu bar (AppKit NSStatusBar)
     ├── focus.py                   # Window focusing
@@ -70,7 +68,7 @@ claudewatch/
     └── activity.py                # Activity feed window
 ```
 
-Each domain is a package with `service.py` (class extending `BaseService`) and `dependencies.py` (`@lru_cache` factory). **Layer rules:** `core/` has no imports from domains, repos, or UI. Domains can import from `core/` and `repositories/`. UI imports from domains (via `dependencies.py`) and `core/` (DTOs/models only), never `repositories/` directly (except config).
+Each domain is a package with `service.py` (class extending `BaseService`) and `dependencies.py` (`@lru_cache` factory). **Layer rules:** `core/` has no imports from domains or UI. Domains can import from `core/`. UI imports from domains (via `dependencies.py`) and `core/` (DTOs/models/settings). Config is in `core/settings.py`.
 
 ## PR Guidelines
 

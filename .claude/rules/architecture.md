@@ -2,12 +2,14 @@
 
 ```
 backend/
-├── core/                       # Shared infrastructure — no imports from domains or repositories/
+├── core/                       # Shared infrastructure — no imports from domains or ui/
 │   ├── models.py               # ClaudeSession, enums, constants
 │   ├── dto.py                  # BaseDTO + shared DTOs (frozen dataclasses, *DTO suffix)
 │   ├── helpers.py              # AppleScript runner, escaping
 │   ├── paths.py                # Centralized file paths
-│   ├── base_service.py         # BaseService with ImportConstraint
+│   ├── service.py              # BaseService with ImportConstraint
+│   ├── settings.py             # App settings (config — replaces repositories/config.py)
+│   ├── features.py             # Feature flags
 │   ├── process/                # ProcessService — PID lookup + child PID registry
 │   │   ├── service.py
 │   │   ├── dependencies.py     # get_process_service()
@@ -16,12 +18,9 @@ backend/
 │       ├── service.py
 │       ├── dependencies.py     # get_session_log_service()
 │       └── jsonl.py            # JSONL file operations (implementation detail)
-├── repositories/               # Persistence — can import from core/
-│   ├── config.py               # Settings (infrastructure — UI may access directly)
-│   ├── bookmarks.py            # Pinned session bookmarks
-│   └── history.py              # Session history
 ├── detection/                  # DetectionService — find running Claude sessions
 │   ├── service.py
+│   ├── constants.py            # Detection-specific constants
 │   └── dependencies.py         # get_detection_service()
 ├── summary/                    # SummaryService — generate/cache session summaries
 │   ├── service.py
@@ -41,26 +40,27 @@ backend/
 ├── activity/                   # ActivityService — session timeline from JSONL
 │   ├── service.py
 │   └── dependencies.py         # get_activity_service()
-├── bookmark/                   # BookmarkService — wraps bookmarks repo for UI
+├── bookmark/                   # BookmarkService — pinned session bookmarks
 │   ├── service.py
+│   ├── repository.py           # Bookmark persistence
 │   └── dependencies.py         # get_bookmark_service()
-└── history/                    # HistoryService — wraps history repo for UI
+└── history/                    # HistoryService — session history
     ├── service.py
+    ├── repository.py           # History persistence
     └── dependencies.py         # get_history_service()
 ```
 
 ## Import Rules
 
-| From \ To | core/ | core/services | repositories/ | domains | ui/ |
-|-----------|-------|---------------|---------------|---------|-----|
-| **core/** | self | NO | NO | NO | NO |
-| **core/services** | YES | self | NO | NO | NO |
-| **repositories/** | YES | NO | self | NO | NO |
-| **domains** | YES | YES | YES | peers (via deps) | NO |
-| **ui/** | YES (DTOs/models) | NO | config only | YES (via deps) | self |
+| From \ To | core/ | core/services | domains | ui/ |
+|-----------|-------|---------------|---------|-----|
+| **core/** | self | NO | NO | NO |
+| **core/services** | YES | self | NO | NO |
+| **domains** | YES | YES | peers (via deps) | NO |
+| **ui/** | YES (DTOs/models) | NO | YES (via deps) | self |
 
 - `BaseService` enforces import constraints at runtime via `ImportConstraint`.
-- UI **never** imports from `repositories/` (except config, which is infrastructure).
+- Config is now in `core/settings.py` — accessible to all layers including UI.
 - UI imports services via `get_*_service()` factory functions from each domain's `dependencies.py`.
 
 ## Domain Package Convention

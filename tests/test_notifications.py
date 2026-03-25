@@ -162,7 +162,9 @@ class TestNotifyIfNeeded:
             ),
         ):
             s = _make_session(
-                pid=300, project="myproject", status=SessionStatus.ATTENTION,
+                pid=300,
+                project="myproject",
+                status=SessionStatus.ATTENTION,
             )
             svc.notify_if_needed([s])
         mock_center.deliverNotification_.assert_not_called()
@@ -182,7 +184,9 @@ class TestNotifyIfNeeded:
             ),
         ):
             s = _make_session(
-                pid=300, project="myproject", status=SessionStatus.ATTENTION,
+                pid=300,
+                project="myproject",
+                status=SessionStatus.ATTENTION,
             )
             svc.notify_if_needed([s])
         mock_center.deliverNotification_.assert_called_once()
@@ -233,7 +237,9 @@ class TestNotifyIfNeeded:
             patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
             s = _make_session(
-                pid=600, project="myproject", status=SessionStatus.ATTENTION,
+                pid=600,
+                project="myproject",
+                status=SessionStatus.ATTENTION,
             )
             svc.notify_if_needed([s])
         user_info = mock_notif.setUserInfo_.call_args[0][0]

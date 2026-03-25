@@ -14,8 +14,8 @@ import time
 from collections.abc import Callable
 
 from claudewatch import __version__
-from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.core.dto import UpdateInfoDTO
+from claudewatch.backend.core.service import BaseService
 
 log = logging.getLogger("claudewatch")
 
@@ -58,8 +58,13 @@ def _fetch_latest_tag() -> str | None:
     # Fallback: curl the public API
     try:
         result = subprocess.run(  # noqa: S603, S607
-            ["curl", "-sf", "--max-time", "10",
-             "https://api.github.com/repos/wingatethomas/claudewatch/releases/latest"],
+            [
+                "curl",
+                "-sf",
+                "--max-time",
+                "10",
+                "https://api.github.com/repos/wingatethomas/claudewatch/releases/latest",
+            ],
             capture_output=True,
             text=True,
             timeout=15,
@@ -94,7 +99,10 @@ def _fetch_expected_checksum(tag: str) -> str | None:
     try:
         result = subprocess.run(  # noqa: S603, S607
             ["curl", "-sfL", "--max-time", "10", url],
-            capture_output=True, text=True, timeout=15, check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
             for line in result.stdout.strip().splitlines():

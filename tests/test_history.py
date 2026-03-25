@@ -4,7 +4,7 @@ import json
 import os
 from unittest.mock import patch
 
-from claudewatch.backend.repositories import history
+from claudewatch.backend.history import repository as history
 
 
 class TestRecordSession:
@@ -78,7 +78,7 @@ class TestGetHistory:
 
         with (
             patch.object(history, "_PATH", fake_path),
-            patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
             patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
         ):
             result = history.get_history()
@@ -91,7 +91,7 @@ class TestSeedFromJsonl:
     """Tests for _seed_from_jsonl."""
 
     def test_no_projects_dir_returns_empty(self, tmp_path):
-        with patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
+        with patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
             result = history._seed_from_jsonl()
         assert result == []
 
@@ -103,7 +103,7 @@ class TestSeedFromJsonl:
         fake_path = str(tmp_path / "history.json")
         with (
             patch.object(history, "_PATH", fake_path),
-            patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(proj_base)),
         ):
             result = history._seed_from_jsonl()
         assert result == []
@@ -118,7 +118,7 @@ class TestSeedFromJsonl:
         fake_path = str(tmp_path / "history.json")
         with (
             patch.object(history, "_PATH", fake_path),
-            patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(proj_base)),
             patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
         ):
             result = history._seed_from_jsonl()
@@ -139,7 +139,7 @@ class TestSeedFromJsonl:
         fake_path = str(tmp_path / "history.json")
         with (
             patch.object(history, "_PATH", fake_path),
-            patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(proj_base)),
             patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
         ):
             result = history._seed_from_jsonl()
@@ -162,7 +162,7 @@ class TestSeedFromJsonl:
         fake_path = str(tmp_path / "history.json")
         with (
             patch.object(history, "_PATH", fake_path),
-            patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(proj_base)),
             patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
         ):
             result = history._seed_from_jsonl()
@@ -178,7 +178,7 @@ class TestSeedFromJsonl:
         fake_path = str(tmp_path / "history.json")
         with (
             patch.object(history, "_PATH", fake_path),
-            patch("claudewatch.backend.repositories.history.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(proj_base)),
             patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
         ):
             history._seed_from_jsonl()

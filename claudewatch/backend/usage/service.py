@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 
-from claudewatch.backend.core.base_service import BaseService
+from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
 
 # Model display names — keep factual
