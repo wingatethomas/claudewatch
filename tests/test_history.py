@@ -13,14 +13,14 @@ class TestRecordSession:
     def test_records_new_session(self, tmp_path):
         fake_path = str(tmp_path / "history.json")
         with patch.object(history, "_PATH", fake_path):
-            history.record_session("sess-1", "myproject", "/tmp/myproject", "opus 4.6", "Terminal")
+            history.record_session("sess-1", "myproject", "/tmp/myproject", "o4.6", "Terminal")
             entries = history._load()
 
         assert len(entries) == 1
         assert entries[0]["session_id"] == "sess-1"
         assert entries[0]["project"] == "myproject"
         assert entries[0]["cwd"] == "/tmp/myproject"
-        assert entries[0]["model"] == "opus 4.6"
+        assert entries[0]["model"] == "o4.6"
         assert entries[0]["host_app"] == "Terminal"
         assert "ended_at" in entries[0]
 
