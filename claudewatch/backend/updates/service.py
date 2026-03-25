@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -78,6 +79,32 @@ def _get_download_url(tag: str) -> str:
     return f"https://github.com/{_REPO}/releases/download/{tag}/ClaudeWatch-{tag}-arm64.zip"
 
 
+def _sha256_file(path: str) -> str:
+    """Compute SHA-256 hex digest of a file."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _fetch_expected_checksum(tag: str) -> str | None:
+    """Fetch SHA-256 checksum from the release's checksums.txt asset."""
+    url = f"https://github.com/{_REPO}/releases/download/{tag}/checksums.txt"
+    try:
+        result = subprocess.run(  # noqa: S603, S607
+            ["curl", "-sfL", "--max-time", "10", url],
+            capture_output=True, text=True, timeout=15, check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for line in result.stdout.strip().splitlines():
+                if "arm64.zip" in line:
+                    return line.split()[0]
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
 def _find_app_bundle() -> str | None:
     """Find the running .app bundle path, if running from one."""
     # When running as a .app, sys.executable is inside the bundle:
@@ -138,7 +165,7 @@ class UpdateService(BaseService):
         with self._cache_lock:
             return self._cached_update
 
-    def download_and_apply(self, tag: str, on_ready: Callable[[], None] | None = None) -> bool:
+    def download_and_apply(self, tag: str, on_ready: Callable[[], None] | None = None) -> bool:  # noqa: PLR0911
         """Download a release and prepare the swap. Returns True if swap is staged.
 
         Call on_ready() (which should quit the app) after staging succeeds.
@@ -168,6 +195,15 @@ class UpdateService(BaseService):
         except (FileNotFoundError, subprocess.TimeoutExpired) as e:
             log.warning("update: download failed: %s", e)
             return False
+
+        # Verify checksum if available
+        expected = _fetch_expected_checksum(tag)
+        if expected:
+            actual = _sha256_file(zip_path)
+            if actual != expected:
+                log.warning("update: checksum mismatch — expected %s, got %s", expected[:12], actual[:12])
+                return False
+            log.info("update: checksum verified")
 
         # Unzip
         extract_dir = os.path.join(tmp_dir, "extracted")

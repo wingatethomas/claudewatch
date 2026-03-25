@@ -35,28 +35,42 @@ Pre-commit hooks run ruff automatically on each commit.
 ```
 claudewatch/
 ├── backend/
-│   ├── core/                  # Shared infrastructure (no service/repo/UI imports)
-│   │   ├── models.py          # Data models, enums, constants
-│   │   ├── dto.py             # BaseDTO + all shared DTOs (*DTO suffix)
-│   │   ├── helpers.py         # AppleScript runner, escaping
-│   │   ├── paths.py           # Centralized file paths
-│   │   ├── base_service.py    # BaseService with import constraint enforcement
-│   │   └── services/          # Core services (process, session log)
-│   ├── dependencies.py        # Service factory functions (get_*_service())
-│   ├── services/              # Domain services (extend BaseService)
-│   └── repositories/          # Data persistence
-│       ├── config.py          # App settings (infrastructure)
-│       ├── bookmarks.py       # Pinned session bookmarks
-│       └── history.py         # Session history
+│   ├── core/                      # Shared infrastructure — no domain/repo/UI imports
+│   │   ├── models.py              # Data models, enums, constants
+│   │   ├── dto.py                 # BaseDTO + shared DTOs (*DTO suffix)
+│   │   ├── helpers.py             # AppleScript runner, escaping
+│   │   ├── paths.py               # Centralized file paths
+│   │   ├── base_service.py        # BaseService with import constraint enforcement
+│   │   ├── process/               # ProcessService — PID lookup + child PID registry
+│   │   │   ├── service.py
+│   │   │   ├── dependencies.py
+│   │   │   └── procinfo.py
+│   │   └── session_log/           # SessionLogService — JSONL discovery/reading
+│   │       ├── service.py
+│   │       ├── dependencies.py
+│   │       └── jsonl.py
+│   ├── repositories/              # Data persistence — can import from core/
+│   │   ├── config.py
+│   │   ├── bookmarks.py
+│   │   └── history.py
+│   ├── detection/                 # Each domain: service.py + dependencies.py
+│   ├── summary/
+│   ├── notifications/
+│   ├── onboarding/
+│   ├── updates/
+│   ├── usage/
+│   ├── activity/
+│   ├── bookmark/
+│   └── history/
 └── ui/
-    ├── menubar.py             # Menu bar view (AppKit NSStatusBar)
-    ├── focus.py               # Window focusing (AppleScript, CGEvent)
-    ├── preferences.py         # Preferences window (PyObjC NSWindow)
-    ├── welcome.py             # First-launch permissions guide
-    └── activity.py            # Activity feed window
+    ├── menubar.py                 # Menu bar (AppKit NSStatusBar)
+    ├── focus.py                   # Window focusing
+    ├── preferences.py             # Preferences window
+    ├── welcome.py                 # First-launch permissions guide
+    └── activity.py                # Activity feed window
 ```
 
-**Layer rules:** `core/` has no imports from `services/`, `repositories/`, or `ui/`. `services/` can import from `core/` and `repositories/`. `ui/` imports from `services/` and `core/` (DTOs/models only), never `repositories/` (except config, which is infrastructure).
+Each domain is a package with `service.py` (class extending `BaseService`) and `dependencies.py` (`@lru_cache` factory). **Layer rules:** `core/` has no imports from domains, repos, or UI. Domains can import from `core/` and `repositories/`. UI imports from domains (via `dependencies.py`) and `core/` (DTOs/models only), never `repositories/` directly (except config).
 
 ## PR Guidelines
 
