@@ -1,6 +1,5 @@
 """Tests for claudewatch.backend.models."""
 
-import os
 
 from claudewatch.backend.core.models import (
     STATUS_INDICATOR,
@@ -199,12 +198,12 @@ class TestPathMapping:
         cwd = "/Users/dev/projects/myapp"
         assert proj_key_to_cwd(cwd_to_proj_key(cwd)) == cwd
 
-    def test_resolves_real_hyphenated_dirs(self):
-        """Validates against real ~/Develop directories if they exist."""
-        test_dir = os.path.expanduser("~/Develop/backend-api")
-        if os.path.isdir(test_dir):
-            key = cwd_to_proj_key(test_dir)
-            assert proj_key_to_cwd(key) == test_dir
+    def test_resolves_real_hyphenated_dirs(self, tmp_path):
+        """Validates roundtrip for a hyphenated directory on disk."""
+        test_dir = tmp_path / "my-project"
+        test_dir.mkdir()
+        key = cwd_to_proj_key(str(test_dir))
+        assert proj_key_to_cwd(key) == str(test_dir)
 
     def test_proj_key_without_leading_dash(self):
         assert proj_key_to_cwd("relative-path") == "relative/path"

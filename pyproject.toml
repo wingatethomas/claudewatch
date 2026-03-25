@@ -3,7 +3,7 @@ name = "claudewatch"
 version = "0.6.0"
 description = "macOS menu bar app for monitoring Claude Code sessions"
 readme = "README.md"
-license = "GPL-3.0-or-later"
+license = "MIT"
 requires-python = ">=3.13"
 authors = [{name = "ClaudeWatch Contributors"}]
 dependencies = [

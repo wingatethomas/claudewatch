@@ -17,3 +17,7 @@ htmlcov/
 .env
 macOS/
 .claude/worktrees/
+logs/
+*.zip
+*.dmg
+.superpowers/
