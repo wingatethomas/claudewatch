@@ -6,8 +6,8 @@ import json
 import os
 from dataclasses import dataclass
 
-from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.core.dto import ActivityEventDTO
+from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
 
 
@@ -100,6 +100,7 @@ class ActivityService(BaseService):
 # Backward-compatible module-level function
 # ---------------------------------------------------------------------------
 
+
 def parse_activity(cwd: str, max_entries: int = 100) -> list[ActivityEntry]:  # noqa: PLR0912
     """Parse the most recent JSONL for a CWD into an activity timeline.
 
@@ -111,10 +112,7 @@ def parse_activity(cwd: str, max_entries: int = 100) -> list[ActivityEntry]:  # 
     """
     svc = ActivityService(SessionLogService())
     dtos = svc.parse(cwd, max_entries=max_entries)
-    return [
-        ActivityEntry(kind=d.kind, summary=d.summary, detail=d.detail, timestamp=d.timestamp)
-        for d in dtos
-    ]
+    return [ActivityEntry(kind=d.kind, summary=d.summary, detail=d.detail, timestamp=d.timestamp) for d in dtos]
 
 
 def _build_tool_use_fields(block: dict, ts: str) -> tuple[str, str, str]:

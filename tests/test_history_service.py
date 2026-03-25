@@ -15,9 +15,7 @@ class TestHistoryService:
     @patch("claudewatch.backend.history.service.history_repo")
     def test_record_delegates_to_repo(self, mock_repo):
         self.svc.record("sid-1", "myproject", "/tmp/cwd", "opus-4", "Terminal")
-        mock_repo.record_session.assert_called_once_with(
-            "sid-1", "myproject", "/tmp/cwd", "opus-4", "Terminal"
-        )
+        mock_repo.record_session.assert_called_once_with("sid-1", "myproject", "/tmp/cwd", "opus-4", "Terminal")
 
     @patch("claudewatch.backend.history.service.history_repo")
     def test_get_all_returns_history_entry_dtos(self, mock_repo):

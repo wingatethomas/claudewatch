@@ -7,7 +7,6 @@ from unittest.mock import patch
 from scripts.audit_imports import (
     _classify,
     _extract_imports,
-    _is_config_import,
     _is_violation,
     _module_name,
     build_graph,
@@ -30,9 +29,6 @@ class TestClassify:
     def test_core_services_session_log(self):
         assert _classify("claudewatch.backend.core.session_log.service") == "core/services"
 
-    def test_repositories(self):
-        assert _classify("claudewatch.backend.repositories.config") == "repositories"
-
     def test_domain_detection(self):
         assert _classify("claudewatch.backend.detection.service") == "domain"
 
@@ -49,35 +45,18 @@ class TestClassify:
         assert _classify("claudewatch") == "other"
 
 
-class TestIsConfigImport:
-    def test_config_import(self):
-        assert _is_config_import("claudewatch.backend.repositories.config") is True
-
-    def test_bookmarks_import(self):
-        assert _is_config_import("claudewatch.backend.repositories.bookmarks") is False
-
-
 class TestIsViolation:
     def test_core_importing_domain_is_violation(self):
-        assert _is_violation("core", "domain", "claudewatch.backend.detection.service") is True
+        assert _is_violation("core", "domain") is True
 
     def test_core_importing_ui_is_violation(self):
-        assert _is_violation("core", "ui", "claudewatch.ui.menubar") is True
+        assert _is_violation("core", "ui") is True
 
     def test_domain_importing_core_is_ok(self):
-        assert _is_violation("domain", "core", "claudewatch.backend.core.models") is False
-
-    def test_ui_importing_repositories_is_violation(self):
-        assert _is_violation("ui", "repositories", "claudewatch.backend.repositories.bookmarks") is True
-
-    def test_ui_importing_config_is_exception(self):
-        assert _is_violation("ui", "repositories", "claudewatch.backend.repositories.config") is False
+        assert _is_violation("domain", "core") is False
 
     def test_domain_importing_ui_is_violation(self):
-        assert _is_violation("domain", "ui", "claudewatch.ui.menubar") is True
-
-    def test_repositories_importing_domain_is_violation(self):
-        assert _is_violation("repositories", "domain", "claudewatch.backend.detection.service") is True
+        assert _is_violation("domain", "ui") is True
 
 
 class TestExtractImports:

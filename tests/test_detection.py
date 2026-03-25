@@ -145,5 +145,3 @@ class TestMatchTerminalWindow:
         title, wid, app = _match_terminal_window("ttys001", "myapp", HostApp.TERMINAL, {})
         assert title == "Terminal"
         assert wid is None
-
-

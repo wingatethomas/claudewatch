@@ -5,7 +5,7 @@ import types
 
 import pytest
 
-from claudewatch.backend.core.base_service import BaseService
+from claudewatch.backend.core.service import BaseService
 
 
 class TestBaseService:

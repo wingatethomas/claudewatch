@@ -14,7 +14,7 @@ DATA_DIR = os.path.expanduser("~/Library/Application Support/ClaudeWatch")
 LOG_DIR = DATA_DIR
 
 # Individual file paths
-SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
+SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")  # Legacy — kept for migration only
 PINS_PATH = os.path.join(DATA_DIR, "pins.json")
 HISTORY_PATH = os.path.join(DATA_DIR, "history.json")
 SUMMARIES_PATH = os.path.join(DATA_DIR, "summaries.json")
@@ -46,3 +46,64 @@ def _migrate_legacy_files() -> None:
                 log.info("migrated %s -> %s", old, new)
             except OSError:
                 log.warning("failed to migrate %s", old)
+
+
+CLAUDE_PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
+
+
+def cwd_to_proj_key(cwd: str) -> str:
+    """Convert a CWD path to a Claude projects directory key.
+
+    Example: '/Users/dev/myapp' -> '-Users-dev-myapp'
+    """
+    return cwd.replace("/", "-")
+
+
+def proj_key_to_cwd(proj_key: str) -> str:
+    """Reverse cwd_to_proj_key by validating against the filesystem.
+
+    The key replaces all '/' with '-', making it ambiguous when directory
+    names contain hyphens. We resolve this by building the path segment
+    by segment, checking which combinations exist on disk.
+
+    Example: '-Users-dev-backend-api' -> '/Users/dev/backend-api'
+    """
+    if not proj_key.startswith("-"):
+        return proj_key.replace("-", "/", 1)
+
+    parts = proj_key[1:].split("-")
+    return _resolve_path_segments(parts)
+
+
+def _resolve_path_segments(parts: list[str]) -> str:
+    """Build a filesystem path from hyphen-split segments.
+
+    Uses a longest-match approach: when multiple hyphen-joined combinations
+    exist on disk, picks the longest one to avoid incorrect splits.
+    e.g. 'backend-api-auth-rework' is preferred over 'backend-api' + 'auth/rework'.
+    """
+    if not parts:
+        return "/"
+
+    path = "/" + parts[0]
+    i = 1
+    while i < len(parts):
+        # Try all possible hyphen-joined combinations, longest first
+        best_candidate = ""
+        best_j = -1
+        accumulated = parts[i]
+        for j in range(i + 1, len(parts) + 1):
+            candidate = path + "/" + accumulated
+            if os.path.exists(candidate):
+                best_candidate = candidate
+                best_j = j
+            if j < len(parts):
+                accumulated += "-" + parts[j]
+        if best_j > 0:
+            path = best_candidate
+            i = best_j
+        else:
+            # Nothing matched — default to slash
+            path = path + "/" + parts[i]
+            i += 1
+    return path
