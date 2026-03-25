@@ -21,6 +21,7 @@ from AppKit import (
     NSMenu,
     NSMenuItem,
     NSMutableAttributedString,
+    NSOpenPanel,
     NSPopUpButton,
     NSSegmentedControl,
     NSSegmentStyleTexturedRounded,
@@ -34,7 +35,7 @@ from AppKit import (
     NSWindowStyleMaskTitled,
 )
 from AppKit import NSScrollView as AppKitScrollView
-from Foundation import NSMakeRect, NSObject, NSRange, NSSortDescriptor
+from Foundation import NSURL, NSMakeRect, NSObject, NSRange, NSSortDescriptor
 
 from claudewatch import __version__
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
@@ -65,6 +66,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     _sessions_view: NSView | None = None
     _settings_view: NSView | None = None
+    _workdir_label: NSTextField | None = None
 
     # ── Settings actions ──
 
@@ -83,6 +85,27 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         days = 0 if title == "Never" else int(title.rstrip(" days"))
         set_setting("pin_expiry_days", days)
 
+    def chooseWorkDir_(self, sender: objc.objc_object) -> None:
+        panel = NSOpenPanel.openPanel()
+        panel.setCanChooseFiles_(False)
+        panel.setCanChooseDirectories_(True)
+        panel.setAllowsMultipleSelection_(False)
+        panel.setTitle_("Choose Default Working Directory")
+        panel.setPrompt_("Select")
+        current = str(get_setting("default_working_directory") or "")
+        if current and os.path.isdir(current):
+            panel.setDirectoryURL_(NSURL.fileURLWithPath_(current))
+        if panel.runModal() == 1:  # NSOKButton
+            path = str(panel.URL().path())
+            set_setting("default_working_directory", path)
+            if self._workdir_label:
+                self._workdir_label.setStringValue_(_display_path(path))
+
+    def clearWorkDir_(self, sender: objc.objc_object) -> None:
+        set_setting("default_working_directory", "")
+        if self._workdir_label:
+            self._workdir_label.setStringValue_("Not set")
+
     def viewAuditLog_(self, sender: objc.objc_object) -> None:
         log_path = LOG_PATH
         if os.path.exists(log_path):
@@ -92,12 +115,18 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         webbrowser.open(_REPO_URL)
 
     def viewUsageStats_(self, sender: objc.objc_object) -> None:
-        run_applescript("""
+        cwd = str(get_setting("default_working_directory") or "")
+        if cwd and os.path.isdir(cwd):
+            safe_cwd = escape_applescript(cwd)
+            cmd = f'cd \\"{safe_cwd}\\" && claude /usage'
+        else:
+            cmd = "claude /usage"
+        run_applescript(f'''
             tell application "Terminal"
                 activate
-                do script "claude"
+                do script "{cmd}"
             end tell
-        """)
+        ''')
 
     # ── History actions ──
 
@@ -244,6 +273,14 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
+
+def _display_path(path: str) -> str:
+    """Shorten a path for display (~/... form)."""
+    home = os.path.expanduser("~")
+    if path.startswith(home):
+        return "~" + path[len(home):]
+    return path
 
 
 def _reload_history_data() -> None:
@@ -470,6 +507,44 @@ def _add_sessions_section(view: NSView, delegate: _PrefsDelegate, y: float) -> f
     return y
 
 
+def _add_workdir_section(view: NSView, delegate: _PrefsDelegate, y: float) -> float:
+    _add_section_separator(view, y + 10)
+    _add_section_header(view, "DEFAULT WORKING DIRECTORY", y - 10)
+    y -= 36
+
+    current = str(get_setting("default_working_directory") or "")
+    display = _display_path(current) if current else "Not set"
+
+    path_label = NSTextField.labelWithString_(display)
+    path_label.setFrame_(NSMakeRect(_PAD, y, _W - _PAD * 2 - 180, 20))
+    path_label.setFont_(NSFont.systemFontOfSize_(13.0))
+    path_label.setLineBreakMode_(5)  # NSLineBreakByTruncatingMiddle
+    view.addSubview_(path_label)
+    delegate._workdir_label = path_label
+
+    choose_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - _PAD - 170, y - 4, 90, 28))
+    choose_btn.setTitle_("Choose...")
+    choose_btn.setBezelStyle_(1)
+    choose_btn.setTarget_(delegate)
+    choose_btn.setAction_(objc.selector(delegate.chooseWorkDir_, signature=b"v@:@"))
+    view.addSubview_(choose_btn)
+
+    clear_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - _PAD - 70, y - 4, 70, 28))
+    clear_btn.setTitle_("Clear")
+    clear_btn.setBezelStyle_(1)
+    clear_btn.setTarget_(delegate)
+    clear_btn.setAction_(objc.selector(delegate.clearWorkDir_, signature=b"v@:@"))
+    view.addSubview_(clear_btn)
+
+    y -= 20
+    hint = NSTextField.labelWithString_("Used for Usage Statistics and future new sessions.")
+    hint.setFrame_(NSMakeRect(_PAD, y, _W - _PAD * 2, 14))
+    hint.setFont_(NSFont.systemFontOfSize_(11.0))
+    hint.setTextColor_(NSColor.tertiaryLabelColor())
+    view.addSubview_(hint)
+    return y
+
+
 def _add_usage_section(view: NSView, delegate: _PrefsDelegate, y: float) -> float:
     _add_section_separator(view, y + 10)
     _add_section_header(view, "USAGE", y - 10)
@@ -523,13 +598,15 @@ def _build_settings_pane(delegate: _PrefsDelegate) -> NSView:
     content_h = _H - _TOOLBAR_H
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, content_h))
 
-    # Vertically center the content (~320px of settings in ~464px pane)
-    _content_height = 340
+    # Vertically center the content (~420px of settings in ~464px pane)
+    _content_height = 420
     y = (content_h + _content_height) // 2
 
     y = _add_notifications_section(view, delegate, y)
     y -= 44
     y = _add_sessions_section(view, delegate, y)
+    y -= 34
+    y = _add_workdir_section(view, delegate, y)
     y -= 34
     y = _add_usage_section(view, delegate, y)
     y -= 34

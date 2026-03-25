@@ -75,6 +75,26 @@ class TestGetSetSetting:
             config.set_setting("poll_interval", 5)
             assert config.get_setting("poll_interval") == 5
 
+    def test_default_working_directory_default_is_empty(self, tmp_path):
+        config._cache = None
+        with patch.object(config, "_SETTINGS_PATH", str(tmp_path / "nope.json")):
+            assert config.get_setting("default_working_directory") == ""
+
+    def test_set_default_working_directory(self, tmp_path):
+        settings_file = tmp_path / "settings.json"
+        config._cache = None
+        with patch.object(config, "_SETTINGS_PATH", str(settings_file)):
+            config.set_setting("default_working_directory", "/Users/dev/projects")
+            assert config.get_setting("default_working_directory") == "/Users/dev/projects"
+
+    def test_clear_default_working_directory(self, tmp_path):
+        settings_file = tmp_path / "settings.json"
+        config._cache = None
+        with patch.object(config, "_SETTINGS_PATH", str(settings_file)):
+            config.set_setting("default_working_directory", "/some/path")
+            config.set_setting("default_working_directory", "")
+            assert config.get_setting("default_working_directory") == ""
+
     def test_get_available_sounds(self):
         sounds = config.get_available_sounds()
         assert "Glass" in sounds

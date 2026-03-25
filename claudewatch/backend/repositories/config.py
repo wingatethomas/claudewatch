@@ -16,6 +16,7 @@ _DEFAULTS: dict[str, object] = {
     "pin_expiry_days": 30,
     "onboarding_tips_shown": [],
     "onboarding_session_count": 0,
+    "default_working_directory": "",
 }
 
 _SOUNDS = ("Glass", "Blow", "Bottle", "Frog", "Funk", "Hero", "Morse", "Ping", "Pop", "Purr", "Submarine", "Tink")
