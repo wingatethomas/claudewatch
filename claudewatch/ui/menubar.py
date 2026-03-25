@@ -714,7 +714,8 @@ class ClaudeWatchApp:
 
         if recent_entries:
             self._menu.addItem_(NSMenuItem.separatorItem())
-            recent_menu_item = _make_menu_item(f"⏱ Recent ({len(recent_entries)})", None, d)
+            recent_menu_item = _make_menu_item(f"Recent ({len(recent_entries)})", None, d)
+            recent_menu_item.setImage_(_sf_icon("clock.arrow.circlepath"))
             recent_submenu = NSMenu.alloc().init()
             for entry in recent_entries:
                 model = MODEL_DISPLAY_NAMES.get(entry.model, entry.model)
