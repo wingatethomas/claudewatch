@@ -40,8 +40,12 @@ class TestPinDTO:
 class TestHistoryEntryDTO:
     def test_construction(self):
         dto = HistoryEntryDTO(
-            session_id="abc", project="proj", cwd="/tmp",
-            model="opus", host_app="Terminal", ended_at="2026-01-01",
+            session_id="abc",
+            project="proj",
+            cwd="/tmp",
+            model="opus",
+            host_app="Terminal",
+            ended_at="2026-01-01",
         )
         assert dto.model == "opus"
 

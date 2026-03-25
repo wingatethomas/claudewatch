@@ -248,7 +248,9 @@ class MenuBuilder:
                 item_sub.addItem_(usage_item)
                 item_sub.addItem_(NSMenuItem.separatorItem())
                 if entry.session_id:
-                    item_sub.addItem_(make_menu_item("Resume", self._app._make_resume_handler(entry.session_id, entry.cwd), d))
+                    item_sub.addItem_(
+                        make_menu_item("Resume", self._app._make_resume_handler(entry.session_id, entry.cwd), d)
+                    )
                 item_sub.addItem_(make_menu_item("Remove", self._app._make_remove_history_handler(entry.cwd), d))
                 item.setSubmenu_(item_sub)
                 recent_submenu.addItem_(item)

@@ -284,7 +284,11 @@ class DetectionService(BaseService):
         """Detect all running Claude Code sessions."""
         try:
             r = subprocess.run(  # noqa: S603, S607
-                ["pgrep", "-x", "claude"], capture_output=True, text=True, timeout=5, check=False,
+                ["pgrep", "-x", "claude"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
             )
             pids_out = r.stdout.strip()
         except (subprocess.TimeoutExpired, OSError):

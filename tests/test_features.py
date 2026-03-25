@@ -88,19 +88,23 @@ class TestFacets:
         self._set_patcher.stop()
 
     def test_get_facet_default(self):
-        features.register(Feature(
-            key="notif",
-            description="Notifications",
-            facets=(Facet("sound", "choice", "Glass", options=("Glass", "Ping")),),
-        ))
+        features.register(
+            Feature(
+                key="notif",
+                description="Notifications",
+                facets=(Facet("sound", "choice", "Glass", options=("Glass", "Ping")),),
+            )
+        )
         assert features.get_facet("notif", "sound") == "Glass"
 
     def test_set_and_get_facet(self):
-        features.register(Feature(
-            key="notif",
-            description="Notifications",
-            facets=(Facet("sound", "choice", "Glass", options=("Glass", "Ping")),),
-        ))
+        features.register(
+            Feature(
+                key="notif",
+                description="Notifications",
+                facets=(Facet("sound", "choice", "Glass", options=("Glass", "Ping")),),
+            )
+        )
         features.set_facet("notif", "sound", "Ping")
         assert features.get_facet("notif", "sound") == "Ping"
 

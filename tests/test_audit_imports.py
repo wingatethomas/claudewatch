@@ -59,7 +59,6 @@ class TestIsViolation:
         assert _is_violation("domain", "ui") is True
 
 
-
 class TestExtractImports:
     def test_extracts_from_import(self, tmp_path):
         f = tmp_path / "mod.py"

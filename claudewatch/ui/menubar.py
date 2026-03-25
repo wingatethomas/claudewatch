@@ -196,13 +196,18 @@ class ClaudeWatchApp:
             return  # one tip per cycle
 
         # Attention — first time a session needs attention
-        if not self._onboarding_service.is_tip_shown("attention") and any(s.status == SessionStatus.ATTENTION for s in self.sessions):
+        if not self._onboarding_service.is_tip_shown("attention") and any(
+            s.status == SessionStatus.ATTENTION for s in self.sessions
+        ):
             self._onboarding_service.show_tip("attention")
             return
 
         # Hover — after 5 cumulative unique sessions observed
         _hover_threshold = 5
-        if not self._onboarding_service.is_tip_shown("hover") and self._onboarding_service.get_session_count() >= _hover_threshold:
+        if (
+            not self._onboarding_service.is_tip_shown("hover")
+            and self._onboarding_service.get_session_count() >= _hover_threshold
+        ):
             self._onboarding_service.show_tip("hover")
 
     def _check_accessibility(self) -> None:

@@ -95,7 +95,9 @@ def show_welcome() -> None:  # noqa: PLR0915
         root,
         "ClaudeWatch monitors your Claude Code sessions from the menu bar.\n"
         "Grant these two permissions to get started.",
-        y, height=34, color=NSColor.secondaryLabelColor(),
+        y,
+        height=34,
+        color=NSColor.secondaryLabelColor(),
     )
     y -= 48
 
@@ -128,7 +130,9 @@ def show_welcome() -> None:  # noqa: PLR0915
         "~/Library/Application Support/ClaudeWatch/.\n\n"
         "It does not access Photos, Music, Documents, Downloads,\n"
         "or any other personal files. Deny those prompts if they appear.",
-        y, height=64, color=NSColor.secondaryLabelColor(),
+        y,
+        height=64,
+        color=NSColor.secondaryLabelColor(),
     )
     y -= 78
 
@@ -139,9 +143,10 @@ def show_welcome() -> None:  # noqa: PLR0915
     y -= 18
     _label(
         root,
-        "AppleScript (Terminal windows)  ·  claude -p (summaries)\n"
-        "Native notifications  ·  GitHub API (update checks)",
-        y, height=32, color=NSColor.secondaryLabelColor(),
+        "AppleScript (Terminal windows)  ·  claude -p (summaries)\nNative notifications  ·  GitHub API (update checks)",
+        y,
+        height=32,
+        color=NSColor.secondaryLabelColor(),
     )
     y -= 50
 

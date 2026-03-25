@@ -49,7 +49,9 @@ class _NotificationDelegate(NSObject):
     """Handles notification click events."""
 
     def userNotificationCenter_didActivateNotification_(  # noqa: N802
-        self, center: object, notification: NSUserNotification,  # noqa: ARG002
+        self,
+        center: object,  # noqa: ARG002
+        notification: NSUserNotification,  # noqa: ARG002
     ) -> None:
         user_info = notification.userInfo()
         if user_info and _focus_callback:
@@ -58,7 +60,9 @@ class _NotificationDelegate(NSObject):
                 _focus_callback(int(pid))
 
     def userNotificationCenter_shouldPresentNotification_(  # noqa: N802
-        self, center: object, notification: NSUserNotification,  # noqa: ARG002
+        self,
+        center: object,  # noqa: ARG002
+        notification: NSUserNotification,  # noqa: ARG002
     ) -> bool:
         return True
 

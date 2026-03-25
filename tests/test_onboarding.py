@@ -80,7 +80,9 @@ class TestShowTip:
             result = svc.show_tip("welcome")
         assert result is True
         svc._notification_service.send.assert_called_once_with(
-            TIPS["welcome"]["title"], "ClaudeWatch", TIPS["welcome"]["message"],
+            TIPS["welcome"]["title"],
+            "ClaudeWatch",
+            TIPS["welcome"]["message"],
         )
 
     def test_show_tip_marks_as_shown(self):

@@ -1,6 +1,5 @@
 """Tests for claudewatch.backend.models."""
 
-
 from claudewatch.backend.core.models import (
     STATUS_INDICATOR,
     ClaudeSession,

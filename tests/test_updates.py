@@ -156,5 +156,3 @@ class TestUpdateService:
             result = self.svc.download_and_apply("v1.0.0")
 
         assert result is False
-
-

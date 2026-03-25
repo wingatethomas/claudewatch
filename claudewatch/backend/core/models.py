@@ -33,7 +33,6 @@ STATUS_INDICATOR = {
 }
 
 
-
 @dataclass
 class ClaudeSession:
     pid: int

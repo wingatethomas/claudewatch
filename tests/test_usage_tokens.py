@@ -79,21 +79,25 @@ class TestUsageServiceGetTokens:
         # Need a real file for os.path.getmtime
         jsonl_file = tmp_path / "session.jsonl"
         lines = [
-            json.dumps({
-                "type": "assistant",
-                "message": {
-                    "usage": {
-                        "input_tokens": 100,
-                        "output_tokens": 50,
-                        "cache_creation_input_tokens": 200,
-                        "cache_read_input_tokens": 300,
-                    }
-                },
-            }),
-            json.dumps({
-                "type": "assistant",
-                "message": {"usage": {"input_tokens": 10, "output_tokens": 5}},
-            }),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 50,
+                            "cache_creation_input_tokens": 200,
+                            "cache_read_input_tokens": 300,
+                        }
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {"usage": {"input_tokens": 10, "output_tokens": 5}},
+                }
+            ),
         ]
         jsonl_file.write_text("\n".join(lines) + "\n")
 
@@ -140,5 +144,3 @@ class TestUsageServiceGetTokens:
         svc1.get_tokens("/Users/dev/myapp")
         assert len(svc1._token_cache) == 1
         assert len(svc2._token_cache) == 0
-
-
