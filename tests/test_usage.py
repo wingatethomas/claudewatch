@@ -23,9 +23,9 @@ class TestModelDisplayNames:
     """MODEL_DISPLAY_NAMES mapping tests."""
 
     def test_known_models_have_display_names(self):
-        assert MODEL_DISPLAY_NAMES["claude-opus-4-6"] == "opus 4.6"
-        assert MODEL_DISPLAY_NAMES["claude-sonnet-4-6"] == "sonnet 4.6"
-        assert MODEL_DISPLAY_NAMES["claude-haiku-4-5"] == "haiku 4.5"
+        assert MODEL_DISPLAY_NAMES["claude-opus-4-6"] == "o4.6"
+        assert MODEL_DISPLAY_NAMES["claude-sonnet-4-6"] == "s4.6"
+        assert MODEL_DISPLAY_NAMES["claude-haiku-4-5"] == "h4.5"
 
 
 class TestUsageServiceGetModel:
@@ -42,7 +42,7 @@ class TestUsageServiceGetModel:
     def test_returns_display_name_for_known_model(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
-        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
+        assert svc.get_model("/Users/dev/myapp") == "o4.6"
 
     def test_returns_raw_model_for_unknown(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "claude-future-99"}}) + "\n"
@@ -55,7 +55,7 @@ class TestUsageServiceGetModel:
             + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
         )
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
-        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
+        assert svc.get_model("/Users/dev/myapp") == "o4.6"
 
     def test_handles_invalid_json_lines(self):
         tail = (
@@ -63,7 +63,7 @@ class TestUsageServiceGetModel:
             + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
         )
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
-        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
+        assert svc.get_model("/Users/dev/myapp") == "o4.6"
 
     def test_handles_non_dict_message(self):
         tail = json.dumps({"type": "assistant", "message": "string"}) + "\n"
