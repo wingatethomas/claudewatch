@@ -8,4 +8,4 @@ Project rules are in `.claude/rules/`:
 - `testing.md` — coverage, mocking, fixtures
 - `macos.md` — AppKit patterns, PyObjC delegate callbacks, window focus, NSImage safety
 - `packaging.md` — Briefcase builds, icon, entitlements, release workflow
-- `license.md` — GPL-3.0-or-later
+- `license.md` — MIT
