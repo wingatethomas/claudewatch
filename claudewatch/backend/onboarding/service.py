@@ -1,16 +1,14 @@
 """Onboarding tips — one-time getting-started notifications for feature discovery.
 
-Delivers contextual tips via terminal-notifier the first time a user encounters
-key features. Each tip is shown at most once; shown tip IDs are persisted in
-~/.claude/claudewatch.json under ``onboarding_tips_shown``.
+Delivers contextual tips the first time a user encounters key features.
+Each tip is shown at most once; shown tip IDs are persisted in config.
 """
 
 import logging
-import subprocess
 import time
 
 from claudewatch.backend.core.base_service import BaseService
-from claudewatch.backend.notifications.service import TERMINAL_NOTIFIER, NotificationService
+from claudewatch.backend.notifications.service import NotificationService
 from claudewatch.backend.repositories.config import get_setting, set_setting
 
 log = logging.getLogger("claudewatch")
@@ -61,12 +59,10 @@ class OnboardingService(BaseService):
         return tip_id in self._shown_tips()
 
     def show_tip(self, tip_id: str) -> bool:
-        """Deliver an onboarding tip via terminal-notifier if not already shown.
+        """Deliver an onboarding tip if not already shown.
 
         Returns ``True`` if the tip was actually sent, ``False`` otherwise.
         """
-        if not TERMINAL_NOTIFIER:
-            return False
         if self.is_tip_shown(tip_id):
             return False
         if not get_setting("notifications_enabled"):
@@ -77,30 +73,9 @@ class OnboardingService(BaseService):
             return False
 
         self._mark_shown(tip_id)
-
-        cmd = [
-            TERMINAL_NOTIFIER,
-            "-title",
-            tip["title"],
-            "-message",
-            tip["message"],
-            "-group",
-            f"claudewatch-onboarding-{tip_id}",
-            "-sender",
-            "com.apple.Terminal",
-        ]
-        try:
-            subprocess.run(  # noqa: S603
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=5,
-                check=False,
-            )
-            log.info("onboarding.tip_shown tip=%s", tip_id)
-            return True
-        except (OSError, subprocess.TimeoutExpired):
-            return False
+        self._notification_service.send(tip["title"], "ClaudeWatch", tip["message"])
+        log.info("onboarding.tip_shown tip=%s", tip_id)
+        return True
 
     def get_session_count(self) -> int:
         """Return the cumulative number of unique sessions observed."""
