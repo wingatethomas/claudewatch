@@ -6,7 +6,14 @@ macOS menu bar app that monitors all your running [Claude Code](https://docs.ant
 
 ### Download the App (recommended)
 
-Download `ClaudeWatch-v0.6.0-arm64.zip` from the [latest release](https://github.com/wingatethomas/claudewatch/releases/latest), unzip, and drag to `/Applications`.
+Download the latest `.zip` from the [releases page](https://github.com/wingatethomas/claudewatch/releases/latest), unzip, and drag to `/Applications`.
+
+To verify the download, check the SHA-256 checksum against `checksums.txt` from the same release:
+
+```bash
+shasum -a 256 ClaudeWatch-*.zip
+# Compare with the hash in checksums.txt
+```
 
 On first launch, a welcome window explains what permissions are needed.
 

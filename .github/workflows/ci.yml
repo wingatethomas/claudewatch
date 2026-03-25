@@ -31,6 +31,8 @@ jobs:
         run: |
           uvx ruff check .
           uvx ruff format --check .
+      - name: Check layer rules
+        run: uv run python scripts/audit_imports.py --check
       - name: Run tests with coverage
         run: uv run pytest -v --cov=claudewatch --cov-report=term-missing --cov-fail-under=75
 
