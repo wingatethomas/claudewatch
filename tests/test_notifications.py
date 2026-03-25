@@ -23,6 +23,19 @@ def _make_session(**kwargs):
     return ClaudeSession(**defaults)
 
 
+def _mock_center():
+    """Return a mock NSUserNotificationCenter with deliverNotification_."""
+    return MagicMock()
+
+
+def _mock_notification_class():
+    """Return a mock NSUserNotification class whose alloc().init() returns a mock instance."""
+    instance = MagicMock()
+    cls = MagicMock()
+    cls.alloc.return_value.init.return_value = instance
+    return cls, instance
+
+
 class TestNotificationServiceIsBaseService:
     """NotificationService extends BaseService."""
 
@@ -31,185 +44,197 @@ class TestNotificationServiceIsBaseService:
         assert isinstance(svc, NotificationService)
 
 
-class TestNotificationServiceBasics:
-    """Basic notification manager behavior."""
+class TestSend:
+    """send() creates and delivers an NSUserNotification."""
 
-    def test_no_terminal_notifier_skips(self):
-        mgr = NotificationService()
-        with patch(f"{_MOD}.TERMINAL_NOTIFIER", None):
-            s = _make_session(status=SessionStatus.ATTENTION)
-            mgr.notify_if_needed([s])
-        assert s.pid not in mgr._notified_pids
-
-    def test_notifications_disabled_skips(self):
-        mgr = NotificationService()
+    def test_send_creates_and_delivers_notification(self):
+        svc = NotificationService()
+        mock_cls, mock_notif = _mock_notification_class()
+        mock_center = _mock_center()
+        svc._center = mock_center
         with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch(f"{_MOD}.get_setting", return_value=False),
-        ):
-            s = _make_session(status=SessionStatus.ATTENTION)
-            mgr.notify_if_needed([s])
-        assert s.pid not in mgr._notified_pids
-
-    def test_no_attention_sessions_clears_dead_pids(self):
-        mgr = NotificationService()
-        mgr._notified_pids = {999}
-        with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
             patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
         ):
-            s = _make_session(pid=100, status=SessionStatus.WORKING)
-            mgr.notify_if_needed([s])
-        assert 999 not in mgr._notified_pids
+            svc.send("My Title", "My Subtitle", "My Message")
+        mock_notif.setTitle_.assert_called_once_with("My Title")
+        mock_notif.setSubtitle_.assert_called_once_with("My Subtitle")
+        mock_notif.setInformativeText_.assert_called_once_with("My Message")
+        mock_center.deliverNotification_.assert_called_once_with(mock_notif)
 
-    def test_already_notified_pid_skipped(self):
-        mgr = NotificationService()
-        mgr._notified_pids = {100}
-        mock_run = MagicMock()
+    def test_send_skips_when_notifications_disabled(self):
+        svc = NotificationService()
+        mock_center = _mock_center()
+        svc._center = mock_center
+        with patch(f"{_MOD}.get_setting", return_value=False):
+            svc.send("Title", "Sub", "Msg")
+        mock_center.deliverNotification_.assert_not_called()
+
+    def test_send_truncates_long_message(self):
+        svc = NotificationService()
+        mock_cls, mock_notif = _mock_notification_class()
+        mock_center = _mock_center()
+        svc._center = mock_center
+        long_msg = "x" * 500
         with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
             patch(f"{_MOD}.get_setting", return_value=True),
-            patch(f"{_MOD}.subprocess.run", mock_run),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
+        ):
+            svc.send("Title", "Sub", long_msg)
+        # Message should be truncated to 200 characters
+        actual_msg = mock_notif.setInformativeText_.call_args[0][0]
+        assert len(actual_msg) == 200
+
+
+class TestNotifyIfNeeded:
+    """notify_if_needed() delivers notifications for attention sessions."""
+
+    def test_sends_for_attention_sessions(self):
+        svc = NotificationService()
+        svc.last_notification_time = 0.0
+        mock_cls, mock_notif = _mock_notification_class()
+        mock_center = _mock_center()
+        svc._center = mock_center
+        with (
+            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
+            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
+        ):
+            s = _make_session(pid=200, status=SessionStatus.ATTENTION)
+            svc.notify_if_needed([s])
+        mock_center.deliverNotification_.assert_called_once()
+        assert 200 in svc._notified_pids
+
+    def test_respects_cooldown(self):
+        svc = NotificationService()
+        svc.cooldown = 30.0
+        svc.last_notification_time = time.time()  # just now
+        mock_center = _mock_center()
+        svc._center = mock_center
+        with (
+            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
+        ):
+            s = _make_session(pid=200, status=SessionStatus.ATTENTION)
+            svc.notify_if_needed([s])
+        mock_center.deliverNotification_.assert_not_called()
+
+    def test_sends_after_cooldown_expires(self):
+        svc = NotificationService()
+        svc.cooldown = 30.0
+        svc.last_notification_time = time.time() - 60  # long ago
+        mock_cls, mock_notif = _mock_notification_class()
+        mock_center = _mock_center()
+        svc._center = mock_center
+        with (
+            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
+            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
+        ):
+            s = _make_session(pid=200, status=SessionStatus.ATTENTION)
+            svc.notify_if_needed([s])
+        mock_center.deliverNotification_.assert_called_once()
+
+    def test_skips_already_notified_pids(self):
+        svc = NotificationService()
+        svc._notified_pids = {100}
+        svc.last_notification_time = 0.0
+        mock_center = _mock_center()
+        svc._center = mock_center
+        with (
+            patch(f"{_MOD}.get_setting", return_value=True),
             patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
             s = _make_session(pid=100, status=SessionStatus.ATTENTION)
-            mgr.notify_if_needed([s])
-        mock_run.assert_not_called()
+            svc.notify_if_needed([s])
+        mock_center.deliverNotification_.assert_not_called()
 
-
-class TestNotificationServiceCooldown:
-    """Cooldown prevents notification spam."""
-
-    def test_cooldown_prevents_second_notification(self):
-        mgr = NotificationService()
-        mgr.cooldown = 30.0
-        mgr.last_notification_time = time.time()
-        mock_run = MagicMock()
+    def test_skips_when_frontmost_window_matches_project(self):
+        svc = NotificationService()
+        svc.last_notification_time = 0.0
+        mock_center = _mock_center()
+        svc._center = mock_center
         with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
             patch(f"{_MOD}.get_setting", return_value=True),
-            patch(f"{_MOD}.subprocess.run", mock_run),
-            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
-        ):
-            s = _make_session(pid=200, status=SessionStatus.ATTENTION)
-            mgr.notify_if_needed([s])
-        mock_run.assert_not_called()
-
-    def test_notification_sent_after_cooldown(self):
-        mgr = NotificationService()
-        mgr.cooldown = 30.0
-        mgr.last_notification_time = time.time() - 60
-        mock_run = MagicMock()
-        with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch(f"{_MOD}.get_setting", return_value=True),
-            patch(f"{_MOD}.subprocess.run", mock_run),
-            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
-        ):
-            s = _make_session(pid=200, status=SessionStatus.ATTENTION)
-            mgr.notify_if_needed([s])
-        mock_run.assert_called_once()
-
-
-class TestNotificationServiceFrontWindow:
-    """Skip notifications when the session window is already in focus."""
-
-    def test_skip_when_project_is_frontmost(self):
-        mgr = NotificationService()
-        mgr.last_notification_time = 0.0
-        mock_run = MagicMock()
-        with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch(f"{_MOD}.get_setting", return_value=True),
-            patch(f"{_MOD}.subprocess.run", mock_run),
             patch(
                 f"{_MOD}._get_frontmost_window",
                 return_value=("Terminal", "myproject — claude"),
             ),
         ):
-            s = _make_session(pid=300, project="myproject", status=SessionStatus.ATTENTION)
-            mgr.notify_if_needed([s])
-        mock_run.assert_not_called()
+            s = _make_session(
+                pid=300, project="myproject", status=SessionStatus.ATTENTION,
+            )
+            svc.notify_if_needed([s])
+        mock_center.deliverNotification_.assert_not_called()
 
-    def test_notify_when_different_project_is_frontmost(self):
-        mgr = NotificationService()
-        mgr.last_notification_time = 0.0
-        mock_run = MagicMock()
+    def test_sends_when_different_project_is_frontmost(self):
+        svc = NotificationService()
+        svc.last_notification_time = 0.0
+        mock_cls, mock_notif = _mock_notification_class()
+        mock_center = _mock_center()
+        svc._center = mock_center
         with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
             patch(f"{_MOD}.get_setting", return_value=True),
-            patch(f"{_MOD}.subprocess.run", mock_run),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
             patch(
                 f"{_MOD}._get_frontmost_window",
                 return_value=("Terminal", "other-project — claude"),
             ),
         ):
-            s = _make_session(pid=300, project="myproject", status=SessionStatus.ATTENTION)
-            mgr.notify_if_needed([s])
-        mock_run.assert_called_once()
+            s = _make_session(
+                pid=300, project="myproject", status=SessionStatus.ATTENTION,
+            )
+            svc.notify_if_needed([s])
+        mock_center.deliverNotification_.assert_called_once()
 
-
-class TestNotificationSend:
-    """Verify subprocess call and send() method."""
-
-    def test_pid_added_to_notified_set(self):
-        mgr = NotificationService()
-        mgr.last_notification_time = 0.0
-        mock_run = MagicMock()
+    def test_notification_includes_pid_in_user_info(self):
+        svc = NotificationService()
+        svc.last_notification_time = 0.0
+        mock_cls, mock_notif = _mock_notification_class()
+        mock_center = _mock_center()
+        svc._center = mock_center
         with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
             patch(f"{_MOD}.get_setting", return_value=True),
-            patch(f"{_MOD}.subprocess.run", mock_run),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
             patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
             s = _make_session(pid=500, status=SessionStatus.ATTENTION)
-            mgr.notify_if_needed([s])
-        assert 500 in mgr._notified_pids
+            svc.notify_if_needed([s])
+        user_info = mock_notif.setUserInfo_.call_args[0][0]
+        assert user_info["pid"] == 500
 
-    def test_send_calls_terminal_notifier(self):
+    def test_notifications_disabled_skips(self):
         svc = NotificationService()
-        mock_run = MagicMock()
-        with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch(f"{_MOD}.subprocess.run", mock_run),
-        ):
-            svc.send("My Title", "My Subtitle", "My Message")
-        mock_run.assert_called_once()
-        cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "/usr/bin/tn"
-        assert "-title" in cmd
-        assert "My Title" in cmd
-        assert "My Subtitle" in cmd
-        assert "My Message" in cmd
+        mock_center = _mock_center()
+        svc._center = mock_center
+        with patch(f"{_MOD}.get_setting", return_value=False):
+            s = _make_session(status=SessionStatus.ATTENTION)
+            svc.notify_if_needed([s])
+        mock_center.deliverNotification_.assert_not_called()
+        assert s.pid not in svc._notified_pids
 
-    def test_send_skips_without_terminal_notifier(self):
+    def test_no_attention_sessions_clears_dead_pids(self):
         svc = NotificationService()
-        mock_run = MagicMock()
-        with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", None),
-            patch(f"{_MOD}.subprocess.run", mock_run),
-        ):
-            svc.send("Title", "Sub", "Msg")
-        mock_run.assert_not_called()
+        svc._notified_pids = {999}
+        with patch(f"{_MOD}.get_setting", return_value=True):
+            s = _make_session(pid=100, status=SessionStatus.WORKING)
+            svc.notify_if_needed([s])
+        assert 999 not in svc._notified_pids
 
-    def test_send_truncates_long_message(self):
+    def test_notification_includes_project_in_user_info(self):
         svc = NotificationService()
-        mock_run = MagicMock()
-        long_msg = "x" * 500
+        svc.last_notification_time = 0.0
+        mock_cls, mock_notif = _mock_notification_class()
+        mock_center = _mock_center()
+        svc._center = mock_center
         with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch(f"{_MOD}.subprocess.run", mock_run),
+            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
+            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
-            svc.send("Title", "Sub", long_msg)
-        cmd = mock_run.call_args[0][0]
-        msg_idx = cmd.index("-message") + 1
-        assert len(cmd[msg_idx]) == 200
-
-    def test_send_handles_oserror(self):
-        svc = NotificationService()
-        with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch(f"{_MOD}.subprocess.run", side_effect=OSError("not found")),
-        ):
-            # Should not raise
-            svc.send("Title", "Sub", "Msg")
+            s = _make_session(
+                pid=600, project="myproject", status=SessionStatus.ATTENTION,
+            )
+            svc.notify_if_needed([s])
+        user_info = mock_notif.setUserInfo_.call_args[0][0]
+        assert user_info["project"] == "myproject"

@@ -50,7 +50,7 @@ from claudewatch.backend.detection.service import DetectionService
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.history.service import HistoryService
 from claudewatch.backend.notifications.dependencies import get_notification_service
-from claudewatch.backend.notifications.service import TERMINAL_NOTIFIER, NotificationService
+from claudewatch.backend.notifications.service import NotificationService, set_focus_callback
 from claudewatch.backend.onboarding.dependencies import get_onboarding_service
 from claudewatch.backend.onboarding.service import OnboardingService
 from claudewatch.backend.repositories.config import get_setting
@@ -254,13 +254,8 @@ def _clean_exit_session(tty: str, pid: int, project: str, window_id: int | None 
 
 
 def _notify_paused(project: str) -> None:
-    """Send a 'session paused' notification via terminal-notifier."""
-    if not TERMINAL_NOTIFIER:
-        return
-    subprocess.Popen(  # noqa: S603
-        [TERMINAL_NOTIFIER, "-title", "Session paused", "-subtitle", project,
-         "-message", "Resume from the Pinned section"],
-    )
+    """Send a 'session paused' notification."""
+    get_notification_service().send("Session paused", project, "Resume from the Pinned section")
 
 
 def _noop(_: NSMenuItem) -> None:
@@ -1160,4 +1155,12 @@ def main() -> None:
         history_service=get_history_service(),
     )
     delegate._app = app
+
+    # Wire notification click → focus session
+    def _on_notification_click(pid: int) -> None:
+        session = next((s for s in app.sessions if s.pid == pid), None)
+        if session:
+            focus_session(session)
+
+    set_focus_callback(_on_notification_click)
     app.run()
