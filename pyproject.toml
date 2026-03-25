@@ -57,6 +57,9 @@ system_requires = []
 [tool.briefcase.app.claudewatch.macOS.info]
 LSUIElement = true
 NSAppleEventsUsageDescription = "ClaudeWatch needs automation access to read terminal windows and focus sessions."
+NSDesktopFolderUsageDescription = "ClaudeWatch does not need access to your Desktop."
+NSDocumentsFolderUsageDescription = "ClaudeWatch does not need access to your Documents."
+NSDownloadsFolderUsageDescription = "ClaudeWatch does not need access to your Downloads."
 
 [tool.coverage.run]
 source = ["claudewatch"]
