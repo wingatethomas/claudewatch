@@ -140,7 +140,7 @@ def show_welcome() -> None:  # noqa: PLR0915
     _label(
         root,
         "AppleScript (Terminal windows)  ·  claude -p (summaries)\n"
-        "terminal-notifier (optional)  ·  GitHub API (update checks)",
+        "Native notifications  ·  GitHub API (update checks)",
         y, height=32, color=NSColor.secondaryLabelColor(),
     )
     y -= 50

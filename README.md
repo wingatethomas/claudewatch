@@ -58,8 +58,6 @@ ClaudeWatch needs two permissions (prompted on first launch):
 | **Accessibility** | Focus terminal windows when you click a session |
 | **Automation (Terminal)** | List Terminal.app windows, resume sessions, close tabs |
 
-Optional: `brew install terminal-notifier` for native macOS notifications.
-
 **Privacy:** ClaudeWatch only reads `~/.claude/` for session data and writes to `~/Library/Application Support/ClaudeWatch/`. It does not access Photos, Music, Documents, or any other personal files.
 
 ### How It Works

@@ -1,41 +1,29 @@
-"""macOS notifications via terminal-notifier.
+"""macOS notifications via NSUserNotificationCenter.
 
-Uses the terminal-notifier binary for reliable notification delivery on
-macOS 13+. NSUserNotificationCenter is deprecated and silently drops
-notifications on modern macOS.
-
-Requires: brew install terminal-notifier
+Uses the native (deprecated but functional) NSUserNotification API.
+Handles click actions to focus the session window.
 """
 
-import contextlib
 import logging
-import os
-import shutil
-import subprocess
 import time
+
+from Foundation import NSObject, NSUserNotification, NSUserNotificationCenter
 
 from claudewatch.backend.core.base_service import BaseService
 from claudewatch.backend.core.helpers import run_applescript
-from claudewatch.backend.core.models import ClaudeSession, HostApp
+from claudewatch.backend.core.models import ClaudeSession
 from claudewatch.backend.repositories.config import get_setting
-
-_BUNDLE_IDS: dict[HostApp, str] = {
-    HostApp.TERMINAL: "com.apple.Terminal",
-    HostApp.VSCODE: "com.microsoft.VSCode",
-    HostApp.PYCHARM: "com.jetbrains.pycharm",
-}
 
 log = logging.getLogger("claudewatch")
 
-# Resolve terminal-notifier, preferring trusted Homebrew paths
-_TRUSTED_PATHS = ("/opt/homebrew/bin/terminal-notifier", "/usr/local/bin/terminal-notifier")
-TERMINAL_NOTIFIER: str | None = None
-for _p in _TRUSTED_PATHS:
-    if os.path.isfile(_p) and os.access(_p, os.X_OK):
-        TERMINAL_NOTIFIER = _p
-        break
-if TERMINAL_NOTIFIER is None:
-    TERMINAL_NOTIFIER = shutil.which("terminal-notifier")
+# Focus callback — set by menubar.py at startup
+_focus_callback = None
+
+
+def set_focus_callback(callback: object) -> None:
+    """Register a callback for notification click → focus session."""
+    global _focus_callback  # noqa: PLW0603
+    _focus_callback = callback
 
 
 def _get_frontmost_window() -> tuple[str, str]:
@@ -57,47 +45,52 @@ def _get_frontmost_window() -> tuple[str, str]:
     return "", ""
 
 
+class _NotificationDelegate(NSObject):
+    """Handles notification click events."""
+
+    def userNotificationCenter_didActivateNotification_(  # noqa: N802
+        self, center: object, notification: NSUserNotification,  # noqa: ARG002
+    ) -> None:
+        user_info = notification.userInfo()
+        if user_info and _focus_callback:
+            pid = user_info.get("pid")
+            if pid:
+                _focus_callback(int(pid))
+
+    def userNotificationCenter_shouldPresentNotification_(  # noqa: N802
+        self, center: object, notification: NSUserNotification,  # noqa: ARG002
+    ) -> bool:
+        return True
+
+
+# Singleton delegate — must stay alive for the lifetime of the app
+_delegate = _NotificationDelegate.alloc().init()
+NSUserNotificationCenter.defaultUserNotificationCenter().setDelegate_(_delegate)
+
+
 class NotificationService(BaseService):
-    """Sends macOS notifications via terminal-notifier."""
+    """Sends native macOS notifications with click-to-focus."""
 
     def __init__(self) -> None:
         super().__init__()
         self._notified_pids: set[int] = set()
         self.cooldown = 30.0
         self.last_notification_time = 0.0
+        self._center = NSUserNotificationCenter.defaultUserNotificationCenter()
 
     def send(self, title: str, subtitle: str, message: str) -> None:
-        """Send a single notification via terminal-notifier.
-
-        This is a fire-and-forget helper for one-off notifications (e.g.
-        "session paused" from the quit-pinned flow in menubar.py).
-        """
-        if not TERMINAL_NOTIFIER:
+        """Send a single notification (fire-and-forget)."""
+        if not get_setting("notifications_enabled"):
             return
-        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
-            subprocess.run(  # noqa: S603
-                [
-                    TERMINAL_NOTIFIER,
-                    "-title",
-                    title,
-                    "-message",
-                    message[:200],
-                    "-subtitle",
-                    subtitle,
-                    "-group",
-                    "claudewatch-send",
-                    "-sender",
-                    "com.apple.Terminal",
-                ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=5,
-                check=False,
-            )
+        n = NSUserNotification.alloc().init()
+        n.setTitle_(title)
+        n.setSubtitle_(subtitle)
+        n.setInformativeText_(message[:200])
+        self._center.deliverNotification_(n)
 
     def notify_if_needed(self, sessions: list[ClaudeSession]) -> None:  # noqa: PLR0912
         """Send notifications for sessions that need attention."""
-        if not TERMINAL_NOTIFIER or not get_setting("notifications_enabled"):
+        if not get_setting("notifications_enabled"):
             return
 
         attention = [s for s in sessions if s.needs_attention]
@@ -141,51 +134,20 @@ class NotificationService(BaseService):
                 s.pid,
             )
 
-            cmd = [
-                TERMINAL_NOTIFIER,
-                "-title",
-                title,
-                "-message",
-                message[:200],
-                "-subtitle",
-                subtitle,
-                "-sound",
-                str(get_setting("notification_sound")),
-                "-group",
-                f"claudewatch-{s.pid}",
-                "-sender",
-                _BUNDLE_IDS.get(s.host_app, "com.apple.Terminal"),
-            ]
+            n = NSUserNotification.alloc().init()
+            n.setTitle_(title)
+            n.setSubtitle_(subtitle)
+            n.setInformativeText_(message[:200])
+            n.setHasActionButton_(True)
+            n.setActionButtonTitle_("Focus")
+            n.setUserInfo_({"pid": s.pid, "project": s.project})
 
-            if s.host_app == HostApp.TERMINAL and s.window_id is not None:
-                # Raise only the specific window, not all Terminal windows.
-                # window_id is always int — validated via isdigit() in detection.py
-                wid = s.window_id
-                cmd.extend(
-                    [
-                        "-execute",
-                        (
-                            f"osascript"
-                            f" -e 'tell application \"Terminal\" to set miniaturized of window id {wid} to false'"
-                            f" -e 'tell application \"Terminal\" to set index of window id {wid} to 1'"
-                            f' -e \'tell application "System Events" to set frontmost of process "Terminal" to true\''
-                        ),
-                    ]
-                )
-            elif s.host_app in _BUNDLE_IDS:
-                cmd.extend(["-activate", _BUNDLE_IDS[s.host_app]])
+            sound_name = str(get_setting("notification_sound"))
+            if sound_name:
+                n.setSoundName_(sound_name)
 
-            try:
-                subprocess.run(
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=5,
-                    check=False,
-                )
-                self._notified_pids.add(s.pid)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
+            self._center.deliverNotification_(n)
+            self._notified_pids.add(s.pid)
 
         live_attention_pids = {s.pid for s in attention}
         self._notified_pids &= live_attention_pids

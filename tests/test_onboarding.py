@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-from claudewatch.backend.notifications.service import NotificationService
 from claudewatch.backend.onboarding.service import (
     TIPS,
     OnboardingService,
@@ -13,8 +12,9 @@ _MOD = "claudewatch.backend.onboarding.service"
 
 
 def _make_service() -> OnboardingService:
-    """Create an OnboardingService with a default NotificationService."""
-    return OnboardingService(NotificationService())
+    """Create an OnboardingService with a mock NotificationService."""
+    mock_nsvc = MagicMock()
+    return OnboardingService(mock_nsvc)
 
 
 class TestOnboardingServiceIsBaseService:
@@ -25,7 +25,7 @@ class TestOnboardingServiceIsBaseService:
         assert isinstance(svc, OnboardingService)
 
     def test_accepts_notification_service(self):
-        nsvc = NotificationService()
+        nsvc = MagicMock()
         svc = OnboardingService(nsvc)
         assert svc._notification_service is nsvc
 
@@ -61,11 +61,10 @@ class TestTipTracking:
 
 
 class TestShowTip:
-    """Tip delivery via terminal-notifier."""
+    """Tip delivery via NotificationService.send()."""
 
     def test_show_tip_sends_notification(self):
         svc = _make_service()
-        mock_run = MagicMock()
 
         def _get(key):
             if key == "onboarding_tips_shown":
@@ -75,18 +74,14 @@ class TestShowTip:
             return None
 
         with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
             patch(f"{_MOD}.get_setting", side_effect=_get),
             patch(f"{_MOD}.set_setting"),
-            patch(f"{_MOD}.subprocess.run", mock_run),
         ):
             result = svc.show_tip("welcome")
         assert result is True
-        mock_run.assert_called_once()
-        cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "/usr/bin/tn"
-        assert "-title" in cmd
-        assert TIPS["welcome"]["title"] in cmd
+        svc._notification_service.send.assert_called_once_with(
+            TIPS["welcome"]["title"], "ClaudeWatch", TIPS["welcome"]["message"],
+        )
 
     def test_show_tip_marks_as_shown(self):
         svc = _make_service()
@@ -100,31 +95,18 @@ class TestShowTip:
             return None
 
         with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
             patch(f"{_MOD}.get_setting", side_effect=_get),
             patch(f"{_MOD}.set_setting", mock_set),
-            patch(f"{_MOD}.subprocess.run"),
         ):
             svc.show_tip("welcome")
         mock_set.assert_called_once_with("onboarding_tips_shown", ["welcome"])
 
     def test_already_shown_tip_not_resent(self):
         svc = _make_service()
-        mock_run = MagicMock()
-        with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch(f"{_MOD}.get_setting", return_value=["welcome"]),
-            patch(f"{_MOD}.subprocess.run", mock_run),
-        ):
+        with patch(f"{_MOD}.get_setting", return_value=["welcome"]):
             result = svc.show_tip("welcome")
         assert result is False
-        mock_run.assert_not_called()
-
-    def test_no_terminal_notifier_skips(self):
-        svc = _make_service()
-        with patch(f"{_MOD}.TERMINAL_NOTIFIER", None):
-            result = svc.show_tip("welcome")
-        assert result is False
+        svc._notification_service.send.assert_not_called()
 
     def test_notifications_disabled_skips(self):
         svc = _make_service()
@@ -136,32 +118,25 @@ class TestShowTip:
                 return False
             return None
 
-        with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch(f"{_MOD}.get_setting", side_effect=_get_setting),
-        ):
+        with patch(f"{_MOD}.get_setting", side_effect=_get_setting):
             result = svc.show_tip("welcome")
         assert result is False
+        svc._notification_service.send.assert_not_called()
 
     def test_unknown_tip_id_skips(self):
         svc = _make_service()
-        with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch(f"{_MOD}.get_setting", return_value=[]),
-        ):
+
+        def _get(key):
+            if key == "onboarding_tips_shown":
+                return []
+            if key == "notifications_enabled":
+                return True
+            return None
+
+        with patch(f"{_MOD}.get_setting", side_effect=_get):
             result = svc.show_tip("nonexistent")
         assert result is False
-
-    def test_subprocess_failure_returns_false(self):
-        svc = _make_service()
-        with (
-            patch(f"{_MOD}.TERMINAL_NOTIFIER", "/usr/bin/tn"),
-            patch(f"{_MOD}.get_setting", return_value=[]),
-            patch(f"{_MOD}.set_setting"),
-            patch(f"{_MOD}.subprocess.run", side_effect=OSError("not found")),
-        ):
-            result = svc.show_tip("welcome")
-        assert result is False
+        svc._notification_service.send.assert_not_called()
 
 
 class TestSessionCount:
