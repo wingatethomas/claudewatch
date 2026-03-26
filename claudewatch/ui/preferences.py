@@ -762,7 +762,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     sort_seg.setAction_(objc.selector(delegate.historySortChanged_, signature=b"v@:@"))
     view.addSubview_(sort_seg)
 
-    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 28, 24))
+    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 36, 24))
     bm_chip.setTitle_("")
     bm_chip.setImage_(sf_icon("bookmark.fill", size=12.0))
     bm_chip.setButtonType_(1)  # NSButtonTypeToggle
