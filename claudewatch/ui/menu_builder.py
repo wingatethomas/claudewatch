@@ -239,7 +239,8 @@ class MenuBuilder:
                 label = entry.project
                 if detail_parts:
                     label += f"  ({' · '.join(detail_parts)})"
-                item = make_menu_item(label, noop, d)
+                click_action = self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else noop
+                item = make_menu_item(label, click_action, d)
                 item_sub = NSMenu.alloc().init()
                 # Summary submenu
                 summary_text = self._app._summary_service.get_cached_summary(entry.cwd)
