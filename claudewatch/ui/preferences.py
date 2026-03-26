@@ -47,6 +47,7 @@ from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FacetType
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
+from claudewatch.backend.core.login_item import sync_login_item
 from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.summary.dependencies import get_summary_service
@@ -77,6 +78,7 @@ _FEATURE_DETAILS: dict[str, str] = {
     "notifications": "Get alerts when Claude needs your attention.",
     "background_summaries": "Periodically regenerate session summaries in the background.",
     "auto_updates": "Check GitHub for new releases periodically.",
+    "launch_at_login": "Start ClaudeWatch automatically when you log in.",
 }
 
 
@@ -260,6 +262,8 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         features.set_enabled(key, enabled)
         for ctrl in self._feature_controls.get(key, []):
             ctrl.setEnabled_(enabled)
+        if key == "launch_at_login":
+            sync_login_item(enabled)
 
     def facetChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
         info = str(sender.cell().representedObject())

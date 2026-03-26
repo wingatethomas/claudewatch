@@ -25,6 +25,7 @@ from AppKit import (
 )
 from PyObjCTools import AppHelper
 
+import claudewatch.backend.core.login_item as _login_item  # noqa: F401 — registers feature
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
