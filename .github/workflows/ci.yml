@@ -1,25 +1,15 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'icons/**'
-      - '.superpowers/**'
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'icons/**'
-      - '.superpowers/**'
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'PR number (optional — checks out PR head)'
+        required: false
+        type: string
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.inputs.pr || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -27,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.inputs.pr && format('refs/pull/{0}/head', github.event.inputs.pr) || github.ref }}
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
@@ -38,10 +30,12 @@ jobs:
         run: python3 scripts/audit_imports.py --check
 
   test:
-    runs-on: macos-14  # ARM64 — PyObjC requires macOS
-    needs: lint  # only burn macOS minutes if lint passes
+    runs-on: macos-14
+    needs: lint
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.inputs.pr && format('refs/pull/{0}/head', github.event.inputs.pr) || github.ref }}
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
@@ -53,6 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.inputs.pr && format('refs/pull/{0}/head', github.event.inputs.pr) || github.ref }}
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
