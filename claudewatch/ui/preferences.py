@@ -1120,15 +1120,15 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
 
     y -= total_card_h + 16
 
-    # ── Section: Top sessions ──
-    y -= 4
-    top_header = _make_secondary_label("TOP SESSIONS", _PAD, y, 200, 10.0)
+    # ── Section: Top sessions by usage ──
+    y -= 12
+    top_header = _make_secondary_label("TOP SESSIONS BY USAGE", _PAD, y, 250, 10.0)
     top_header.setTextColor_(NSColor.tertiaryLabelColor())
     view.addSubview_(top_header)
     y -= 6
 
     session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
-    _top_n = 5
+    _top_n = 10
     top_entries = session_stats[:_top_n]
     _top_row_h = 22
     top_card_h = _CARD_PAD + len(top_entries) * _top_row_h + _CARD_PAD
@@ -1136,11 +1136,16 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     view.addSubview_(top_card)
     tpc = top_card.contentView()
 
+    # Column positions (all labels, no buttons — consistent baseline)
+    _col_name = _CARD_PAD
+    _col_date = _CARD_PAD + 140
+    _col_tokens = _CARD_PAD + 220
+
     tpy = top_card_h - _CARD_PAD
     for project, tokens, ended_at in top_entries:
         tpy -= _top_row_h
-        # Project name (clickable)
-        name_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, tpy + 1, 120, 18))
+        # Clickable name — use label-styled button at same y as labels
+        name_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_col_name - 2, tpy - 2, 134, 20))
         name_btn.setTitle_(project)
         name_btn.setBordered_(False)
         name_btn.setFont_(NSFont.systemFontOfSize_(12.0))
@@ -1149,14 +1154,12 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
         name_btn.setTarget_(delegate)
         name_btn.setAction_(objc.selector(delegate.jumpToSession_, signature=b"v@:@"))
         tpc.addSubview_(name_btn)
-        # Date — middle column
         date_str = _relative_time(ended_at)
-        date_label = _make_secondary_label(date_str, _CARD_PAD + 125, tpy + 2, 70, 11.0)
+        date_label = _make_secondary_label(date_str, _col_date, tpy, 75, 11.0)
         tpc.addSubview_(date_label)
-        # Token count — right
         total_tok = sum(tokens.values())
         val = _make_secondary_label(
-            _fmt_token_count(total_tok), _CARD_PAD + 200, tpy + 2, card_w - _CARD_PAD * 2 - 200, 11.0
+            _fmt_token_count(total_tok), _col_tokens, tpy, card_w - _CARD_PAD - _col_tokens, 11.0
         )
         val.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(11.0, 0.0))
         tpc.addSubview_(val)
