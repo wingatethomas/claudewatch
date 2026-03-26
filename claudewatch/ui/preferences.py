@@ -105,13 +105,20 @@ def _make_card(x: float, y: float, w: float, h: float) -> NSBox:
     return card
 
 
-def _add_pane_header(view: NSView, title: str, w: float, y: float) -> float:
-    """Add a large title header to a content pane. Returns new y position."""
+def _add_pane_header(view: NSView, title: str, w: float, h: float) -> float:
+    """Add a large title header to a content pane. Returns y below the header.
+
+    Places header 12px below the top of the view (h). NSView is bottom-up,
+    so label bottom = h - 36, label top = h - 12.
+    """
+    _header_label_h = 24
+    _top_inset = 12
+    y = h - _top_inset - _header_label_h
     label = NSTextField.labelWithString_(title)
-    label.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 24))
+    label.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, _header_label_h))
     label.setFont_(NSFont.boldSystemFontOfSize_(18.0))
     view.addSubview_(label)
-    return y - 26
+    return y - 8  # 8px gap below header
 
 
 def _make_label(text: str, x: float, y: float, w: float, size: float = 13.0, bold: bool = False) -> NSTextField:  # noqa: PLR0913
@@ -575,9 +582,9 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     _danger_gap = 16
 
     # Calculate total height needed
-    _top_pad = 12  # breathing room below title bar
-    _header_h = 28
-    total_h = _top_pad + _header_h
+    # Header: 12px inset + 24px label + 8px gap = 44px
+    _header_band = 44
+    total_h = _header_band
     for f in all_features:
         feat_toggle_h = 56 if _FEATURE_DETAILS.get(f.key) else 44
         total_h += feat_toggle_h + len(f.facets) * _facet_row_h + _card_gap
@@ -587,8 +594,7 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
     card_w = w - _PAD * 2
 
-    y = inner_h - _top_pad
-    y = _add_pane_header(inner, "General", w, y)
+    y = _add_pane_header(inner, "General", w, inner_h)
     for feature in all_features:
         feat_toggle_h = 56 if _FEATURE_DETAILS.get(feature.key) else 44
         card_h = feat_toggle_h + len(feature.facets) * _facet_row_h
@@ -669,9 +675,8 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    header_y = h - 12  # breathing room below title bar
-    _add_pane_header(view, "History", w, header_y)
-    toolbar_y = header_y - 32
+    below_header = _add_pane_header(view, "History", w, h)
+    toolbar_y = below_header
     search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 22))
     search.setPlaceholderString_("Search...")
     search.setFont_(NSFont.systemFontOfSize_(12.0))
@@ -942,8 +947,7 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
     """Build the about pane with a grouped card."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    y = h - 12
-    y = _add_pane_header(view, "About", w, y)
+    y = _add_pane_header(view, "About", w, h)
 
     card_h = 100
     card_w = w - _PAD * 2
