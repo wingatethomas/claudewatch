@@ -1214,40 +1214,40 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     y -= card_h + 24
 
     # Changelog in a scrollable card
+    y -= 12
     changelog_label = _make_secondary_label("WHAT'S NEW", _PAD, y, 200, 10.0)
     changelog_label.setTextColor_(NSColor.tertiaryLabelColor())
     view.addSubview_(changelog_label)
-    y -= 16
+    y -= 6
 
     _ver_h = 18
     _bullet_h = 14
     _ver_gap = 8
-    inner_content_h = _CARD_PAD
+    _cl_pad = 10  # inner padding for changelog
+    inner_content_h = _cl_pad
     for _ver, items in _CHANGELOG:
         inner_content_h += _ver_h + len(items) * _bullet_h + _ver_gap
-    inner_content_h += _CARD_PAD
+    inner_content_h += _cl_pad
 
-    changelog_card_h = min(y, inner_content_h)
+    changelog_card_h = min(y - 8, inner_content_h)  # 8px bottom margin
     changelog_card = _make_card(_PAD, y - changelog_card_h, card_w, changelog_card_h)
     view.addSubview_(changelog_card)
 
     scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, changelog_card_h))
-    scroll.setHasVerticalScroller_(False)
-    scroll.setAutohidesScrollers_(True)
+    scroll.setHasVerticalScroller_(True)
     scroll.setDrawsBackground_(False)
 
-    _inner_w = card_w - _CARD_PAD * 2
     inner_h = max(changelog_card_h, inner_content_h)
-    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _inner_w, inner_h))
-    cy = inner_h - _CARD_PAD
+    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, inner_h))
+    cy = inner_h - _cl_pad
 
     for version, items in _CHANGELOG:
         cy -= _ver_h
-        ver = _make_label(version, 0, cy, 200, 11.0, bold=True)
+        ver = _make_label(version, _cl_pad, cy, 200, 11.0, bold=True)
         inner.addSubview_(ver)
         for item in items:
             cy -= _bullet_h
-            bullet = _make_secondary_label(f"• {item}", 8, cy, _inner_w - 16, 10.0)
+            bullet = _make_secondary_label(f"• {item}", _cl_pad + 8, cy, card_w - _cl_pad * 2 - 20, 10.0)
             inner.addSubview_(bullet)
         cy -= _ver_gap
 
