@@ -48,6 +48,15 @@ def _migrate_legacy_files() -> None:
                 log.warning("failed to migrate %s", old)
 
 
+_HOMEBREW_CASKROOM = "/opt/homebrew/Caskroom/claudewatch"
+_HOMEBREW_CASKROOM_INTEL = "/usr/local/Caskroom/claudewatch"
+
+
+def is_homebrew_install() -> bool:
+    """Check if ClaudeWatch was installed via Homebrew."""
+    return os.path.isdir(_HOMEBREW_CASKROOM) or os.path.isdir(_HOMEBREW_CASKROOM_INTEL)
+
+
 CLAUDE_PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
 
