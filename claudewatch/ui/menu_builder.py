@@ -80,9 +80,12 @@ class MenuBuilder:
             )
             self._menu.addItem_(NSMenuItem.separatorItem())
 
-        # Guide nudge — show until user clicks it
+        # Guide nudge — show until user clicks it or dismisses
         if not self._app._onboarding_service.is_tip_shown("guide_nudge"):
             self._menu.addItem_(make_menu_item("Getting Started →", self._app._open_guide, d))
+            dismiss = make_menu_item("Don't show again", self._app._dismiss_guide, d)
+            dismiss.setIndentationLevel_(1)
+            self._menu.addItem_(dismiss)
             self._menu.addItem_(NSMenuItem.separatorItem())
 
         # Show accessibility warning if needed
@@ -168,6 +171,7 @@ class MenuBuilder:
                     label += f" — {short_note}"
                 item = make_menu_item(label, self._app._make_resume_handler(pin.session_id, pin.cwd), d)
                 sub = NSMenu.alloc().init()
+                # Summary submenu
                 bullets = self._app._summary_service.get_cached_summary(pin.cwd)
                 if bullets:
                     summary_item = make_menu_item("Summary", None, d)
@@ -175,8 +179,33 @@ class MenuBuilder:
                     add_summary_lines(summary_sub, bullets, d)
                     summary_item.setSubmenu_(summary_sub)
                     sub.addItem_(summary_item)
+                else:
+                    self._app._summary_service.track_session(pin.cwd)
+                # Usage submenu with token breakdown + Activity
+                token_data = self._app._usage_service.get_tokens(pin.cwd)
+                breakdown = format_tokens_breakdown(token_data)
+                usage_item = make_menu_item("Usage", None, d)
+                usage_sub = NSMenu.alloc().init()
+                if breakdown:
+                    for uline in breakdown:
+                        usage_sub.addItem_(make_menu_item(f"  {uline}", None, d))
+                    usage_sub.addItem_(NSMenuItem.separatorItem())
+                usage_sub.addItem_(
+                    make_menu_item(
+                        "View session activity log",
+                        self._app._make_history_activity_handler(pin.project, pin.cwd),
+                        d,
+                    )
+                )
+                usage_item.setSubmenu_(usage_sub)
+                sub.addItem_(usage_item)
                 sub.addItem_(NSMenuItem.separatorItem())
-                sub.addItem_(make_menu_item("Remove Bookmark", self._app._make_unbookmark_handler(pin.cwd), d))
+                resume_item = make_menu_item("Resume", self._app._make_resume_handler(pin.session_id, pin.cwd), d)
+                resume_item.setImage_(sf_icon("play.circle"))
+                sub.addItem_(resume_item)
+                remove_item = make_menu_item("Remove", self._app._make_unbookmark_handler(pin.cwd), d)
+                remove_item.setImage_(sf_icon("trash"))
+                sub.addItem_(remove_item)
                 item.setSubmenu_(sub)
                 bm_submenu.addItem_(item)
             bm_menu_item.setSubmenu_(bm_submenu)
@@ -213,16 +242,19 @@ class MenuBuilder:
                 label = entry.project
                 if detail_parts:
                     label += f"  ({' · '.join(detail_parts)})"
-                item = make_menu_item(label, noop, d)
+                click_action = self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else noop
+                item = make_menu_item(label, click_action, d)
                 item_sub = NSMenu.alloc().init()
                 # Summary submenu
                 summary_text = self._app._summary_service.get_cached_summary(entry.cwd)
+                summary_item = make_menu_item("Summary", None, d)
+                summary_sub = NSMenu.alloc().init()
                 if summary_text:
-                    summary_item = make_menu_item("Summary", None, d)
-                    summary_sub = NSMenu.alloc().init()
                     add_summary_lines(summary_sub, summary_text, d)
-                    summary_item.setSubmenu_(summary_sub)
-                    item_sub.addItem_(summary_item)
+                else:
+                    summary_sub.addItem_(make_menu_item("Generating…", None, d))
+                summary_item.setSubmenu_(summary_sub)
+                item_sub.addItem_(summary_item)
                 # Usage submenu with token breakdown + Activity
                 token_data = self._app._usage_service.get_tokens(entry.cwd)
                 breakdown = format_tokens_breakdown(token_data)
@@ -243,10 +275,14 @@ class MenuBuilder:
                 item_sub.addItem_(usage_item)
                 item_sub.addItem_(NSMenuItem.separatorItem())
                 if entry.session_id:
-                    item_sub.addItem_(
-                        make_menu_item("Resume", self._app._make_resume_handler(entry.session_id, entry.cwd), d)
+                    resume_item = make_menu_item(
+                        "Resume", self._app._make_resume_handler(entry.session_id, entry.cwd), d
                     )
-                item_sub.addItem_(make_menu_item("Remove", self._app._make_remove_history_handler(entry.cwd), d))
+                    resume_item.setImage_(sf_icon("play.circle"))
+                    item_sub.addItem_(resume_item)
+                remove_item = make_menu_item("Remove", self._app._make_remove_history_handler(entry.cwd), d)
+                remove_item.setImage_(sf_icon("trash"))
+                item_sub.addItem_(remove_item)
                 item.setSubmenu_(item_sub)
                 recent_submenu.addItem_(item)
                 self._app._summary_service.track_session(entry.cwd)  # background thread will generate summary
@@ -347,12 +383,20 @@ class MenuBuilder:
         is_active = s.status in (SessionStatus.ATTENTION, SessionStatus.WORKING)
         self._app._summary_service.track_session(s.cwd, urgent=is_active)
         if pinned:
-            sub.addItem_(make_menu_item("Remove Bookmark", self._app._make_unbookmark_handler(s.cwd), d))
-            sub.addItem_(make_menu_item("Quit session", self._app._make_quit_handler(s), d))
+            remove_item = make_menu_item("Remove", self._app._make_unbookmark_handler(s.cwd), d)
+            remove_item.setImage_(sf_icon("trash"))
+            sub.addItem_(remove_item)
+            quit_item = make_menu_item("Quit session", self._app._make_quit_handler(s), d)
+            quit_item.setImage_(sf_icon("xmark.circle"))
+            sub.addItem_(quit_item)
         else:
             if s.session_id:
-                sub.addItem_(make_menu_item("Bookmark...", self._app._make_bookmark_handler(s), d))
-            sub.addItem_(make_menu_item("Quit session", self._app._make_quit_handler(s), d))
+                bm_item = make_menu_item("Bookmark...", self._app._make_bookmark_handler(s), d)
+                bm_item.setImage_(sf_icon("bookmark"))
+                sub.addItem_(bm_item)
+            quit_item = make_menu_item("Quit session", self._app._make_quit_handler(s), d)
+            quit_item.setImage_(sf_icon("xmark.circle"))
+            sub.addItem_(quit_item)
         item.setSubmenu_(sub)
         self._menu.addItem_(item)
         # Detail line: model + summary (or status as fallback)

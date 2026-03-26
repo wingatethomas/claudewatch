@@ -20,6 +20,7 @@ from AppKit import (
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
+    NSImageView,
     NSMenu,
     NSMenuItem,
     NSMutableAttributedString,
@@ -440,8 +441,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         entry = _history_data[row]
         col_id = str(col.identifier())
         if col_id == "project":
-            pinned = entry.get("cwd", "") in get_bookmark_service().get_bookmarked_cwds()
-            return f"{entry.get('project', 'unknown')}{'  \u25b8' if pinned else ''}"
+            return entry.get("project", "unknown")
         if col_id == "date":
             return entry.get("ended_at", "")[:16].replace("T", " ")
         if col_id == "model":
@@ -762,7 +762,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     sort_seg.setAction_(objc.selector(delegate.historySortChanged_, signature=b"v@:@"))
     view.addSubview_(sort_seg)
 
-    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 28, 24))
+    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 36, 24))
     bm_chip.setTitle_("")
     bm_chip.setImage_(sf_icon("bookmark.fill", size=12.0))
     bm_chip.setButtonType_(1)  # NSButtonTypeToggle
@@ -905,9 +905,11 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     ly1 = y + h - 20
 
     if is_pinned:
-        mark = _make_label("▸", _bm_col, ly1, 14, 12.0)
-        mark.setTextColor_(NSColor.secondaryLabelColor())
-        view.addSubview_(mark)
+        bm_icon = sf_icon("bookmark.fill", size=11.0)
+        if bm_icon:
+            mark = NSImageView.alloc().initWithFrame_(NSMakeRect(_bm_col, ly1 + 1, 14, 14))
+            mark.setImage_(bm_icon)
+            view.addSubview_(mark)
 
     name_label = _make_label(project, _name_col, ly1, w - _name_col - 30, 13.0, bold=True)
     view.addSubview_(name_label)

@@ -30,11 +30,14 @@ from claudewatch.backend.activity.dependencies import get_activity_service
 from claudewatch.backend.core.dto import ActivityEventDTO
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.session_log.dependencies import get_session_log_service
+from claudewatch.backend.detection.dependencies import get_detection_service
+from claudewatch.ui.focus import focus_session
 
 _W = 750
 _H = 500
 
 _windows: dict[str, NSWindow] = {}
+_delegates: dict[str, object] = {}  # prevent GC of delegate
 _text_views: dict[str, NSTextView] = {}
 _sort_state: dict[str, bool] = {}  # CWD → newest_first
 
@@ -63,6 +66,7 @@ class _ActivityDelegate(NSObject):
 
     def windowWillClose_(self, notification: objc.objc_object) -> None:
         _windows.pop(self._cwd, None)
+        _delegates.pop(self._cwd, None)
         _text_views.pop(self._cwd, None)
         _sort_state.pop(self._cwd, None)
 
@@ -83,19 +87,25 @@ class _ActivityDelegate(NSObject):
             subprocess.run(["open", "-R", path], check=False)  # noqa: S603, S607
 
     def toggleSort_(self, sender: objc.objc_object) -> None:
-        newest = not _sort_state.get(self._cwd, True)
-        _sort_state[self._cwd] = newest
-        sender.setTitle_("↑ Oldest first" if newest else "↓ Newest first")
+        newest_first = not _sort_state.get(self._cwd, False)
+        _sort_state[self._cwd] = newest_first
+        sender.setTitle_("↓ Newest first" if newest_first else "↑ Oldest first")
         entries = get_activity_service().parse(self._cwd)
-        if not newest:
+        if newest_first:
             entries = list(reversed(entries))
         tv = _text_views.get(self._cwd)
         if tv is not None:
             tv.textStorage().setAttributedString_(_render_timeline(entries))
-            if newest:
-                tv.scrollRangeToVisible_(NSRange(len(tv.string()), 0))
-            else:
+            if newest_first:
                 tv.scrollRangeToVisible_(NSRange(0, 0))
+            else:
+                tv.scrollRangeToVisible_(NSRange(len(tv.string()), 0))
+
+    def focusSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        for s in get_detection_service().detect():
+            if s.cwd == self._cwd:
+                focus_session(s)
+                return
 
     def resumeSession_(self, sender: objc.objc_object) -> None:
         sid = _get_session_id(self._cwd)
@@ -204,45 +214,63 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
     sep.setBoxType_(2)
     bar.addSubview_(sep)
 
-    sort_btn = NSButton.alloc().initWithFrame_(NSMakeRect(12, 8, 90, 24))
-    sort_btn.setTitle_("↑ Oldest first")
-    sort_btn.setBezelStyle_(1)
-    sort_btn.setTarget_(delegate)
-    sort_btn.setAction_("toggleSort:")
-    bar.addSubview_(sort_btn)
+    _btn_h = 24
+    _btn_font = NSFont.systemFontOfSize_(11.0)
+    _gap = 8
+    _left_x = 12
 
-    copy_btn = NSButton.alloc().initWithFrame_(NSMakeRect(108, 8, 60, 24))
-    copy_btn.setTitle_("Copy")
-    copy_btn.setBezelStyle_(1)
-    copy_btn.setToolTip_("Copy activity to clipboard")
-    copy_btn.setTarget_(delegate)
-    copy_btn.setAction_("copyToClipboard:")
-    bar.addSubview_(copy_btn)
+    def _bar_btn(x: float, title: str, action: object, tip: str = "", *, auto_right: bool = False) -> NSButton:
+        btn = NSButton.alloc().initWithFrame_(NSMakeRect(x, 8, 140, _btn_h))
+        btn.setTitle_(title)
+        btn.setFont_(_btn_font)
+        btn.setBezelStyle_(1)
+        btn.setTarget_(delegate)
+        btn.setAction_(action)
+        if tip:
+            btn.setToolTip_(tip)
+        if auto_right:
+            btn.setAutoresizingMask_(4)  # pin to right edge
+        bar.addSubview_(btn)
+        return btn
 
-    jsonl_btn = NSButton.alloc().initWithFrame_(NSMakeRect(174, 8, 95, 24))
-    jsonl_btn.setTitle_("Session File")
-    jsonl_btn.setBezelStyle_(1)
-    jsonl_btn.setToolTip_("Reveal session log in Finder")
-    jsonl_btn.setTarget_(delegate)
-    jsonl_btn.setAction_("openJsonlInFinder:")
-    bar.addSubview_(jsonl_btn)
+    _bw = 140  # uniform button width
+    _bar_btn(_left_x, "↑ Oldest first", objc.selector(delegate.toggleSort_, signature=b"v@:@"))
+    _bar_btn(
+        _left_x + _bw + _gap,
+        "Copy",
+        objc.selector(delegate.copyToClipboard_, signature=b"v@:@"),
+        "Copy activity to clipboard",
+    )
+    _bar_btn(
+        _left_x + (_bw + _gap) * 2,
+        "View Session JSON",
+        objc.selector(delegate.openJsonlInFinder_, signature=b"v@:@"),
+        "Reveal session JSONL in Finder",
+    )
+    _bar_btn(
+        _W - _bw - _gap - _bw - 12,
+        "Open Project in Finder",
+        objc.selector(delegate.openInFinder_, signature=b"v@:@"),
+        "Open project folder in Finder",
+        auto_right=True,
+    )
 
-    finder_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - 210, 8, 100, 24))
-    finder_btn.setTitle_("Open Folder")
-    finder_btn.setBezelStyle_(1)
-    finder_btn.setTarget_(delegate)
-    finder_btn.setAction_("openInFinder:")
-    finder_btn.setAutoresizingMask_(4)
-    bar.addSubview_(finder_btn)
-
-    if not session_active:
-        resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - 100, 8, 85, 24))
-        resume_btn.setTitle_("Resume")
-        resume_btn.setBezelStyle_(1)
-        resume_btn.setTarget_(delegate)
-        resume_btn.setAction_("resumeSession:")
-        resume_btn.setAutoresizingMask_(4)
-        bar.addSubview_(resume_btn)
+    if session_active:
+        _bar_btn(
+            _W - _bw - 12,
+            "Focus",
+            objc.selector(delegate.focusSession_, signature=b"v@:@"),
+            "Switch to session window",
+            auto_right=True,
+        )
+    else:
+        _bar_btn(
+            _W - _bw - 12,
+            "Resume",
+            objc.selector(delegate.resumeSession_, signature=b"v@:@"),
+            "Resume session in Terminal",
+            auto_right=True,
+        )
 
     root.addSubview_(bar)
 
@@ -267,6 +295,7 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
 
     window.setContentView_(root)
 
+    _delegates[cwd] = delegate
     _windows[cwd] = window
     window.center()
     window.makeKeyAndOrderFront_(None)

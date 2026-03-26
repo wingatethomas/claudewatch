@@ -478,6 +478,10 @@ class ClaudeWatchApp:
         self._onboarding_service._mark_shown("guide_nudge")
         show_preferences(pane="guide")
 
+    def _dismiss_guide(self, _: NSMenuItem) -> None:
+        self._onboarding_service._mark_shown("guide_nudge")
+        self._last_menu_key = ""  # force menu rebuild
+
     def _open_github(self, _: NSMenuItem) -> None:
         webbrowser.open("https://github.com/wingatethomas/claudewatch")
 
