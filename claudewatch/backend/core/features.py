@@ -7,9 +7,12 @@ Storage is backed by core.settings (NSUserDefaults). Keys:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from claudewatch.backend.core.settings import get_setting, set_setting
+
+log = logging.getLogger("claudewatch")
 
 _registry: dict[str, Feature] = {}
 
@@ -47,6 +50,7 @@ def is_enabled(key: str) -> bool:
     """Check if a feature is enabled. Returns False for unregistered features."""
     feature = _registry.get(key)
     if feature is None:
+        log.warning("is_enabled called for unregistered feature: %s", key)
         return False
     val = get_setting(f"feature.{key}.enabled")
     if val is not None:
@@ -63,6 +67,7 @@ def get_facet(key: str, facet_name: str) -> bool | int | str | None:
     """Get a facet value. Returns None if feature or facet is unregistered."""
     feature = _registry.get(key)
     if feature is None:
+        log.warning("get_facet called for unregistered feature: %s", key)
         return None
     facet = next((f for f in feature.facets if f.name == facet_name), None)
     if facet is None:
