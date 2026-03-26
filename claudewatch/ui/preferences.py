@@ -426,7 +426,7 @@ def _add_feature_card(  # noqa: PLR0913, PLR0915
     delegate._feature_controls[feature_key] = facet_controls
 
 
-def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
+def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
     """Build the General pane — all features as stacked cards."""
     delegate._feature_controls = {}
     all_features = features.get_all()
@@ -435,8 +435,10 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
     _facet_row_h = 40
     _card_gap = 12
 
-    _danger_h = 44  # danger zone card height
-    _danger_gap = 24  # extra gap before danger zone
+    _danger_row_h = 44
+    _danger_rows = 2  # Clear Bookmarks, Clear Summaries
+    _danger_h = _danger_row_h * _danger_rows
+    _danger_gap = 24
 
     # Calculate total height needed
     total_h = _PAD
@@ -468,22 +470,34 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
     inner.addSubview_(danger_card)
     dc = danger_card.contentView()
 
-    _btn_w = 140
+    _btn_w = 90
     _btn_h = 24
-    _btn_y = (_danger_h - _btn_h) // 2
 
-    bm_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, _btn_y, _btn_w, _btn_h))
-    bm_btn.setTitle_("Clear Bookmarks")
+    # Row 1: Clear Bookmarks
+    row1_y = _danger_h - _danger_row_h
+    label1 = _make_label("Clear all bookmarks", _CARD_PAD, row1_y + 12, card_w - _CARD_PAD * 2 - _btn_w - 8, 13.0)
+    dc.addSubview_(label1)
+    bm_btn = NSButton.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - _btn_w, row1_y + 9, _btn_w, _btn_h))
+    bm_btn.setTitle_("Clear...")
     bm_btn.setBezelStyle_(1)
-    bm_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+    bm_btn.setFont_(NSFont.systemFontOfSize_(12.0))
     bm_btn.setTarget_(delegate)
     bm_btn.setAction_(objc.selector(delegate.clearBookmarks_, signature=b"v@:@"))
     dc.addSubview_(bm_btn)
 
-    sum_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD + _btn_w + 12, _btn_y, _btn_w, _btn_h))
-    sum_btn.setTitle_("Clear Summaries")
+    # Separator
+    sep = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, row1_y - 1, card_w - _CARD_PAD * 2, 1))
+    sep.setBoxType_(2)
+    dc.addSubview_(sep)
+
+    # Row 2: Clear Summaries
+    row2_y = row1_y - _danger_row_h
+    label2 = _make_label("Clear all summaries", _CARD_PAD, row2_y + 12, card_w - _CARD_PAD * 2 - _btn_w - 8, 13.0)
+    dc.addSubview_(label2)
+    sum_btn = NSButton.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - _btn_w, row2_y + 9, _btn_w, _btn_h))
+    sum_btn.setTitle_("Clear...")
     sum_btn.setBezelStyle_(1)
-    sum_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+    sum_btn.setFont_(NSFont.systemFontOfSize_(12.0))
     sum_btn.setTarget_(delegate)
     sum_btn.setAction_(objc.selector(delegate.clearSummaries_, signature=b"v@:@"))
     dc.addSubview_(sum_btn)
