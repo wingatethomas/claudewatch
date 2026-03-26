@@ -25,6 +25,7 @@ from AppKit import (
     NSSegmentedControl,
     NSSegmentStyleTexturedRounded,
     NSSound,
+    NSSwitch,
     NSTableColumn,
     NSTableView,
     NSTextField,
@@ -71,7 +72,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     # ── Feature actions (generic) ──
 
     def featureToggled_(self, sender: objc.objc_object) -> None:
-        key = str(sender.cell().representedObject())
+        key = str(sender.representedObject() or sender.cell().representedObject())
         enabled = sender.state() == NSControlStateValueOn
         features.set_enabled(key, enabled)
         for ctrl in self._feature_controls.get(key, []):
@@ -386,14 +387,16 @@ def _build_facet_control(  # noqa: PLR0913
     y: float,
 ) -> tuple[objc.objc_object, float]:
     """Build the appropriate control for a facet. Returns (control, new_y)."""
-    label = NSTextField.labelWithString_(facet.description or facet.name)
-    label.setFrame_(NSMakeRect(_PAD, y, 120, 20))
+    facet_label = facet.description or facet.name.replace("_", " ").title()
+    label = NSTextField.labelWithString_(facet_label)
+    label.setFrame_(NSMakeRect(_PAD + 16, y, 130, 20))
     label.setFont_(NSFont.systemFontOfSize_(13.0))
+    label.setTextColor_(NSColor.secondaryLabelColor())
     view.addSubview_(label)
 
     if facet.type == "choice":
         popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-            NSMakeRect(_PAD + 130, y - 2, 200, 22),
+            NSMakeRect(_PAD + 150, y - 2, 200, 22),
             False,
         )
         popup.setFont_(NSFont.systemFontOfSize_(13.0))
@@ -409,7 +412,7 @@ def _build_facet_control(  # noqa: PLR0913
         return popup, y
 
     if facet.type == "bool":
-        checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, y, _W - _PAD * 2, 20))
+        checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 16, y, _W - _PAD * 2 - 16, 20))
         checkbox.setButtonType_(NSButtonTypeSwitch)
         checkbox.setTitle_(facet.description or facet.name)
         checkbox.setFont_(NSFont.systemFontOfSize_(13.0))
@@ -431,24 +434,25 @@ def _add_feature_section(
     feature: features.Feature,
     y: float,
 ) -> float:
-    """Render a single feature with enable toggle and facet controls."""
-    _add_section_header(view, feature.description.upper(), y)
-    y -= 28
+    """Render a single feature with NSSwitch toggle and facet controls."""
+    # Feature name label on the left
+    name_label = NSTextField.labelWithString_(feature.description)
+    name_label.setFrame_(NSMakeRect(_PAD, y - 2, _W - _PAD * 2 - 60, 20))
+    name_label.setFont_(NSFont.systemFontOfSize_(13.0))
+    view.addSubview_(name_label)
 
+    # NSSwitch toggle on the right
     enabled = features.is_enabled(feature.key)
-    toggle = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, y, _W - _PAD * 2, 20))
-    toggle.setButtonType_(NSButtonTypeSwitch)
-    toggle.setTitle_("Enabled")
-    toggle.setFont_(NSFont.systemFontOfSize_(13.0))
+    toggle = NSSwitch.alloc().initWithFrame_(NSMakeRect(_W - _PAD - 46, y - 2, 46, 22))
     toggle.setState_(NSControlStateValueOn if enabled else NSControlStateValueOff)
-    toggle.cell().setRepresentedObject_(feature.key)
+    toggle.setRepresentedObject_(feature.key)
     toggle.setTarget_(delegate)
     toggle.setAction_(objc.selector(delegate.featureToggled_, signature=b"v@:@"))
     view.addSubview_(toggle)
 
     facet_controls: list[objc.objc_object] = []
     for facet in feature.facets:
-        y -= 30
+        y -= 32
         ctrl, y = _build_facet_control(view, delegate, feature.key, facet, enabled, y)
         if ctrl is not None:
             facet_controls.append(ctrl)
@@ -521,8 +525,8 @@ def _build_settings_pane(delegate: _PrefsDelegate) -> NSView:
 
     all_features = features.get_all()
     num_facets = sum(len(f.facets) for f in all_features)
-    # Estimate content height: per feature ~60px + per facet ~30px + usage ~100px + about ~80px + padding
-    est_height = len(all_features) * 60 + num_facets * 30 + 220 + _PAD * 2
+    # Estimate content height: per feature ~50px + per facet ~32px + usage ~120px + about ~100px + padding
+    est_height = len(all_features) * 50 + num_facets * 32 + 260 + _PAD * 2 + len(all_features) * 24
     inner_h = max(content_h, est_height)
 
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, inner_h))
@@ -532,16 +536,16 @@ def _build_settings_pane(delegate: _PrefsDelegate) -> NSView:
     # Dynamic feature sections
     for i, feature in enumerate(all_features):
         if i > 0:
-            y -= 20
-            _add_section_separator(inner, y + 10)
+            y -= 24
+            _add_section_separator(inner, y + 12)
         y = _add_feature_section(inner, delegate, feature, y)
 
     # Usage
-    y -= 30
+    y -= 36
     y = _add_usage_section(inner, y)
 
     # About
-    y -= 30
+    y -= 36
     y = _add_about_section(inner, delegate, y)
 
     if inner_h <= content_h:
