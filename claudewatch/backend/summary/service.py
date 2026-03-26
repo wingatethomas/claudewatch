@@ -304,9 +304,8 @@ class SummaryService(BaseService):
                 if self._priority_queue:
                     cwd = self._priority_queue.pop(0)
             if cwd:
-                if self.get_cached(cwd) is None:
-                    log.debug("bg_priority: generating summary for %s", cwd)
-                    self.generate_and_cache(cwd)
+                log.debug("bg_priority: generating summary for %s", cwd)
+                self.generate_and_cache(cwd)
                 time.sleep(2)
                 continue
 
@@ -315,7 +314,7 @@ class SummaryService(BaseService):
                 cwds = list(self._tracked_cwds)
             for cwd in cwds:
                 if self.get_cached(cwd) is None:
-                    log.debug("bg_refresh: regenerating summary for %s", cwd)
+                    log.debug("bg_refresh: regenerating stale summary for %s", cwd)
                     self.generate_and_cache(cwd)
 
     # -- Internal helpers ---------------------------------------------------

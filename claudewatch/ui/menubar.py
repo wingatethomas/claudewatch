@@ -262,7 +262,11 @@ class ClaudeWatchApp:
         self._future = _executor.submit(self._detection_service.detect)
 
     def _menu_key(self) -> str:
-        return "|".join(f"{s.pid}:{s.status.value}:{s.project}:{s.task_summary}:{s.last_output}" for s in self.sessions)
+        parts = []
+        for s in self.sessions:
+            cached = self._summary_service.get_cached(s.cwd) or ""
+            parts.append(f"{s.pid}:{s.status.value}:{s.project}:{s.task_summary}:{s.last_output}:{cached}")
+        return "|".join(parts)
 
     def update_display(self) -> None:
         self._menu_builder.build(self.sessions)
