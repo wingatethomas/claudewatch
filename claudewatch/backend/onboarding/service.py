@@ -7,6 +7,7 @@ Each tip is shown at most once; shown tip IDs are persisted in config.
 import logging
 import time
 
+from claudewatch.backend.core import features
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.settings import get_setting, set_setting
 from claudewatch.backend.notifications.service import NotificationService
@@ -65,7 +66,7 @@ class OnboardingService(BaseService):
         """
         if self.is_tip_shown(tip_id):
             return False
-        if not get_setting("notifications_enabled"):
+        if not features.is_enabled("notifications"):
             return False
 
         tip = TIPS.get(tip_id)
@@ -80,7 +81,7 @@ class OnboardingService(BaseService):
     def get_session_count(self) -> int:
         """Return the cumulative number of unique sessions observed."""
         count = get_setting("onboarding_session_count")
-        return int(count) if isinstance(count, (int, float)) else 0
+        return int(count) if isinstance(count, int | float) else 0
 
     def increment_session_count(self, n: int = 1) -> int:
         """Add *n* to the cumulative session counter and return the new total."""

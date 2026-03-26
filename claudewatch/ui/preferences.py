@@ -38,11 +38,12 @@ from Foundation import NSMakeRect, NSObject, NSRange, NSSortDescriptor
 
 from claudewatch import __version__
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
+from claudewatch.backend.core import features
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.paths import LOG_PATH
-from claudewatch.backend.core.settings import get_available_sounds, get_setting, set_setting
 from claudewatch.backend.history.dependencies import get_history_service
-from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES
+from claudewatch.backend.usage.dependencies import get_usage_service
+from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_breakdown
 from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
@@ -65,23 +66,29 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     _sessions_view: NSView | None = None
     _settings_view: NSView | None = None
+    _feature_controls: dict  # feature_key -> list of facet controls
 
-    # ── Settings actions ──
+    # ── Feature actions (generic) ──
 
-    def notificationsToggled_(self, sender: objc.objc_object) -> None:
-        set_setting("notifications_enabled", sender.state() == NSControlStateValueOn)
+    def featureToggled_(self, sender: objc.objc_object) -> None:
+        key = str(sender.cell().representedObject())
+        enabled = sender.state() == NSControlStateValueOn
+        features.set_enabled(key, enabled)
+        for ctrl in self._feature_controls.get(key, []):
+            ctrl.setEnabled_(enabled)
 
-    def soundChanged_(self, sender: objc.objc_object) -> None:
-        sound_name = sender.titleOfSelectedItem()
-        set_setting("notification_sound", sound_name)
-        sound = NSSound.soundNamed_(sound_name)
-        if sound:
-            sound.play()
+    def facetChanged_(self, sender: objc.objc_object) -> None:
+        info = str(sender.cell().representedObject())
+        key, facet_name = info.split("|", 1)
+        value = sender.titleOfSelectedItem()
+        features.set_facet(key, facet_name, value)
+        # Sound preview
+        if key == "notifications" and facet_name == "sound":
+            sound = NSSound.soundNamed_(value)
+            if sound:
+                sound.play()
 
-    def expiryChanged_(self, sender: objc.objc_object) -> None:
-        title = sender.titleOfSelectedItem()
-        days = 0 if title == "Never" else int(title.rstrip(" days"))
-        set_setting("pin_expiry_days", days)
+    # ── Static actions ──
 
     def viewAuditLog_(self, sender: objc.objc_object) -> None:
         log_path = LOG_PATH
@@ -90,14 +97,6 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     def openRepo_(self, sender: objc.objc_object) -> None:
         webbrowser.open(_REPO_URL)
-
-    def viewUsageStats_(self, sender: objc.objc_object) -> None:
-        run_applescript("""
-            tell application "Terminal"
-                activate
-                do script "claude"
-            end tell
-        """)
 
     # ── History actions ──
 
@@ -164,7 +163,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         col_id = str(col.identifier())
         if col_id == "project":
             pinned = entry.get("cwd", "") in get_bookmark_service().get_pinned_cwds()
-            return f"{entry.get('project', 'unknown')}{'  ★' if pinned else ''}"
+            return f"{entry.get('project', 'unknown')}{'  \u2605' if pinned else ''}"
         if col_id == "date":
             return entry.get("ended_at", "")[:16].replace("T", " ")
         if col_id == "model":
@@ -249,36 +248,6 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 def _reload_history_data() -> None:
     global _history_data  # noqa: PLW0603
     _history_data = [e.to_dict() for e in get_history_service().get_all()]
-
-
-def _make_context_menu(delegate: _PrefsDelegate, entry: dict) -> NSMenu:
-    """Build right-click context menu for a history row."""
-    sid = entry.get("session_id", "")
-    proj = entry.get("project", "unknown")
-    cwd = entry.get("cwd", "")
-
-    menu = NSMenu.alloc().init()
-    resume = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Resume", "resumeSession:", "")
-    resume.setTarget_(delegate)
-    resume.setRepresentedObject_(f"{sid}|{cwd}")
-    menu.addItem_(resume)
-
-    activity = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Activity", "viewActivity:", "")
-    activity.setTarget_(delegate)
-    activity.setRepresentedObject_(f"{proj}|{cwd}")
-    menu.addItem_(activity)
-
-    menu.addItem_(NSMenuItem.separatorItem())
-
-    delete = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Delete", "deleteHistoryEntry:", "")
-    delete.setTarget_(delegate)
-    delete.setRepresentedObject_(cwd)
-    delete_attr = NSMutableAttributedString.alloc().initWithString_("Delete")
-    delete_attr.addAttribute_value_range_("NSColor", NSColor.systemRedColor(), NSRange(0, 6))
-    delete.setAttributedTitle_(delete_attr)
-    menu.addItem_(delete)
-
-    return menu
 
 
 # ── Build panes ──────────────────────────────────────────────────────
@@ -388,6 +357,9 @@ def _build_sessions_pane(delegate: _PrefsDelegate) -> NSView:  # noqa: PLR0915
     return view
 
 
+# ── Settings pane section builders ────────────────────────────────────
+
+
 def _add_section_header(view: NSView, text: str, y: float) -> None:
     header = NSTextField.labelWithString_(text)
     header.setFrame_(NSMakeRect(_PAD, y, 300, 14))
@@ -402,92 +374,113 @@ def _add_section_separator(view: NSView, y: float) -> None:
     view.addSubview_(sep)
 
 
-def _add_notifications_section(view: NSView, delegate: _PrefsDelegate, y: float) -> float:
-    _add_section_header(view, "NOTIFICATIONS", y)
+def _build_facet_control(  # noqa: PLR0913
+    view: NSView,
+    delegate: _PrefsDelegate,
+    feature_key: str,
+    facet: features.Facet,
+    enabled: bool,
+    y: float,
+) -> tuple[objc.objc_object, float]:
+    """Build the appropriate control for a facet. Returns (control, new_y)."""
+    label = NSTextField.labelWithString_(facet.description or facet.name)
+    label.setFrame_(NSMakeRect(_PAD, y, 120, 20))
+    label.setFont_(NSFont.systemFontOfSize_(13.0))
+    view.addSubview_(label)
+
+    if facet.type == "choice":
+        popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+            NSMakeRect(_PAD + 130, y - 2, 200, 22),
+            False,
+        )
+        popup.setFont_(NSFont.systemFontOfSize_(13.0))
+        popup.addItemsWithTitles_(list(facet.options))
+        current = features.get_facet(feature_key, facet.name)
+        if current is not None:
+            popup.selectItemWithTitle_(str(current))
+        popup.cell().setRepresentedObject_(f"{feature_key}|{facet.name}")
+        popup.setTarget_(delegate)
+        popup.setAction_(objc.selector(delegate.facetChanged_, signature=b"v@:@"))
+        popup.setEnabled_(enabled)
+        view.addSubview_(popup)
+        return popup, y
+
+    if facet.type == "bool":
+        checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, y, _W - _PAD * 2, 20))
+        checkbox.setButtonType_(NSButtonTypeSwitch)
+        checkbox.setTitle_(facet.description or facet.name)
+        checkbox.setFont_(NSFont.systemFontOfSize_(13.0))
+        val = features.get_facet(feature_key, facet.name)
+        checkbox.setState_(NSControlStateValueOn if val else NSControlStateValueOff)
+        checkbox.cell().setRepresentedObject_(f"{feature_key}|{facet.name}")
+        checkbox.setTarget_(delegate)
+        checkbox.setAction_(objc.selector(delegate.facetChanged_, signature=b"v@:@"))
+        checkbox.setEnabled_(enabled)
+        view.addSubview_(checkbox)
+        return checkbox, y
+
+    return None, y
+
+
+def _add_feature_section(
+    view: NSView,
+    delegate: _PrefsDelegate,
+    feature: features.Feature,
+    y: float,
+) -> float:
+    """Render a single feature with enable toggle and facet controls."""
+    _add_section_header(view, feature.description.upper(), y)
     y -= 28
 
+    enabled = features.is_enabled(feature.key)
     toggle = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, y, _W - _PAD * 2, 20))
     toggle.setButtonType_(NSButtonTypeSwitch)
-    toggle.setTitle_("Enable notifications")
+    toggle.setTitle_("Enabled")
     toggle.setFont_(NSFont.systemFontOfSize_(13.0))
-    toggle.setState_(NSControlStateValueOn if get_setting("notifications_enabled") else NSControlStateValueOff)
+    toggle.setState_(NSControlStateValueOn if enabled else NSControlStateValueOff)
+    toggle.cell().setRepresentedObject_(feature.key)
     toggle.setTarget_(delegate)
-    toggle.setAction_(objc.selector(delegate.notificationsToggled_, signature=b"v@:@"))
+    toggle.setAction_(objc.selector(delegate.featureToggled_, signature=b"v@:@"))
     view.addSubview_(toggle)
 
-    y -= 30
-    sound_label = NSTextField.labelWithString_("Alert sound")
-    sound_label.setFrame_(NSMakeRect(_PAD, y, 80, 20))
-    sound_label.setFont_(NSFont.systemFontOfSize_(13.0))
-    view.addSubview_(sound_label)
+    facet_controls: list[objc.objc_object] = []
+    for facet in feature.facets:
+        y -= 30
+        ctrl, y = _build_facet_control(view, delegate, feature.key, facet, enabled, y)
+        if ctrl is not None:
+            facet_controls.append(ctrl)
 
-    sound_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-        NSMakeRect(_PAD + 90, y - 2, 200, 22),
-        False,
-    )
-    sound_popup.setFont_(NSFont.systemFontOfSize_(13.0))
-    sound_popup.setToolTip_("System sounds from /System/Library/Sounds/")
-    sound_popup.addItemsWithTitles_(list(get_available_sounds()))
-    sound_popup.selectItemWithTitle_(str(get_setting("notification_sound")))
-    sound_popup.setTarget_(delegate)
-    sound_popup.setAction_(objc.selector(delegate.soundChanged_, signature=b"v@:@"))
-    view.addSubview_(sound_popup)
+    delegate._feature_controls[feature.key] = facet_controls
     return y
 
 
-def _add_sessions_section(view: NSView, delegate: _PrefsDelegate, y: float) -> float:
-    _add_section_separator(view, y + 10)
-    _add_section_header(view, "SESSIONS", y - 10)
-    y -= 38
-
-    expiry_label = NSTextField.labelWithString_("Pin expiry")
-    expiry_label.setFrame_(NSMakeRect(_PAD, y, 80, 20))
-    expiry_label.setFont_(NSFont.systemFontOfSize_(13.0))
-    view.addSubview_(expiry_label)
-
-    expiry_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-        NSMakeRect(_PAD + 90, y - 2, 200, 22),
-        False,
-    )
-    expiry_popup.setFont_(NSFont.systemFontOfSize_(13.0))
-    options = ["Never", "7 days", "14 days", "30 days", "60 days", "90 days"]
-    expiry_popup.addItemsWithTitles_(options)
-    current = int(get_setting("pin_expiry_days") or 30)
-    if current <= 0:
-        expiry_popup.selectItemWithTitle_("Never")
-    else:
-        expiry_popup.selectItemWithTitle_(f"{current} days")
-    expiry_popup.setTarget_(delegate)
-    expiry_popup.setAction_(objc.selector(delegate.expiryChanged_, signature=b"v@:@"))
-    view.addSubview_(expiry_popup)
-
-    y -= 22
-    hint = NSTextField.labelWithString_("Pinned sessions expire after this period of inactivity.")
-    hint.setFrame_(NSMakeRect(_PAD, y, _W - _PAD * 2, 14))
-    hint.setFont_(NSFont.systemFontOfSize_(11.0))
-    hint.setTextColor_(NSColor.tertiaryLabelColor())
-    view.addSubview_(hint)
-    return y
-
-
-def _add_usage_section(view: NSView, delegate: _PrefsDelegate, y: float) -> float:
+def _add_usage_section(view: NSView, y: float) -> float:
+    """Render inline usage statistics aggregated from history."""
     _add_section_separator(view, y + 10)
     _add_section_header(view, "USAGE", y - 10)
-    y -= 36
+    y -= 34
 
-    usage_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, y, 200, 28))
-    usage_btn.setTitle_("View Usage Statistics")
-    usage_btn.setBezelStyle_(1)
-    usage_btn.setTarget_(delegate)
-    usage_btn.setAction_(objc.selector(delegate.viewUsageStats_, signature=b"v@:@"))
-    view.addSubview_(usage_btn)
+    history = get_history_service().get_all()
+    usage_svc = get_usage_service()
 
-    y -= 20
-    hint = NSTextField.labelWithString_("Opens Claude Code usage in Terminal")
-    hint.setFrame_(NSMakeRect(_PAD, y, _W - _PAD * 2, 14))
-    hint.setFont_(NSFont.systemFontOfSize_(11.0))
-    hint.setTextColor_(NSColor.tertiaryLabelColor())
-    view.addSubview_(hint)
+    total_tokens: dict[str, int] = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
+    for entry in history:
+        tokens = usage_svc.get_tokens(entry.cwd)
+        for k in total_tokens:
+            total_tokens[k] += tokens[k]
+
+    lines = format_tokens_breakdown(total_tokens)
+    if not lines:
+        lines = ["No usage data yet"]
+
+    for line in lines:
+        label = NSTextField.labelWithString_(line)
+        label.setFrame_(NSMakeRect(_PAD, y, _W - _PAD * 2, 16))
+        label.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(12.0, 0))
+        label.setTextColor_(NSColor.secondaryLabelColor())
+        view.addSubview_(label)
+        y -= 18
+
     return y
 
 
@@ -519,23 +512,43 @@ def _add_about_section(view: NSView, delegate: _PrefsDelegate, y: float) -> floa
 
 
 def _build_settings_pane(delegate: _PrefsDelegate) -> NSView:
-    """Build the Settings pane with all preferences."""
+    """Build the Settings pane with dynamic feature sections, usage, and about."""
     content_h = _H - _TOOLBAR_H
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, content_h))
+    delegate._feature_controls = {}
 
-    # Vertically center the content (~320px of settings in ~464px pane)
-    _content_height = 340
-    y = (content_h + _content_height) // 2
+    all_features = features.get_all()
+    num_facets = sum(len(f.facets) for f in all_features)
+    # Estimate content height: per feature ~60px + per facet ~30px + usage ~100px + about ~80px + padding
+    est_height = len(all_features) * 60 + num_facets * 30 + 220 + _PAD * 2
+    inner_h = max(content_h, est_height)
 
-    y = _add_notifications_section(view, delegate, y)
-    y -= 44
-    y = _add_sessions_section(view, delegate, y)
-    y -= 34
-    y = _add_usage_section(view, delegate, y)
-    y -= 34
-    _add_about_section(view, delegate, y)
+    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, inner_h))
 
-    return view
+    y = inner_h - _PAD
+
+    # Dynamic feature sections
+    for i, feature in enumerate(all_features):
+        if i > 0:
+            y -= 20
+            _add_section_separator(inner, y + 10)
+        y = _add_feature_section(inner, delegate, feature, y)
+
+    # Usage
+    y -= 30
+    y = _add_usage_section(inner, y)
+
+    # About
+    y -= 30
+    y = _add_about_section(inner, delegate, y)
+
+    if inner_h <= content_h:
+        return inner
+
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, _W, content_h))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setDrawsBackground_(False)
+    scroll.setDocumentView_(inner)
+    return scroll
 
 
 # ── Public API ────────────────────────────────────────────────────────
@@ -567,7 +580,7 @@ def show_preferences() -> None:
 
     root = window.contentView()
 
-    # Toolbar: segmented control for Sessions / Settings
+    # Toolbar: segmented control for Preferences / History
     seg = NSSegmentedControl.alloc().initWithFrame_(
         NSMakeRect((_W - 240) // 2, _H - _TOOLBAR_H, 240, 28),
     )
