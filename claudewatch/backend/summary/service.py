@@ -30,7 +30,7 @@ _MAX_FAILURES = 3  # stop retrying after this many consecutive failures per CWD
 
 _PROMPT = (
     "Analyze this Claude Code session and respond with EXACTLY this format, nothing else:\n"
-    "TITLE: <under 50 chars, what's happening now, action verb>\n"
+    "TITLE: <under 40 chars, what's happening now, action verb>\n"
     "• <action taken>\n"
     "• <action taken>\n"
     "• <action taken>\n\n"
@@ -62,7 +62,16 @@ def _parse_summary_response(raw: str) -> tuple[str, str]:
 
     # Fallback: if no structured output, use first line as title
     if not title and lines:
-        title = lines[0].strip()[:50]
+        title = lines[0].strip()
+
+    # Clamp title at word boundary
+    _max_title = 40
+    if len(title) > _max_title:
+        truncated = title[:_max_title]
+        last_space = truncated.rfind(" ")
+        if last_space > _max_title // 2:
+            truncated = truncated[:last_space]
+        title = truncated
 
     return title, "\n".join(bullets)
 
