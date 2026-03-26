@@ -304,9 +304,9 @@ class ClaudeWatchApp:
                 app.activateIgnoringOtherApps_(True)
 
                 alert = NSAlert.alloc().init()
-                alert.setMessageText_("Pin Session")
+                alert.setMessageText_("Bookmark Session")
                 alert.setInformativeText_(f"Add a note for {project}:")
-                alert.addButtonWithTitle_("Pin")
+                alert.addButtonWithTitle_("Bookmark")
                 alert.addButtonWithTitle_("Generate Summary")
                 alert.addButtonWithTitle_("Cancel")
                 text_field = NSTextField.alloc().initWithFrame_(((0, 0), (350, 60)))

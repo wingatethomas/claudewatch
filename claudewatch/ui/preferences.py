@@ -72,7 +72,7 @@ _history_data: list[dict] = []
 
 # Sub-descriptions for feature toggles
 _FEATURE_DETAILS: dict[str, str] = {
-    "bookmarks": "Pin sessions to resume later from the menu bar.",
+    "bookmarks": "Save sessions to resume later from the menu bar.",
     "notifications": "Get alerts when Claude needs your attention.",
     "background_summaries": "Periodically regenerate session summaries in the background.",
     "auto_updates": "Check GitHub for new releases periodically.",
