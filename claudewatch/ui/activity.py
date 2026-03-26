@@ -30,6 +30,8 @@ from claudewatch.backend.activity.dependencies import get_activity_service
 from claudewatch.backend.core.dto import ActivityEventDTO
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.session_log.dependencies import get_session_log_service
+from claudewatch.backend.detection.dependencies import get_detection_service
+from claudewatch.ui.focus import focus_session
 
 _W = 750
 _H = 500
@@ -98,6 +100,12 @@ class _ActivityDelegate(NSObject):
                 tv.scrollRangeToVisible_(NSRange(0, 0))
             else:
                 tv.scrollRangeToVisible_(NSRange(len(tv.string()), 0))
+
+    def focusSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        for s in get_detection_service().detect():
+            if s.cwd == self._cwd:
+                focus_session(s)
+                return
 
     def resumeSession_(self, sender: objc.objc_object) -> None:
         sid = _get_session_id(self._cwd)
@@ -206,46 +214,63 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
     sep.setBoxType_(2)
     bar.addSubview_(sep)
 
-    sort_btn = NSButton.alloc().initWithFrame_(NSMakeRect(12, 8, 110, 24))
-    sort_btn.setTitle_("↑ Oldest first")
-    sort_btn.setFont_(NSFont.systemFontOfSize_(11.0))
-    sort_btn.setBezelStyle_(1)
-    sort_btn.setTarget_(delegate)
-    sort_btn.setAction_(objc.selector(delegate.toggleSort_, signature=b"v@:@"))
-    bar.addSubview_(sort_btn)
+    _btn_h = 24
+    _btn_font = NSFont.systemFontOfSize_(11.0)
+    _gap = 8
+    _left_x = 12
 
-    copy_btn = NSButton.alloc().initWithFrame_(NSMakeRect(128, 8, 60, 24))
-    copy_btn.setTitle_("Copy")
-    copy_btn.setBezelStyle_(1)
-    copy_btn.setToolTip_("Copy activity to clipboard")
-    copy_btn.setTarget_(delegate)
-    copy_btn.setAction_(objc.selector(delegate.copyToClipboard_, signature=b"v@:@"))
-    bar.addSubview_(copy_btn)
+    def _bar_btn(x: float, title: str, action: object, tip: str = "", *, auto_right: bool = False) -> NSButton:
+        btn = NSButton.alloc().initWithFrame_(NSMakeRect(x, 8, 140, _btn_h))
+        btn.setTitle_(title)
+        btn.setFont_(_btn_font)
+        btn.setBezelStyle_(1)
+        btn.setTarget_(delegate)
+        btn.setAction_(action)
+        if tip:
+            btn.setToolTip_(tip)
+        if auto_right:
+            btn.setAutoresizingMask_(4)  # pin to right edge
+        bar.addSubview_(btn)
+        return btn
 
-    jsonl_btn = NSButton.alloc().initWithFrame_(NSMakeRect(194, 8, 95, 24))
-    jsonl_btn.setTitle_("Session File")
-    jsonl_btn.setBezelStyle_(1)
-    jsonl_btn.setToolTip_("Reveal session log in Finder")
-    jsonl_btn.setTarget_(delegate)
-    jsonl_btn.setAction_(objc.selector(delegate.openJsonlInFinder_, signature=b"v@:@"))
-    bar.addSubview_(jsonl_btn)
+    _bw = 140  # uniform button width
+    _bar_btn(_left_x, "↑ Oldest first", objc.selector(delegate.toggleSort_, signature=b"v@:@"))
+    _bar_btn(
+        _left_x + _bw + _gap,
+        "Copy",
+        objc.selector(delegate.copyToClipboard_, signature=b"v@:@"),
+        "Copy activity to clipboard",
+    )
+    _bar_btn(
+        _left_x + (_bw + _gap) * 2,
+        "View Session JSON",
+        objc.selector(delegate.openJsonlInFinder_, signature=b"v@:@"),
+        "Reveal session JSONL in Finder",
+    )
+    _bar_btn(
+        _W - _bw - _gap - _bw - 12,
+        "Open Project in Finder",
+        objc.selector(delegate.openInFinder_, signature=b"v@:@"),
+        "Open project folder in Finder",
+        auto_right=True,
+    )
 
-    finder_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - 210, 8, 100, 24))
-    finder_btn.setTitle_("Open Folder")
-    finder_btn.setBezelStyle_(1)
-    finder_btn.setTarget_(delegate)
-    finder_btn.setAction_(objc.selector(delegate.openInFinder_, signature=b"v@:@"))
-    finder_btn.setAutoresizingMask_(4)
-    bar.addSubview_(finder_btn)
-
-    if not session_active:
-        resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - 100, 8, 85, 24))
-        resume_btn.setTitle_("Resume")
-        resume_btn.setBezelStyle_(1)
-        resume_btn.setTarget_(delegate)
-        resume_btn.setAction_(objc.selector(delegate.resumeSession_, signature=b"v@:@"))
-        resume_btn.setAutoresizingMask_(4)
-        bar.addSubview_(resume_btn)
+    if session_active:
+        _bar_btn(
+            _W - _bw - 12,
+            "Focus",
+            objc.selector(delegate.focusSession_, signature=b"v@:@"),
+            "Switch to session window",
+            auto_right=True,
+        )
+    else:
+        _bar_btn(
+            _W - _bw - 12,
+            "Resume",
+            objc.selector(delegate.resumeSession_, signature=b"v@:@"),
+            "Resume session in Terminal",
+            auto_right=True,
+        )
 
     root.addSubview_(bar)
 
