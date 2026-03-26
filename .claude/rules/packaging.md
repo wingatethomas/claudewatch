@@ -17,4 +17,4 @@ paths:
 - **`LSUIElement = true`** in Info.plist — menu-bar-only app, no dock icon.
 - **Entitlements:** `com.apple.security.cs.allow-unsigned-executable-memory` and `com.apple.security.cs.disable-library-validation` are required for PyObjC. These are set by the Briefcase template.
 - **TCC folder prompts** (Photos, Music, Downloads, etc.) are triggered by the Python framework startup, not our code. Users can safely deny them. This is a known BeeWare limitation.
-- **Homebrew tap:** `wingatethomas/homebrew-claudewatch` — updated automatically via PR from the release workflow.
+- **Homebrew tap:** `wingatethomas/homebrew-brews` — updated automatically via PR from the release workflow.

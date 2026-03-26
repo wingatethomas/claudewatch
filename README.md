@@ -7,7 +7,7 @@ macOS menu bar app that monitors all your running [Claude Code](https://docs.ant
 ### Homebrew (recommended)
 
 ```bash
-brew tap wingatethomas/claudewatch
+brew tap wingatethomas/brews
 brew install --cask claudewatch
 ```
 
