@@ -15,6 +15,7 @@ from AppKit import (
 from Foundation import NSRange
 
 from claudewatch.backend.core.models import ClaudeSession, SessionStatus
+from claudewatch.backend.core.paths import is_homebrew_install
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_breakdown
 from claudewatch.ui.icons import (
     STATUS_COLORS,
@@ -71,13 +72,22 @@ class MenuBuilder:
         # Update available?
         update_info = self._app._update_service.get_cached()
         if update_info:
-            self._menu.addItem_(
-                make_menu_item(
-                    f"Update to {update_info.tag}",
-                    self._app._make_open_update_handler(),
-                    d,
+            if is_homebrew_install():
+                self._menu.addItem_(
+                    make_menu_item(
+                        f"Update to {update_info.tag} (brew)",
+                        self._app._copy_brew_update,
+                        d,
+                    )
                 )
-            )
+            else:
+                self._menu.addItem_(
+                    make_menu_item(
+                        f"Update to {update_info.tag}",
+                        self._app._make_open_update_handler(),
+                        d,
+                    )
+                )
             self._menu.addItem_(NSMenuItem.separatorItem())
 
         # Guide nudge — show until user clicks it or dismisses

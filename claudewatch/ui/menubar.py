@@ -17,6 +17,8 @@ from AppKit import (
     NSApplicationActivationPolicyAccessory,
     NSMenu,
     NSMenuItem,
+    NSPasteboard,
+    NSPasteboardTypeString,
     NSStatusBar,
     NSTextField,
     NSTimer,
@@ -462,6 +464,23 @@ class ClaudeWatchApp:
                 webbrowser.open("https://github.com/wingatethomas/claudewatch/releases/latest")
 
         return handler
+
+    def _copy_brew_update(self, _: NSMenuItem) -> None:
+        """Copy the brew upgrade command to clipboard."""
+        cmd = "brew upgrade --cask claudewatch"
+        pb = NSPasteboard.generalPasteboard()
+        pb.clearContents()
+        pb.setString_forType_(cmd, NSPasteboardTypeString)
+
+        update_info = self._update_service.get_cached()
+        tag = update_info.tag if update_info else ""
+        app = NSApplication.sharedApplication()
+        app.activateIgnoringOtherApps_(True)
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_(f"Update to {tag}")
+        alert.setInformativeText_(f"Copied to clipboard:\n\n{cmd}\n\nPaste this in your terminal to update.")
+        alert.addButtonWithTitle_("OK")
+        alert.runModal()
 
     def _open_accessibility(self, _: NSMenuItem) -> None:
         """Open System Settings to the Accessibility pane."""
