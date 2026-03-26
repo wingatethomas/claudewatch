@@ -4,8 +4,8 @@ import json
 import logging
 from datetime import UTC, datetime
 
+from claudewatch.backend.core import features
 from claudewatch.backend.core.paths import PINS_PATH
-from claudewatch.backend.core.settings import get_setting
 
 log = logging.getLogger("claudewatch")
 
@@ -20,7 +20,8 @@ def _load() -> list[dict]:
                 return []
     except (OSError, json.JSONDecodeError):
         return []
-    ttl_days = int(get_setting("pin_expiry_days") or 30)
+    raw = features.get_facet("bookmarks", "expiry_days") or "30 days"
+    ttl_days = 0 if raw == "Never" else int(str(raw).rstrip(" days"))
     if ttl_days <= 0:  # "Never" = no expiry
         return data
     cutoff = datetime.now(tz=UTC).timestamp() - ttl_days * 86400

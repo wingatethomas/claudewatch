@@ -13,6 +13,7 @@ import subprocess
 import threading
 import time
 
+from claudewatch.backend.core import features
 from claudewatch.backend.core.paths import SUMMARIES_PATH
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.service import BaseService
@@ -126,6 +127,9 @@ class SummaryService(BaseService):
         Skips if already cached and fresh, if another generation is in progress,
         or if this CWD has failed too many times consecutively.
         """
+        if not features.is_enabled("summaries"):
+            return ""
+
         cached = self.get_cached(cwd)
         if cached is not None:
             return cached
