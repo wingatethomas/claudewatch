@@ -1,3 +1,11 @@
+---
+paths:
+  - "claudewatch/ui/**/*.py"
+  - "claudewatch/backend/core/helpers.py"
+  - "claudewatch/backend/detection/**/*.py"
+  - "claudewatch/backend/notifications/**/*.py"
+---
+
 - **Menu bar app uses direct AppKit** — `NSStatusBar`, `NSMenu`, `NSMenuItem`, `NSTimer`, `AppHelper.runEventLoop()`.
 - **Callback dispatch:** `_AppDelegate` maps `NSMenuItem` tags (integers) to Python callables. Use `_make_menu_item(title, callback, delegate)` to create items. Always clear `_callbacks` dict and reset `_next_tag` when rebuilding the menu to prevent leaks.
 - **NSObject subclasses must use `objc.super()`** — never use Python's `super()` in PyObjC classes. Pattern: `self = objc.super(ClassName, self).init()`.
