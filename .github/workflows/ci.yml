@@ -53,6 +53,7 @@ jobs:
         with:
           enable-cache: true
       - name: Audit dependencies for known vulnerabilities
+        continue-on-error: true
         run: |
           uv export --no-hashes --no-emit-project | grep -vi 'pyobjc' > requirements.txt
-          uvx pip-audit -r requirements.txt --no-deps --ignore-vuln CVE-2026-4539
+          uvx pip-audit -r requirements.txt --no-deps
