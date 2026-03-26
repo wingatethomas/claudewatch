@@ -37,6 +37,19 @@ def _fmt_tokens(n: int) -> str:
     return str(n)
 
 
+def format_tokens_compact(tokens: dict[str, int]) -> str:
+    """Single-line compact summary for cards: '49K in · 591K out · 288M cache'."""
+    total_in = tokens["input"]
+    total_out = tokens["output"]
+    cache = tokens["cache_create"] + tokens["cache_read"]
+    if total_in + total_out + cache == 0:
+        return ""
+    parts = [f"{_fmt_tokens(total_in)} in", f"{_fmt_tokens(total_out)} out"]
+    if cache:
+        parts.append(f"{_fmt_tokens(cache)} cache")
+    return " · ".join(parts)
+
+
 def format_tokens_breakdown(tokens: dict[str, int]) -> list[str]:
     """Detailed breakdown lines for a submenu."""
     total_in = tokens["input"] + tokens["cache_create"] + tokens["cache_read"]

@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import webbrowser
+from datetime import UTC, datetime, timedelta
 
 import objc
 from AppKit import (
@@ -18,13 +19,13 @@ from AppKit import (
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
-    NSMenu,
     NSMenuItem,
     NSMutableAttributedString,
+    NSPasteboard,
+    NSPasteboardTypeString,
     NSPopUpButton,
     NSSound,
     NSSwitch,
-    NSTableColumn,
     NSTableView,
     NSTextField,
     NSView,
@@ -33,17 +34,20 @@ from AppKit import (
     NSWindowStyleMaskTitled,
 )
 from AppKit import NSScrollView as AppKitScrollView
-from Foundation import NSMakeRect, NSObject, NSRange, NSSortDescriptor
+from Foundation import NSMakeRect, NSObject, NSRange
 
 from claudewatch import __version__
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.core import features
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
+from claudewatch.backend.core.models import HostApp
 from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.summary.dependencies import get_summary_service
-from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES
+from claudewatch.backend.usage.dependencies import get_usage_service
+from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
 from claudewatch.ui.activity import show_activity
+from claudewatch.ui.icons import get_app_icon
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
@@ -192,6 +196,19 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             sound = NSSound.soundNamed_(value)
             if sound:
                 sound.play()
+
+    # ── History card actions ──
+
+    def copyCwd_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        cwd = str(sender.representedObject())
+        pb = NSPasteboard.generalPasteboard()
+        pb.clearContents()
+        pb.setString_forType_(cwd, NSPasteboardTypeString)
+
+    def revealInFinder_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        cwd = str(sender.representedObject())
+        if os.path.isdir(cwd):
+            subprocess.run(["open", cwd], check=False)  # noqa: S603, S607
 
     # ── Danger zone ──
 
@@ -349,6 +366,30 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
+
+def _relative_time(iso_str: str) -> str:  # noqa: PLR0911
+    """Convert ISO timestamp to relative time: '2h ago', 'yesterday', 'Mar 23'."""
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        now = datetime.now(tz=UTC)
+        delta = now - dt
+        if delta < timedelta(minutes=1):
+            return "just now"
+        if delta < timedelta(hours=1):
+            m = int(delta.total_seconds() / 60)
+            return f"{m}m ago"
+        if delta < timedelta(hours=24):
+            h = int(delta.total_seconds() / 3600)
+            return f"{h}h ago"
+        if delta < timedelta(days=2):
+            return "yesterday"
+        if delta < timedelta(days=7):
+            d = int(delta.days)
+            return f"{d}d ago"
+        return dt.strftime("%b %-d")
+    except (ValueError, TypeError):
+        return ""
 
 
 def _reload_history_data() -> None:
@@ -520,81 +561,174 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
 
 def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
-    """Build the history table pane."""
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
+    """Build the history pane as session cards."""
     _reload_history_data()
 
     if not _history_data:
+        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
         empty = _make_secondary_label("No session history yet.", _PAD, h // 2, w - _PAD * 2, 13.0)
         empty.setAlignment_(1)
         view.addSubview_(empty)
         return view
 
-    _bar_h = 36
-    bar = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, _bar_h))
+    _card_h = 110
+    _card_gap = 10
+    card_w = w - _PAD * 2
 
-    actions_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(_PAD, 6, 100, 24), True)
-    actions_popup.setFont_(NSFont.systemFontOfSize_(12.0))
-    actions_popup.setEnabled_(False)
-    actions_popup.addItemWithTitle_("Select a row")
-    for title, sel in [("Resume", "resumeSelected:"), ("Activity", "activitySelected:"), ("Delete", "deleteSelected:")]:
-        actions_popup.addItemWithTitle_(title)
-        idx = actions_popup.numberOfItems() - 1
-        actions_popup.itemAtIndex_(idx).setTarget_(delegate)
-        actions_popup.itemAtIndex_(idx).setAction_(
-            objc.selector(getattr(delegate, sel.replace(":", "_")), signature=b"v@:@")
-        )
-    bar.addSubview_(actions_popup)
+    total_h = _PAD + len(_history_data) * (_card_h + _card_gap) + _PAD
+    inner_h = max(h, total_h)
+    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
 
-    sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, _bar_h - 1, w, 1))
-    sep.setBoxType_(2)
-    bar.addSubview_(sep)
-    view.addSubview_(bar)
+    pinned_cwds = get_bookmark_service().get_pinned_cwds()
+    usage_svc = get_usage_service()
+    summary_svc = get_summary_service()
 
-    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, _bar_h, w, h - _bar_h))
+    y = inner_h - _PAD
+    for entry in _history_data:
+        y -= _card_h
+        _add_history_card(inner, delegate, entry, _PAD, y, card_w, _card_h, pinned_cwds, usage_svc, summary_svc)
+        y -= _card_gap
+
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
     scroll.setHasVerticalScroller_(True)
     scroll.setDrawsBackground_(False)
+    scroll.setDocumentView_(inner)
+    return scroll
 
-    table = NSTableView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h - _bar_h))
-    table.setUsesAlternatingRowBackgroundColors_(True)
-    table.setRowHeight_(28)
-    table.setGridStyleMask_(1)
 
-    for col_id, title, width, asc in [
-        ("project", "Project", 180, True),
-        ("date", "Last Active", 140, False),
-        ("model", "Model", 80, True),
-    ]:
-        col = NSTableColumn.alloc().initWithIdentifier_(col_id)
-        col.headerCell().setStringValue_(title)
-        col.setWidth_(width)
-        col.setEditable_(False)
-        col.setSortDescriptorPrototype_(NSSortDescriptor.alloc().initWithKey_ascending_(col_id, asc))
-        table.addTableColumn_(col)
+def _add_history_card(  # noqa: PLR0913, PLR0915
+    view: NSView,
+    delegate: _PrefsDelegate,
+    entry: dict,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    pinned_cwds: set[str],
+    usage_svc: object,
+    summary_svc: object,
+) -> None:
+    """Add a single session history card."""
+    card = _make_card(x, y, w, h)
+    view.addSubview_(card)
+    content = card.contentView()
 
-    table.setColumnAutoresizingStyle_(1)
-    table.setDataSource_(delegate)
-    table.setDelegate_(delegate)
-    delegate._history_table = table
-    delegate._actions_popup = actions_popup
+    project = entry.get("project", "unknown")
+    cwd = entry.get("cwd", "")
+    session_id = entry.get("session_id", "")
+    model_raw = entry.get("model", "")
+    model = MODEL_DISPLAY_NAMES.get(model_raw, model_raw)
+    host_app_str = entry.get("host_app", "Terminal")
+    ended_at = entry.get("ended_at", "")
+    is_pinned = cwd in pinned_cwds
 
-    ctx_menu = NSMenu.alloc().init()
-    for title, sel in [("Resume", "resumeSelected:"), ("Activity", "activitySelected:")]:
-        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, sel, "")
-        mi.setTarget_(delegate)
-        ctx_menu.addItem_(mi)
-    ctx_menu.addItem_(NSMenuItem.separatorItem())
-    ctx_delete = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Delete", "deleteSelected:", "")
-    ctx_delete.setTarget_(delegate)
+    # Row 1: [app icon] project name          model  ★
+    row1_y = h - 28
+
+    # Host app icon
+    app_enum = next((ha for ha in HostApp if ha.value == host_app_str), HostApp.TERMINAL)
+    icon = get_app_icon(app_enum, size=16)
+    if icon:
+        icon_view = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, row1_y, 16, 16))
+        icon_view.setImage_(icon)
+        icon_view.setBordered_(False)
+        icon_view.setEnabled_(False)
+        content.addSubview_(icon_view)
+
+    name_x = _CARD_PAD + 22 if icon else _CARD_PAD
+    name_label = _make_label(project, name_x, row1_y - 2, w - name_x - 80, 13.0, bold=True)
+    content.addSubview_(name_label)
+
+    # Model badge + pin star on right
+    right_text = model
+    if is_pinned:
+        right_text += "  \u2605"
+    model_label = _make_secondary_label(right_text, w - _CARD_PAD - 70, row1_y - 1, 70, 11.0)
+    model_label.setAlignment_(2)  # right
+    content.addSubview_(model_label)
+
+    # Row 2: relative time
+    row2_y = row1_y - 18
+    time_str = _relative_time(ended_at)
+    time_label = _make_secondary_label(time_str, _CARD_PAD, row2_y, 200, 11.0)
+    content.addSubview_(time_label)
+
+    # Row 3: summary
+    row3_y = row2_y - 18
+    summary = summary_svc.get_cached(cwd) if cwd else None
+    _max_summary = 60
+    summary_text = summary[:_max_summary] + "..." if summary and len(summary) > _max_summary else (summary or "")
+    if summary_text:
+        sum_label = _make_secondary_label(summary_text, _CARD_PAD, row3_y, w - _CARD_PAD * 2, 11.0)
+        sum_label.setTextColor_(NSColor.tertiaryLabelColor())
+        content.addSubview_(sum_label)
+
+    # Row 4: token stats
+    row4_y = row3_y - 18
+    tokens = usage_svc.get_tokens(cwd) if cwd else {}
+    token_str = format_tokens_compact(tokens) if tokens else ""
+    if token_str:
+        token_label = _make_secondary_label(token_str, _CARD_PAD, row4_y, w - _CARD_PAD * 2, 10.0)
+        token_label.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(10.0, 0))
+        token_label.setTextColor_(NSColor.tertiaryLabelColor())
+        content.addSubview_(token_label)
+
+    # Row 5: action buttons — Resume, Activity, ···
+    btn_y = 8
+    _btn_h = 22
+    _btn_font = NSFont.systemFontOfSize_(11.0)
+
+    if session_id:
+        resume_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, btn_y, 65, _btn_h))
+        resume_btn.setTitle_("Resume")
+        resume_btn.setBezelStyle_(1)
+        resume_btn.setFont_(_btn_font)
+        resume_btn.setRepresentedObject_(f"{session_id}|{cwd}")
+        resume_btn.setTarget_(delegate)
+        resume_btn.setAction_(objc.selector(delegate.resumeSession_, signature=b"v@:@"))
+        content.addSubview_(resume_btn)
+
+    activity_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD + 73, btn_y, 65, _btn_h))
+    activity_btn.setTitle_("Activity")
+    activity_btn.setBezelStyle_(1)
+    activity_btn.setFont_(_btn_font)
+    activity_btn.setRepresentedObject_(f"{project}|{cwd}")
+    activity_btn.setTarget_(delegate)
+    activity_btn.setAction_(objc.selector(delegate.viewActivity_, signature=b"v@:@"))
+    content.addSubview_(activity_btn)
+
+    # Meatball menu (···)
+    meatball = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+        NSMakeRect(w - _CARD_PAD - 36, btn_y, 36, _btn_h),
+        True,
+    )
+    meatball.setFont_(_btn_font)
+    meatball.setBordered_(True)
+    meatball.setBezelStyle_(1)
+    meatball.addItemWithTitle_("···")
+
+    meatball.addItemWithTitle_("Copy Path")
+    meatball.itemAtIndex_(1).setRepresentedObject_(cwd)
+    meatball.itemAtIndex_(1).setTarget_(delegate)
+    meatball.itemAtIndex_(1).setAction_(objc.selector(delegate.copyCwd_, signature=b"v@:@"))
+
+    meatball.addItemWithTitle_("Open in Finder")
+    meatball.itemAtIndex_(2).setRepresentedObject_(cwd)
+    meatball.itemAtIndex_(2).setTarget_(delegate)
+    meatball.itemAtIndex_(2).setAction_(objc.selector(delegate.revealInFinder_, signature=b"v@:@"))
+
+    meatball.menu().addItem_(NSMenuItem.separatorItem())
+
+    meatball.addItemWithTitle_("Delete")
+    delete_idx = meatball.numberOfItems() - 1
+    meatball.itemAtIndex_(delete_idx).setRepresentedObject_(cwd)
+    meatball.itemAtIndex_(delete_idx).setTarget_(delegate)
+    meatball.itemAtIndex_(delete_idx).setAction_(objc.selector(delegate.deleteHistoryEntry_, signature=b"v@:@"))
     delete_attr = NSMutableAttributedString.alloc().initWithString_("Delete")
     delete_attr.addAttribute_value_range_("NSColor", NSColor.systemRedColor(), NSRange(0, 6))
-    ctx_delete.setAttributedTitle_(delete_attr)
-    ctx_menu.addItem_(ctx_delete)
-    table.setMenu_(ctx_menu)
+    meatball.itemAtIndex_(delete_idx).setAttributedTitle_(delete_attr)
 
-    scroll.setDocumentView_(table)
-    view.addSubview_(scroll)
-    return view
+    content.addSubview_(meatball)
 
 
 def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
