@@ -1201,14 +1201,6 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     claude_btn.setAction_(objc.selector(delegate.openClaudeUsage_, signature=b"v@:@"))
     view.addSubview_(claude_btn)
 
-    console_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 130, btn_y, 140, _btn_h))
-    console_btn.setTitle_("Anthropic Console")
-    console_btn.setBezelStyle_(1)
-    console_btn.setFont_(_btn_font)
-    console_btn.setTarget_(delegate)
-    console_btn.setAction_(objc.selector(delegate.openAnthropicConsole_, signature=b"v@:@"))
-    view.addSubview_(console_btn)
-
     return view
 
 
