@@ -40,14 +40,12 @@ from claudewatch import __version__
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.core import features
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
-from claudewatch.backend.core.models import HostApp
 from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
 from claudewatch.ui.activity import show_activity
-from claudewatch.ui.icons import get_app_icon
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
@@ -571,11 +569,11 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
         view.addSubview_(empty)
         return view
 
-    _card_h = 72
-    _card_gap = 8
-    card_w = w - _PAD * 2
+    _row_h = 54  # compact row height
+    _sep_h = 1
+    row_w = w
 
-    total_h = _PAD + len(_history_data) * (_card_h + _card_gap) + _PAD
+    total_h = _PAD + len(_history_data) * (_row_h + _sep_h) + _PAD
     inner_h = max(h, total_h)
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
 
@@ -584,25 +582,28 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     summary_svc = get_summary_service()
 
     y = inner_h - _PAD
-    for entry in _history_data:
-        y -= _card_h
-        _add_history_card(inner, delegate, entry, _PAD, y, card_w, _card_h, pinned_cwds, usage_svc, summary_svc)
-        y -= _card_gap
+    for i, entry in enumerate(_history_data):
+        y -= _row_h
+        _add_history_row(inner, delegate, entry, 0, y, row_w, _row_h, pinned_cwds, usage_svc, summary_svc)
+        if i < len(_history_data) - 1:
+            sep = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y - 1, row_w - _PAD * 2, _sep_h))
+            sep.setBoxType_(2)
+            inner.addSubview_(sep)
+            y -= _sep_h
 
     scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
     scroll.setHasVerticalScroller_(True)
     scroll.setDrawsBackground_(False)
     scroll.setDocumentView_(inner)
-    # Scroll to top
     inner.scrollPoint_((0, inner_h))
     return scroll
 
 
-def _add_history_card(  # noqa: PLR0913, PLR0915
+def _add_history_row(  # noqa: PLR0913, PLR0915
     view: NSView,
     delegate: _PrefsDelegate,
     entry: dict,
-    x: float,
+    _x: float,  # noqa: ARG001
     y: float,
     w: float,
     h: float,
@@ -610,78 +611,45 @@ def _add_history_card(  # noqa: PLR0913, PLR0915
     usage_svc: object,
     summary_svc: object,
 ) -> None:
-    """Add a compact session history card."""
-    card = _make_card(x, y, w, h)
-    view.addSubview_(card)
-    c = card.contentView()
-
+    """Add a borderless history row — Finder list style."""
     project = entry.get("project", "unknown")
     cwd = entry.get("cwd", "")
     session_id = entry.get("session_id", "")
     model_raw = entry.get("model", "")
     model = MODEL_DISPLAY_NAMES.get(model_raw, model_raw)
-    host_app_str = entry.get("host_app", "Terminal")
     ended_at = entry.get("ended_at", "")
     is_pinned = cwd in pinned_cwds
-    _p = _CARD_PAD  # shorthand
+    _p = _PAD
 
-    # ── Line 1: [icon] project                   model ★
-    ly1 = h - 22
-    app_enum = next((ha for ha in HostApp if ha.value == host_app_str), HostApp.TERMINAL)
-    icon = get_app_icon(app_enum, size=14)
-    name_x = _p
-    if icon:
-        iv = NSButton.alloc().initWithFrame_(NSMakeRect(_p, ly1 + 1, 14, 14))
-        iv.setImage_(icon)
-        iv.setBordered_(False)
-        iv.setEnabled_(False)
-        c.addSubview_(iv)
-        name_x = _p + 20
+    # ── Line 1: project name              model ★  ···
+    ly1 = y + h - 20
 
-    name_label = _make_label(project, name_x, ly1 - 1, w - name_x - 70, 12.0, bold=True)
-    c.addSubview_(name_label)
+    name_label = _make_label(project, _p, ly1, w - _p - 120, 13.0, bold=True)
+    view.addSubview_(name_label)
 
-    right_text = model + ("  \u2605" if is_pinned else "")
-    model_label = _make_secondary_label(right_text, w - _p - 60, ly1, 60, 10.0)
-    model_label.setAlignment_(2)  # right
-    c.addSubview_(model_label)
+    # Right side: model + pin + meatball menu
+    right_parts = []
+    if model:
+        right_parts.append(model)
+    if is_pinned:
+        right_parts.append("\u2605")
+    right_text = "  ".join(right_parts)
 
-    # ── Line 2: time · tokens (or just time)
-    ly2 = ly1 - 16
-    time_str = _relative_time(ended_at)
-    tokens = usage_svc.get_tokens(cwd) if cwd else {}
-    token_str = format_tokens_compact(tokens) if tokens else ""
-    meta = time_str
-    if token_str:
-        meta += f"  ·  {token_str}"
-    meta_label = _make_secondary_label(meta, _p, ly2, w - _p * 2, 10.0)
-    meta_label.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(10.0, 0))
-    c.addSubview_(meta_label)
-
-    # ── Line 3: summary (if available) or skip
-    ly3 = ly2 - 14
-    summary = summary_svc.get_cached(cwd) if cwd else None
-    _max_summary = 65
-    if summary:
-        s_text = summary[:_max_summary] + "…" if len(summary) > _max_summary else summary
-        s_label = _make_secondary_label(s_text, _p, ly3, w - _p * 2, 10.0)
-        s_label.setTextColor_(NSColor.tertiaryLabelColor())
-        c.addSubview_(s_label)
-
-    # ── Bottom row: actions right-aligned
-    _btn_h = 18
-    _btn_font = NSFont.systemFontOfSize_(10.0)
-    btn_y = 6
-    btn_x = w - _p
-
-    # ··· meatball (rightmost)
-    btn_x -= 28
-    meatball = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(btn_x, btn_y, 28, _btn_h), True)
-    meatball.setFont_(_btn_font)
+    # Meatball ··· as a small pulldown — no border, just text
+    meatball = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(w - _p - 24, ly1 - 1, 24, 18), True)
+    meatball.setFont_(NSFont.systemFontOfSize_(11.0))
     meatball.setBordered_(False)
     meatball.addItemWithTitle_("···")
-    meatball.itemAtIndex_(0).setTitle_("···")
-
+    for title, action, obj in [
+        ("Resume", delegate.resumeSession_, f"{session_id}|{cwd}"),
+        ("Activity", delegate.viewActivity_, f"{project}|{cwd}"),
+    ]:
+        meatball.addItemWithTitle_(title)
+        idx = meatball.numberOfItems() - 1
+        meatball.itemAtIndex_(idx).setRepresentedObject_(obj)
+        meatball.itemAtIndex_(idx).setTarget_(delegate)
+        meatball.itemAtIndex_(idx).setAction_(objc.selector(action, signature=b"v@:@"))
+    meatball.menu().addItem_(NSMenuItem.separatorItem())
     for title, action, obj in [
         ("Copy Path", delegate.copyCwd_, cwd),
         ("Open in Finder", delegate.revealInFinder_, cwd),
@@ -691,7 +659,6 @@ def _add_history_card(  # noqa: PLR0913, PLR0915
         meatball.itemAtIndex_(idx).setRepresentedObject_(obj)
         meatball.itemAtIndex_(idx).setTarget_(delegate)
         meatball.itemAtIndex_(idx).setAction_(objc.selector(action, signature=b"v@:@"))
-
     meatball.menu().addItem_(NSMenuItem.separatorItem())
     meatball.addItemWithTitle_("Delete")
     d_idx = meatball.numberOfItems() - 1
@@ -701,30 +668,33 @@ def _add_history_card(  # noqa: PLR0913, PLR0915
     d_attr = NSMutableAttributedString.alloc().initWithString_("Delete")
     d_attr.addAttribute_value_range_("NSColor", NSColor.systemRedColor(), NSRange(0, 6))
     meatball.itemAtIndex_(d_idx).setAttributedTitle_(d_attr)
-    c.addSubview_(meatball)
+    view.addSubview_(meatball)
 
-    # Activity
-    btn_x -= 52
-    act_btn = NSButton.alloc().initWithFrame_(NSMakeRect(btn_x, btn_y, 50, _btn_h))
-    act_btn.setTitle_("Activity")
-    act_btn.setBezelStyle_(1)
-    act_btn.setFont_(_btn_font)
-    act_btn.setRepresentedObject_(f"{project}|{cwd}")
-    act_btn.setTarget_(delegate)
-    act_btn.setAction_(objc.selector(delegate.viewActivity_, signature=b"v@:@"))
-    c.addSubview_(act_btn)
+    if right_text:
+        rt_label = _make_secondary_label(right_text, w - _p - 24 - 70, ly1 + 1, 65, 11.0)
+        rt_label.setAlignment_(2)
+        view.addSubview_(rt_label)
 
-    # Resume
-    if session_id:
-        btn_x -= 54
-        res_btn = NSButton.alloc().initWithFrame_(NSMakeRect(btn_x, btn_y, 50, _btn_h))
-        res_btn.setTitle_("Resume")
-        res_btn.setBezelStyle_(1)
-        res_btn.setFont_(_btn_font)
-        res_btn.setRepresentedObject_(f"{session_id}|{cwd}")
-        res_btn.setTarget_(delegate)
-        res_btn.setAction_(objc.selector(delegate.resumeSession_, signature=b"v@:@"))
-        c.addSubview_(res_btn)
+    # ── Line 2: time · tokens
+    ly2 = ly1 - 17
+    time_str = _relative_time(ended_at)
+    tokens = usage_svc.get_tokens(cwd) if cwd else {}
+    token_str = format_tokens_compact(tokens) if tokens else ""
+    meta = time_str
+    if token_str:
+        meta += f"  ·  {token_str}"
+    meta_label = _make_secondary_label(meta, _p, ly2, w - _p * 2, 11.0)
+    view.addSubview_(meta_label)
+
+    # ── Line 3: summary (if available)
+    ly3 = ly2 - 16
+    summary = summary_svc.get_cached(cwd) if cwd else None
+    _max_summary = 70
+    if summary:
+        s_text = summary[:_max_summary] + "…" if len(summary) > _max_summary else summary
+        s_label = _make_secondary_label(s_text, _p, ly3, w - _p * 2, 11.0)
+        s_label.setTextColor_(NSColor.tertiaryLabelColor())
+        view.addSubview_(s_label)
 
 
 def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
