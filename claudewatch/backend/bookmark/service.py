@@ -32,3 +32,7 @@ class BookmarkService(BaseService):
     def get_pinned_cwds(self) -> set[str]:
         """Return the set of CWDs that are currently pinned."""
         return bookmarks_repo.get_pinned_cwds()
+
+    def clear_all(self) -> None:
+        """Delete all bookmarks."""
+        bookmarks_repo._save([])

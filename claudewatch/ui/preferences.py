@@ -41,6 +41,7 @@ from claudewatch.backend.core import features
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.history.dependencies import get_history_service
+from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES
 from claudewatch.ui.activity import show_activity
 
@@ -191,6 +192,28 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             sound = NSSound.soundNamed_(value)
             if sound:
                 sound.play()
+
+    # ── Danger zone ──
+
+    def clearBookmarks_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_("Delete all bookmarks?")
+        alert.setInformativeText_("This will remove all pinned sessions. This cannot be undone.")
+        alert.addButtonWithTitle_("Delete All")
+        alert.addButtonWithTitle_("Cancel")
+        if alert.runModal() == NSAlertFirstButtonReturn:
+            get_bookmark_service().clear_all()
+
+    def clearSummaries_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_("Delete all summaries?")
+        alert.setInformativeText_("Cached summaries will be regenerated as needed. This cannot be undone.")
+        alert.addButtonWithTitle_("Delete All")
+        alert.addButtonWithTitle_("Cancel")
+        if alert.runModal() == NSAlertFirstButtonReturn:
+            get_summary_service().clear_all()
 
     # ── Static actions ──
 
@@ -412,11 +435,14 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
     _facet_row_h = 40
     _card_gap = 12
 
+    _danger_h = 44  # danger zone card height
+    _danger_gap = 24  # extra gap before danger zone
+
     # Calculate total height needed
     total_h = _PAD
     for f in all_features:
         total_h += _toggle_row_h + len(f.facets) * _facet_row_h + _card_gap
-    total_h += _PAD
+    total_h += _danger_gap + _danger_h + _PAD
     inner_h = max(h, total_h)
 
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
@@ -428,6 +454,39 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
         y -= card_h
         _add_feature_card(inner, delegate, feature, _PAD, y, card_w)
         y -= _card_gap
+
+    # Danger zone
+    y -= _danger_gap - _card_gap  # extra space before danger zone
+
+    danger_label = _make_secondary_label("DANGER ZONE", _PAD, y, 200, 11.0)
+    danger_label.setTextColor_(NSColor.systemRedColor().colorWithAlphaComponent_(0.7))
+    inner.addSubview_(danger_label)
+    y -= 20
+
+    danger_card = _make_card(_PAD, y - _danger_h, card_w, _danger_h)
+    danger_card.setBorderColor_(NSColor.systemRedColor().colorWithAlphaComponent_(0.3))
+    inner.addSubview_(danger_card)
+    dc = danger_card.contentView()
+
+    _btn_w = 140
+    _btn_h = 24
+    _btn_y = (_danger_h - _btn_h) // 2
+
+    bm_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, _btn_y, _btn_w, _btn_h))
+    bm_btn.setTitle_("Clear Bookmarks")
+    bm_btn.setBezelStyle_(1)
+    bm_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+    bm_btn.setTarget_(delegate)
+    bm_btn.setAction_(objc.selector(delegate.clearBookmarks_, signature=b"v@:@"))
+    dc.addSubview_(bm_btn)
+
+    sum_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD + _btn_w + 12, _btn_y, _btn_w, _btn_h))
+    sum_btn.setTitle_("Clear Summaries")
+    sum_btn.setBezelStyle_(1)
+    sum_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+    sum_btn.setTarget_(delegate)
+    sum_btn.setAction_(objc.selector(delegate.clearSummaries_, signature=b"v@:@"))
+    dc.addSubview_(sum_btn)
 
     # Wrap in scroll view if needed
     if inner_h <= h:
