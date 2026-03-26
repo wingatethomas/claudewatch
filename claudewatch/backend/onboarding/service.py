@@ -29,8 +29,8 @@ TIPS: dict[str, dict[str, str]] = {
         "message": "Click a session to focus its window.",
     },
     "pin": {
-        "title": "Tip: Pinned sessions",
-        "message": "Pinned sessions can be resumed later from \u2605 Pinned.",
+        "title": "Tip: Bookmarked sessions",
+        "message": "Bookmarked sessions can be resumed later from the Bookmarks menu.",
     },
     "hover": {
         "title": "Tip: Session actions",
@@ -45,6 +45,7 @@ class OnboardingService(BaseService):
     def __init__(self, notification_service: NotificationService) -> None:
         super().__init__()
         self._notification_service = notification_service
+        self._shown_this_session: set[str] = set()  # in-memory fallback
 
     def _shown_tips(self) -> list[str]:
         """Return the list of already-shown tip IDs."""
@@ -55,6 +56,7 @@ class OnboardingService(BaseService):
 
     def _mark_shown(self, tip_id: str) -> None:
         """Persist *tip_id* as shown so it is never delivered again."""
+        self._shown_this_session.add(tip_id)
         shown = self._shown_tips()
         if tip_id not in shown:
             shown.append(tip_id)
@@ -62,7 +64,7 @@ class OnboardingService(BaseService):
 
     def is_tip_shown(self, tip_id: str) -> bool:
         """Check whether *tip_id* has already been delivered."""
-        return tip_id in self._shown_tips()
+        return tip_id in self._shown_this_session or tip_id in self._shown_tips()
 
     def show_tip(self, tip_id: str) -> bool:
         """Deliver an onboarding tip if not already shown.
