@@ -668,13 +668,10 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    # Layout: header (24px) + 4px gap + toolbar (28px) + 4px gap + separator
-    # Total top band = ~60px
-    _top = 8
-    header_y = h - _top
+    # Layout from top: 16px padding, header, 4px, toolbar, 4px, separator
+    header_y = h - _PAD
     _add_pane_header(view, "History", w, header_y)
-
-    toolbar_y = h - _top - 30  # right below header
+    toolbar_y = header_y - 30
     search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 22))
     search.setPlaceholderString_("Search...")
     search.setFont_(NSFont.systemFontOfSize_(12.0))
