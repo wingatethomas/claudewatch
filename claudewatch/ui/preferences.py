@@ -983,28 +983,52 @@ _CHANGELOG = [
     (
         "v0.7.0",
         [
-            "Backend restructuring: domain ownership, NSUserDefaults, feature flags",
-            "Sidebar preferences (General / History / About)",
-            "Session history cards with search, sort, bookmark filter",
-            "Title + bulleted summaries with structured extraction",
-            "Background summary refresh toggle",
-            "Bookmarks submenu, ▸ indicator, danger zone",
-            "CI: manual dispatch, lint on Ubuntu",
+            "Sidebar preferences with feature toggles",
+            "Session history with search, sort, and bookmark filter",
+            "Smarter summaries: title + bulleted action list",
+            "Background summary refresh (toggleable)",
+            "Bookmarks submenu in menu bar",
+            "Danger zone: clear bookmarks or summaries",
+            "Settings stored in macOS preferences",
         ],
     ),
     (
         "v0.6.1",
         [
-            "Native macOS notifications (replaced terminal-notifier)",
+            "Native macOS notifications (no more terminal-notifier)",
             "Compact model names in menu bar",
         ],
     ),
     (
         "v0.6.0",
         [
-            "Self-update from GitHub Releases",
-            "Onboarding tips with replay",
-            "Session token usage breakdown",
+            "One-click self-update from GitHub Releases",
+            "Onboarding tips for new users",
+            "Per-session token usage breakdown",
+        ],
+    ),
+    (
+        "v0.5.0",
+        [
+            "Onboarding tips and audit logging",
+            "Session history recording",
+            "Activity feed with timeline view",
+        ],
+    ),
+    (
+        "v0.4.0",
+        [
+            "Token usage tracking per session",
+            "Auto-generated session summaries",
+            "Pinned sessions with resume",
+        ],
+    ),
+    (
+        "v0.3.0",
+        [
+            "Preferences window with notification sounds",
+            "Session history tab",
+            "IDE detection (VS Code, PyCharm)",
         ],
     ),
 ]
@@ -1043,12 +1067,12 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     repo_btn.setAction_(objc.selector(delegate.openRepo_, signature=b"v@:@"))
     content.addSubview_(repo_btn)
 
-    y -= card_h + 16
+    y -= card_h + 24
 
-    # Changelog — scrollable
+    # Changelog
     changelog_header = _make_label("What's New", _PAD, y, 200, 13.0, bold=True)
     view.addSubview_(changelog_header)
-    y -= 8
+    y -= 12
 
     scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_PAD, 0, card_w, y))
     scroll.setHasVerticalScroller_(False)
