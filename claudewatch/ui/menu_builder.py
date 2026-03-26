@@ -163,11 +163,11 @@ class MenuBuilder:
                     label += f" — {short_note}"
                 item = make_menu_item(label, self._app._make_resume_handler(pin.session_id, pin.cwd), d)
                 sub = NSMenu.alloc().init()
-                cached = self._app._summary_service.get_cached(pin.cwd)
-                if cached:
+                bullets = self._app._summary_service.get_cached_summary(pin.cwd)
+                if bullets:
                     summary_item = make_menu_item("Summary", None, d)
                     summary_sub = NSMenu.alloc().init()
-                    add_summary_lines(summary_sub, cached, d)
+                    add_summary_lines(summary_sub, bullets, d)
                     summary_item.setSubmenu_(summary_sub)
                     sub.addItem_(summary_item)
                 sub.addItem_(NSMenuItem.separatorItem())
@@ -211,7 +211,7 @@ class MenuBuilder:
                 item = make_menu_item(label, noop, d)
                 item_sub = NSMenu.alloc().init()
                 # Summary submenu
-                summary_text = self._app._summary_service.get_cached(entry.cwd)
+                summary_text = self._app._summary_service.get_cached_summary(entry.cwd)
                 if summary_text:
                     summary_item = make_menu_item("Summary", None, d)
                     summary_sub = NSMenu.alloc().init()
@@ -313,13 +313,14 @@ class MenuBuilder:
         # Summary submenu — auto-generates in background
         summary_item = make_menu_item("Summary", None, d)
         summary_sub = NSMenu.alloc().init()
-        cached = self._app._summary_service.get_cached(s.cwd)
-        if cached:
-            add_summary_lines(summary_sub, cached, d)
+        bullets = self._app._summary_service.get_cached_summary(s.cwd)
+        if bullets:
+            add_summary_lines(summary_sub, bullets, d)
         elif self._app._summary_service.is_generating(s.cwd):
             summary_sub.addItem_(make_menu_item("Generating…", None, d))
         else:
-            summary_sub.addItem_(make_menu_item("Pending…", None, d))
+            summary_sub.addItem_(make_menu_item("Generating…", None, d))
+            self._app._summary_service.track_session(s.cwd)
         summary_item.setSubmenu_(summary_sub)
         sub.addItem_(summary_item)
         # Usage submenu with token breakdown + Activity link

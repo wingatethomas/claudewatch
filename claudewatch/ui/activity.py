@@ -219,7 +219,7 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
     copy_btn.setAction_("copyToClipboard:")
     bar.addSubview_(copy_btn)
 
-    jsonl_btn = NSButton.alloc().initWithFrame_(NSMakeRect(174, 8, 70, 24))
+    jsonl_btn = NSButton.alloc().initWithFrame_(NSMakeRect(174, 8, 95, 24))
     jsonl_btn.setTitle_("Session File")
     jsonl_btn.setBezelStyle_(1)
     jsonl_btn.setToolTip_("Reveal session log in Finder")
