@@ -21,7 +21,7 @@ from Foundation import NSMakeRect
 from claudewatch.backend.core.settings import get_setting, set_setting
 
 _W = 500
-_H = 520
+_H = 580
 _PAD = 24
 _TEXT_W = _W - _PAD * 2
 
@@ -89,41 +89,43 @@ def show_welcome() -> None:  # noqa: PLR0915
     y = _H - 40
 
     # ── Title ────────────────────────────────────────────────────
-    _label(root, "Welcome to ClaudeWatch", y, size=18.0, bold=True)
-    y -= 24
+    _label(root, "Welcome to ClaudeWatch", y, size=18.0, bold=True, height=24)
+    y -= 30
     _label(
         root,
         "ClaudeWatch monitors your Claude Code sessions from the menu bar.\n"
         "Grant these two permissions to get started.",
         y,
-        height=34,
+        height=40,
         color=NSColor.secondaryLabelColor(),
     )
-    y -= 48
+    y -= 52
 
     # ── Accessibility ────────────────────────────────────────────
     _sep(root, y + 6)
-    y -= 6
-    _label(root, "Accessibility", y, bold=True)
-    y -= 18
-    _label(root, "Focus terminal windows when you click a session.", y, color=NSColor.secondaryLabelColor())
+    y -= 8
+    _label(root, "Accessibility", y, bold=True, height=18)
+    y -= 22
+    _label(root, "Focus terminal windows when you click a session.", y, height=18, color=NSColor.secondaryLabelColor())
     _action_btn(root, "Open Settings", y, _delegate, "openAccessibility_")
-    y -= 32
+    y -= 36
 
     # ── Automation ───────────────────────────────────────────────
     _sep(root, y + 6)
-    y -= 6
-    _label(root, "Automation (Terminal)", y, bold=True)
-    y -= 18
-    _label(root, "List windows, resume sessions, close tabs on quit.", y, color=NSColor.secondaryLabelColor())
+    y -= 8
+    _label(root, "Automation (Terminal)", y, bold=True, height=18)
+    y -= 22
+    _label(
+        root, "List windows, resume sessions, close tabs on quit.", y, height=18, color=NSColor.secondaryLabelColor()
+    )
     _action_btn(root, "Open Settings", y, _delegate, "openAutomation_")
-    y -= 32
+    y -= 36
 
     # ── Privacy ──────────────────────────────────────────────────
     _sep(root, y + 6)
-    y -= 6
-    _label(root, "Privacy", y, bold=True)
-    y -= 18
+    y -= 8
+    _label(root, "Privacy", y, bold=True, height=18)
+    y -= 22
     _label(
         root,
         "ClaudeWatch only reads ~/.claude/ and writes to\n"
@@ -131,21 +133,21 @@ def show_welcome() -> None:  # noqa: PLR0915
         "It does not access Photos, Music, Documents, Downloads,\n"
         "or any other personal files. Deny those prompts if they appear.",
         y,
-        height=64,
+        height=72,
         color=NSColor.secondaryLabelColor(),
     )
-    y -= 78
+    y -= 84
 
     # ── What it runs ─────────────────────────────────────────────
     _sep(root, y + 6)
-    y -= 6
-    _label(root, "What it runs", y, bold=True)
-    y -= 18
+    y -= 8
+    _label(root, "What it runs", y, bold=True, height=18)
+    y -= 22
     _label(
         root,
         "AppleScript (Terminal windows)  ·  claude -p (summaries)\nNative notifications  ·  GitHub API (update checks)",
         y,
-        height=32,
+        height=36,
         color=NSColor.secondaryLabelColor(),
     )
     y -= 50
