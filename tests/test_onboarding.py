@@ -68,8 +68,8 @@ class TestShowTip:
 
         with (
             patch(f"{_MOD}.get_setting", return_value=[]),
-            patch(f"{_MOD}.set_setting"),
             patch(f"{_MOD}.features.is_enabled", return_value=True),
+            patch(f"{_MOD}.set_setting"),
         ):
             result = svc.show_tip("welcome")
         assert result is True
@@ -85,8 +85,8 @@ class TestShowTip:
 
         with (
             patch(f"{_MOD}.get_setting", return_value=[]),
-            patch(f"{_MOD}.set_setting", mock_set),
             patch(f"{_MOD}.features.is_enabled", return_value=True),
+            patch(f"{_MOD}.set_setting", mock_set),
         ):
             svc.show_tip("welcome")
         mock_set.assert_called_once_with("onboarding_tips_shown", ["welcome"])
