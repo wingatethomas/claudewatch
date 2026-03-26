@@ -295,9 +295,6 @@ class MenuBuilder:
         help_item.setSubmenu_(help_submenu)
         self._menu.addItem_(help_item)
 
-        restart_item = make_menu_item("Restart", self._app._restart, d)
-        restart_item.setImage_(sf_icon("arrow.clockwise"))
-        self._menu.addItem_(restart_item)
         quit_item = make_menu_item("Quit", self._app._quit, d)
         quit_item.setImage_(sf_icon("xmark.circle"))
         self._menu.addItem_(quit_item)
