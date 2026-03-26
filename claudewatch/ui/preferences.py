@@ -715,7 +715,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     sort_seg.setAction_(objc.selector(delegate.historySortChanged_, signature=b"v@:@"))
     view.addSubview_(sort_seg)
 
-    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y, 50, 22))
+    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 50, 24))
     bm_chip.setTitle_("\u2605 Only")
     bm_chip.setButtonType_(1)  # NSButtonTypeToggle
     bm_chip.setBezelStyle_(1)
