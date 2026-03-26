@@ -647,17 +647,17 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     is_pinned = cwd in pinned_cwds
     _p = _PAD
 
-    # ── Line 1: ★ project name                    ···
+    # ── Line 1: [★]  project name                  ···
+    _star_col = _p  # star column (fixed width)
+    _name_col = _p + 18  # content starts after star column
     ly1 = y + h - 20
-    name_x = _p
 
     if is_pinned:
-        star = _make_label("\u2605", _p, ly1, 14, 12.0)
+        star = _make_label("\u2605", _star_col, ly1, 14, 12.0)
         star.setTextColor_(NSColor.secondaryLabelColor())
         view.addSubview_(star)
-        name_x = _p + 16
 
-    name_label = _make_label(project, name_x, ly1, w - name_x - 30, 13.0, bold=True)
+    name_label = _make_label(project, _name_col, ly1, w - _name_col - 30, 13.0, bold=True)
     view.addSubview_(name_label)
 
     # ··· menu
@@ -750,7 +750,7 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     if token_str:
         parts.append(token_str)
     meta = "  ·  ".join(parts)
-    meta_label = _make_secondary_label(meta, _p, ly2, w - _p * 2, 11.0)
+    meta_label = _make_secondary_label(meta, _name_col, ly2, w - _name_col - _p, 11.0)
     view.addSubview_(meta_label)
 
     # ── Line 3: short summary (full in ··· menu)
@@ -758,7 +758,7 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     _max_summary = 50
     if summary:
         s_text = summary[:_max_summary] + "…" if len(summary) > _max_summary else summary
-        s_label = _make_secondary_label(s_text, _p, ly3, w - _p * 2, 11.0)
+        s_label = _make_secondary_label(s_text, _name_col, ly3, w - _name_col - _p, 11.0)
         s_label.setTextColor_(NSColor.tertiaryLabelColor())
         view.addSubview_(s_label)
 
