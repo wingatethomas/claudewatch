@@ -21,6 +21,8 @@ from claudewatch.backend.core.session_log.service import SessionLogService
 
 log = logging.getLogger("claudewatch")
 
+_MAX_STORE_ENTRIES = 500
+_STORE_MAX_AGE = 30 * 86400  # 30 days
 _MAX_CONTEXT_CHARS = 8000
 _TIMEOUT_SECONDS = 45
 _REFRESH_INTERVAL = 60  # seconds between background refresh cycles
@@ -84,12 +86,25 @@ class SummaryService(BaseService):
                     self._store = data
         except (OSError, json.JSONDecodeError):
             self._store = {}
+        # Prune entries older than 30 days
+        cutoff = time.time() - _STORE_MAX_AGE
+        before = len(self._store)
+        self._store = {k: v for k, v in self._store.items() if v.get("mtime", 0) > cutoff}
+        # Cap total entries
+        if len(self._store) > _MAX_STORE_ENTRIES:
+            sorted_keys = sorted(self._store, key=lambda k: self._store[k].get("mtime", 0))
+            for k in sorted_keys[: len(self._store) - _MAX_STORE_ENTRIES]:
+                del self._store[k]
+        if len(self._store) < before:
+            self._save_store()
         self._store_loaded = True
 
     def _save_store(self) -> None:
+        tmp = self._store_path + ".tmp"
         try:
-            with open(self._store_path, "w") as f:
+            with open(tmp, "w") as f:
                 json.dump(self._store, f, indent=2)
+            os.replace(tmp, self._store_path)
         except OSError:
             log.warning("Failed to save summaries to %s", self._store_path)
 

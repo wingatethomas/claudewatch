@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from datetime import UTC, datetime
 
 from claudewatch.backend.core import features
@@ -21,7 +22,10 @@ def _load() -> list[dict]:
     except (OSError, json.JSONDecodeError):
         return []
     raw = features.get_facet("bookmarks", "expiry_days") or "30 days"
-    ttl_days = 0 if raw == "Never" else int(str(raw).rstrip(" days"))
+    try:
+        ttl_days = 0 if raw == "Never" else int(str(raw).rstrip(" days"))
+    except (ValueError, TypeError):
+        ttl_days = 30
     if ttl_days <= 0:  # "Never" = no expiry
         return data
     cutoff = datetime.now(tz=UTC).timestamp() - ttl_days * 86400
@@ -41,9 +45,11 @@ def _load() -> list[dict]:
 
 
 def _save(pins: list[dict]) -> None:
+    tmp = _PATH + ".tmp"
     try:
-        with open(_PATH, "w") as f:
+        with open(tmp, "w") as f:
             json.dump(pins, f, indent=2)
+        os.replace(tmp, _PATH)
     except OSError:
         log.warning("Failed to save pins to %s", _PATH)
 

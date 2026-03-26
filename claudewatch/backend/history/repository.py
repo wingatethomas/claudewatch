@@ -30,9 +30,11 @@ def _load() -> list[dict]:
 
 
 def _save(entries: list[dict]) -> None:
+    tmp = _PATH + ".tmp"
     try:
-        with open(_PATH, "w") as f:
+        with open(tmp, "w") as f:
             json.dump(entries, f, indent=2)
+        os.replace(tmp, _PATH)
     except OSError:
         log.warning("Failed to save history to %s", _PATH)
 

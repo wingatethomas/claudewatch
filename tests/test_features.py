@@ -67,6 +67,16 @@ class TestFeatureEnabled:
     def test_is_enabled_unregistered_returns_false(self):
         assert features.is_enabled("nonexistent") is False
 
+    def test_is_enabled_unregistered_logs_warning(self, caplog):
+        with caplog.at_level("WARNING", logger="claudewatch"):
+            features.is_enabled("typo_feature")
+        assert "unregistered feature: typo_feature" in caplog.text
+
+    def test_get_facet_unregistered_logs_warning(self, caplog):
+        with caplog.at_level("WARNING", logger="claudewatch"):
+            features.get_facet("typo_feature", "x")
+        assert "unregistered feature: typo_feature" in caplog.text
+
 
 class TestFacets:
     def setup_method(self) -> None:
