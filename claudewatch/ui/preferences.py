@@ -89,6 +89,7 @@ def _sidebar_items() -> list[dict]:
         {"type": "static", "key": "history", "label": "History"},
         {"type": "static", "key": "usage", "label": "Usage"},
         {"type": "separator"},
+        {"type": "static", "key": "guide", "label": "Guide"},
         {"type": "static", "key": "about", "label": "About"},
     ]
 
@@ -174,6 +175,8 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             pane = _build_history_pane(self, _CONTENT_W, content_h)
         elif item["key"] == "usage":
             pane = _build_usage_pane(self, _CONTENT_W, content_h)
+        elif item["key"] == "guide":
+            pane = _build_guide_pane(self, _CONTENT_W, content_h)
         elif item["key"] == "about":
             pane = _build_about_pane(self, _CONTENT_W, content_h)
         else:
@@ -1216,6 +1219,103 @@ def _fmt_token_count(n: int) -> str:
     return f"{n} tokens"
 
 
+_GUIDE_SECTIONS = [
+    (
+        "Getting Started",
+        [
+            "ClaudeWatch lives in your menu bar — click ✦ to see all running Claude Code sessions.",
+            "Sessions are grouped by status: Attention (needs input), Working, and Idle.",
+        ],
+    ),
+    (
+        "Focus a Session",
+        [
+            "Click any session to instantly focus its terminal window.",
+            "Works with Terminal.app, VS Code, PyCharm, and tmux.",
+        ],
+    ),
+    (
+        "Session Actions",
+        [
+            "Hover over a session to see action buttons: Activity, Bookmark, and Quit.",
+            "Activity shows a timeline of messages, tool calls, and responses.",
+        ],
+    ),
+    (
+        "Bookmarks",
+        [
+            "Bookmark a session to save it for later — find it in the Bookmarks submenu.",
+            "Add a note when bookmarking to remind yourself what you were working on.",
+        ],
+    ),
+    (
+        "Notifications",
+        [
+            "Get notified when a session needs attention (e.g. tool approval).",
+            "Configure notification sound and behavior in General settings.",
+        ],
+    ),
+    (
+        "Permissions",
+        [
+            "Accessibility — required to focus terminal windows when you click a session.",
+            "Automation (Terminal) — required to list and control Terminal.app windows.",
+            "All other permission prompts (Photos, Music, etc.) can be safely denied.",
+        ],
+    ),
+]
+
+
+def _build_guide_pane(_delegate: _PrefsDelegate, w: int, h: int) -> NSView:
+    """Build the getting started guide pane."""
+    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
+
+    y = _add_pane_header(view, "Guide", w, h)
+
+    card_w = w - _PAD * 2
+    section_h = 18
+    bullet_h = 16
+    section_gap = 16
+    inner_pad = 12
+
+    # Calculate total content height
+    content_h = inner_pad
+    for _title, items in _GUIDE_SECTIONS:
+        content_h += section_h + len(items) * bullet_h + section_gap
+    content_h += inner_pad
+
+    card_h = min(y - 8, content_h)
+    card = _make_card(_PAD, y - card_h, card_w, card_h)
+    card.setWantsLayer_(True)
+    card.layer().setMasksToBounds_(True)
+    view.addSubview_(card)
+
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, card_h))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setAutohidesScrollers_(True)
+    scroll.setDrawsBackground_(False)
+
+    inner_h = max(card_h, content_h)
+    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, inner_h))
+    cy = inner_h - inner_pad
+
+    for title, items in _GUIDE_SECTIONS:
+        cy -= section_h
+        label = _make_label(title, inner_pad, cy, card_w - inner_pad * 2, 12.0, bold=True)
+        inner.addSubview_(label)
+        for item in items:
+            cy -= bullet_h
+            bullet = _make_secondary_label(f"• {item}", inner_pad + 10, cy, card_w - inner_pad * 2 - 20, 10.5)
+            inner.addSubview_(bullet)
+        cy -= section_gap
+
+    scroll.setDocumentView_(inner)
+    inner.scrollPoint_((0, inner_h))
+    card.contentView().addSubview_(scroll)
+
+    return view
+
+
 def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
     """Build the about pane with version, links, and changelog."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
@@ -1352,13 +1452,18 @@ def _build_sidebar(delegate: _PrefsDelegate) -> NSView:
 # ── Public API ───────────────────────────────────────────────────────
 
 
-def show_preferences() -> None:
-    """Show (or bring to front) the preferences window."""
+def show_preferences(pane: str | None = None) -> None:
+    """Show (or bring to front) the preferences window, optionally selecting a pane."""
     global _window, _delegate  # noqa: PLW0603
 
     if _window is not None:
         _window.makeKeyAndOrderFront_(None)
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        if pane and _delegate is not None:
+            for i, item in enumerate(_delegate._sidebar_items):
+                if item.get("key") == pane:
+                    _delegate._select_sidebar(i)
+                    break
         return
 
     NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
@@ -1389,11 +1494,20 @@ def show_preferences() -> None:
     root.addSubview_(content)
     _delegate._content_area = content
 
-    # Select first non-separator item
-    for i, item in enumerate(_delegate._sidebar_items):
-        if item["type"] != "separator":
-            _delegate._select_sidebar(i)
-            break
+    # Select requested pane or first non-separator item
+    target_idx = None
+    if pane:
+        for i, item in enumerate(_delegate._sidebar_items):
+            if item.get("key") == pane:
+                target_idx = i
+                break
+    if target_idx is None:
+        for i, item in enumerate(_delegate._sidebar_items):
+            if item["type"] != "separator":
+                target_idx = i
+                break
+    if target_idx is not None:
+        _delegate._select_sidebar(target_idx)
 
     _window = window
     window.center()
