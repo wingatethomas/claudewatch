@@ -1131,25 +1131,26 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     _top_n = 10
     top_entries = session_stats[:_top_n]
     _top_row_h = 22
-    top_card_h = _CARD_PAD + len(top_entries) * _top_row_h + _CARD_PAD
+    top_card_h = _CARD_PAD + len(top_entries) * _top_row_h + _CARD_PAD + 4
     top_card = _make_card(_PAD, y - top_card_h, card_w, top_card_h)
     view.addSubview_(top_card)
     tpc = top_card.contentView()
 
     # Column positions (all labels, no buttons — consistent baseline)
     _col_name = _CARD_PAD
-    _col_date = _CARD_PAD + 140
-    _col_tokens = _CARD_PAD + 220
+    _col_date = _CARD_PAD + 170
+    _col_tokens = _CARD_PAD + 250
 
     tpy = top_card_h - _CARD_PAD
     for project, tokens, ended_at in top_entries:
         tpy -= _top_row_h
         # Clickable name — use label-styled button at same y as labels
-        name_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_col_name - 2, tpy - 2, 134, 20))
+        name_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_col_name, tpy, 164, 18))
         name_btn.setTitle_(project)
         name_btn.setBordered_(False)
         name_btn.setFont_(NSFont.systemFontOfSize_(12.0))
         name_btn.setAlignment_(0)
+        name_btn.setContentHuggingPriority_forOrientation_(750, 0)
         name_btn.setRepresentedObject_(project)
         name_btn.setTarget_(delegate)
         name_btn.setAction_(objc.selector(delegate.jumpToSession_, signature=b"v@:@"))
