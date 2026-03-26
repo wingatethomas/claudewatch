@@ -404,9 +404,20 @@ class SummaryService(BaseService):
 
         return "\n".join(parts)
 
+    @staticmethod
+    def _find_claude() -> str | None:
+        """Find the claude CLI, checking common install paths if PATH is limited."""
+        found = shutil.which("claude")
+        if found:
+            return found
+        for path in ("/opt/homebrew/bin/claude", "/usr/local/bin/claude", os.path.expanduser("~/.claude/bin/claude")):
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                return path
+        return None
+
     def _call_claude(self, cwd: str) -> str:
         """Call claude -p to generate a summary. Returns empty string on failure."""
-        claude_path = shutil.which("claude")
+        claude_path = self._find_claude()
         if not claude_path:
             log.warning("summarize: claude CLI not found")
             return ""
