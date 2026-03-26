@@ -4,6 +4,7 @@ import subprocess
 from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.core.dto import UpdateInfoDTO
+from claudewatch.backend.core.features import Feature, register
 from claudewatch.backend.updates.service import (
     UpdateService,
     _get_download_url,
@@ -43,6 +44,7 @@ class TestUpdateService:
     """Tests for the UpdateService class."""
 
     def setup_method(self):
+        register(Feature("auto_updates", "Automatic update checks"))
         self.svc = UpdateService()
 
     def test_check_newer_version_returns_dto(self):

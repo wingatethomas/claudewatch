@@ -9,10 +9,10 @@ import time
 
 from Foundation import NSObject, NSUserNotification, NSUserNotificationCenter
 
+from claudewatch.backend.core import features
 from claudewatch.backend.core.helpers import run_applescript
 from claudewatch.backend.core.models import ClaudeSession
 from claudewatch.backend.core.service import BaseService
-from claudewatch.backend.core.settings import get_setting
 
 log = logging.getLogger("claudewatch")
 
@@ -84,7 +84,7 @@ class NotificationService(BaseService):
 
     def send(self, title: str, subtitle: str, message: str) -> None:
         """Send a single notification (fire-and-forget)."""
-        if not get_setting("notifications_enabled"):
+        if not features.is_enabled("notifications"):
             return
         n = NSUserNotification.alloc().init()
         n.setTitle_(title)
@@ -94,7 +94,7 @@ class NotificationService(BaseService):
 
     def notify_if_needed(self, sessions: list[ClaudeSession]) -> None:  # noqa: PLR0912
         """Send notifications for sessions that need attention."""
-        if not get_setting("notifications_enabled"):
+        if not features.is_enabled("notifications"):
             return
 
         attention = [s for s in sessions if s.needs_attention]
@@ -146,7 +146,7 @@ class NotificationService(BaseService):
             n.setActionButtonTitle_("Focus")
             n.setUserInfo_({"pid": s.pid, "project": s.project})
 
-            sound_name = str(get_setting("notification_sound"))
+            sound_name = str(features.get_facet("notifications", "sound") or "Glass")
             if sound_name:
                 n.setSoundName_(sound_name)
 
