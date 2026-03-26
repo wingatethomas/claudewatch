@@ -3,6 +3,7 @@
 import os
 import re
 import subprocess
+import time
 import webbrowser
 from datetime import UTC, datetime, timedelta
 
@@ -86,6 +87,7 @@ def _sidebar_items() -> list[dict]:
     return [
         {"type": "static", "key": "general", "label": "General"},
         {"type": "static", "key": "history", "label": "History"},
+        {"type": "static", "key": "usage", "label": "Usage"},
         {"type": "separator"},
         {"type": "static", "key": "about", "label": "About"},
     ]
@@ -168,6 +170,8 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             pane = _build_general_pane(self, _CONTENT_W, content_h)
         elif item["key"] == "history":
             pane = _build_history_pane(self, _CONTENT_W, content_h)
+        elif item["key"] == "usage":
+            pane = _build_usage_pane(_CONTENT_W, content_h)
         elif item["key"] == "about":
             pane = _build_about_pane(self, _CONTENT_W, content_h)
         else:
@@ -1032,6 +1036,80 @@ _CHANGELOG = [
         ],
     ),
 ]
+
+
+def _build_usage_pane(w: int, h: int) -> NSView:
+    """Build the Usage pane — total accumulated stats + top sessions."""
+    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
+    y = _add_pane_header(view, "Usage", w, h)
+
+    history = get_history_service().get_all()
+    usage_svc = get_usage_service()
+
+    # Gather per-session stats
+    session_stats: list[tuple[str, dict[str, int]]] = []
+    total: dict[str, int] = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
+    _month_seconds = 30 * 86400
+    now_ts = time.time()
+
+    for entry in history:
+        tokens = usage_svc.get_tokens(entry.cwd)
+        session_total = sum(tokens.values())
+        if session_total > 0:
+            session_stats.append((entry.project, tokens))
+            # Only count toward total if within past month
+            try:
+                ended = datetime.fromisoformat(entry.ended_at).timestamp()
+                if now_ts - ended < _month_seconds:
+                    for k in total:
+                        total[k] += tokens[k]
+            except (ValueError, TypeError, AttributeError):
+                for k in total:
+                    total[k] += tokens[k]
+
+    # Total usage card
+    total_sum = sum(total.values())
+    card_w = w - _PAD * 2
+
+    if total_sum > 0:
+        total_lines = format_tokens_compact(total)
+        total_card_h = 50
+        total_card = _make_card(_PAD, y - total_card_h, card_w, total_card_h)
+        view.addSubview_(total_card)
+        tc = total_card.contentView()
+
+        header = _make_label("Last 30 days", _CARD_PAD, total_card_h - _CARD_PAD - 14, 200, 11.0)
+        header.setTextColor_(NSColor.secondaryLabelColor())
+        tc.addSubview_(header)
+
+        stats = _make_label(total_lines, _CARD_PAD, _CARD_PAD - 2, card_w - _CARD_PAD * 2, 13.0, bold=True)
+        tc.addSubview_(stats)
+
+        y -= total_card_h + 16
+    else:
+        no_data = _make_secondary_label("No usage data yet.", _PAD, y - 20, card_w, 13.0)
+        view.addSubview_(no_data)
+        return view
+
+    # Top 5 sessions by total tokens
+    top_label = _make_label("Top sessions", _PAD, y, 200, 13.0, bold=True)
+    view.addSubview_(top_label)
+    y -= 20
+
+    session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
+    _top_n = 5
+
+    for project, tokens in session_stats[:_top_n]:
+        compact = format_tokens_compact(tokens)
+        row_label = _make_label(project, _PAD, y, 160, 12.0, bold=True)
+        view.addSubview_(row_label)
+
+        tokens_label = _make_secondary_label(compact, _PAD + 165, y + 1, card_w - 165, 10.0)
+        tokens_label.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(10.0, 0))
+        view.addSubview_(tokens_label)
+        y -= 20
+
+    return view
 
 
 def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
