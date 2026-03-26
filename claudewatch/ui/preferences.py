@@ -1130,7 +1130,7 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
     _top_n = 5
     top_entries = session_stats[:_top_n]
-    _top_row_h = 32  # taller rows for name + date
+    _top_row_h = 22
     top_card_h = _CARD_PAD + len(top_entries) * _top_row_h + _CARD_PAD
     top_card = _make_card(_PAD, y - top_card_h, card_w, top_card_h)
     view.addSubview_(top_card)
@@ -1140,7 +1140,7 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     for project, tokens, ended_at in top_entries:
         tpy -= _top_row_h
         # Project name (clickable)
-        name_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, tpy + 10, 140, 16))
+        name_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, tpy + 1, 120, 18))
         name_btn.setTitle_(project)
         name_btn.setBordered_(False)
         name_btn.setFont_(NSFont.systemFontOfSize_(12.0))
@@ -1149,14 +1149,14 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
         name_btn.setTarget_(delegate)
         name_btn.setAction_(objc.selector(delegate.jumpToSession_, signature=b"v@:@"))
         tpc.addSubview_(name_btn)
-        # Date below name
+        # Date — middle column
         date_str = _relative_time(ended_at)
-        date_label = _make_secondary_label(date_str, _CARD_PAD, tpy - 2, 140, 10.0)
+        date_label = _make_secondary_label(date_str, _CARD_PAD + 125, tpy + 2, 70, 11.0)
         tpc.addSubview_(date_label)
-        # Token count right-aligned
+        # Token count — right
         total_tok = sum(tokens.values())
         val = _make_secondary_label(
-            _fmt_token_count(total_tok), _CARD_PAD + 145, tpy + 6, card_w - _CARD_PAD * 2 - 145, 11.0
+            _fmt_token_count(total_tok), _CARD_PAD + 200, tpy + 2, card_w - _CARD_PAD * 2 - 200, 11.0
         )
         val.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(11.0, 0.0))
         tpc.addSubview_(val)
