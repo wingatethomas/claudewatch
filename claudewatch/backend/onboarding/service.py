@@ -4,13 +4,18 @@ Delivers contextual tips the first time a user encounters key features.
 Each tip is shown at most once; shown tip IDs are persisted in config.
 """
 
+from __future__ import annotations
+
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from claudewatch.backend.core import features
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.settings import get_setting, set_setting
-from claudewatch.backend.notifications.service import NotificationService
+
+if TYPE_CHECKING:
+    from claudewatch.backend.notifications.service import NotificationService
 
 log = logging.getLogger("claudewatch")
 

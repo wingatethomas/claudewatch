@@ -5,8 +5,8 @@ import pytest
 from claudewatch.backend.core.dto import (
     ActivityEventDTO,
     BaseDTO,
+    BookmarkDTO,
     HistoryEntryDTO,
-    PinDTO,
     UpdateInfoDTO,
 )
 
@@ -20,18 +20,18 @@ class TestBaseDTO:
         assert dto.to_dict() == {}
 
 
-class TestPinDTO:
+class TestBookmarkDTO:
     def test_construction(self):
-        dto = PinDTO(session_id="abc", project="proj", cwd="/tmp", note="hi", timestamp="2026-01-01")
+        dto = BookmarkDTO(session_id="abc", project="proj", cwd="/tmp", note="hi", timestamp="2026-01-01")
         assert dto.project == "proj"
 
     def test_frozen(self):
-        dto = PinDTO(session_id="abc", project="proj", cwd="/tmp", note="hi", timestamp="2026-01-01")
+        dto = BookmarkDTO(session_id="abc", project="proj", cwd="/tmp", note="hi", timestamp="2026-01-01")
         with pytest.raises(AttributeError):
             dto.project = "new"  # type: ignore[misc]
 
     def test_to_dict(self):
-        dto = PinDTO(session_id="abc", project="proj", cwd="/tmp", note="hi", timestamp="2026-01-01")
+        dto = BookmarkDTO(session_id="abc", project="proj", cwd="/tmp", note="hi", timestamp="2026-01-01")
         d = dto.to_dict()
         assert d["project"] == "proj"
         assert d["cwd"] == "/tmp"

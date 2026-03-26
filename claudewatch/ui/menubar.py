@@ -288,7 +288,7 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_pin_handler(self, session: ClaudeSession) -> MenuCallback:  # noqa: PLR0915
+    def _make_bookmark_handler(self, session: ClaudeSession) -> MenuCallback:  # noqa: PLR0915
         sid = session.session_id
         project = session.project
         cwd = session.cwd
@@ -340,7 +340,7 @@ class ClaudeWatchApp:
                 modal_dismissed.set()
                 if result == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
-                    self._bookmark_service.pin(sid, project, cwd, note)
+                    self._bookmark_service.add(sid, project, cwd, note)
                     self._onboarding_service.show_tip("pin")
                     if note:
                         self._summary_service.cache(cwd, note)
@@ -366,7 +366,7 @@ class ClaudeWatchApp:
         cwd = session.cwd
         tty = session.tty
         wid = session.window_id
-        pinned = cwd in self._bookmark_service.get_pinned_cwds()
+        pinned = cwd in self._bookmark_service.get_bookmarked_cwds()
 
         def handler(_: NSMenuItem) -> None:
             exited = False
@@ -399,7 +399,7 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_unpin_handler(self, cwd: str) -> MenuCallback:
+    def _make_unbookmark_handler(self, cwd: str) -> MenuCallback:
         def handler(_: NSMenuItem) -> None:
             self._modal_active = True
             try:
@@ -412,7 +412,7 @@ class ClaudeWatchApp:
                 alert.addButtonWithTitle_("Unpin")
                 alert.addButtonWithTitle_("Cancel")
                 if alert.runModal() == NSAlertFirstButtonReturn:
-                    self._bookmark_service.unpin(cwd)
+                    self._bookmark_service.remove(cwd)
             finally:
                 self._modal_active = False
                 self._last_menu_key = ""

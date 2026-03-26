@@ -87,7 +87,7 @@ class MenuBuilder:
             )
             self._menu.addItem_(NSMenuItem.separatorItem())
 
-        pinned_cwds = self._app._bookmark_service.get_pinned_cwds()
+        pinned_cwds = self._app._bookmark_service.get_bookmarked_cwds()
         active_cwds = {s.cwd for s in sessions}
 
         if not sessions:
@@ -148,7 +148,7 @@ class MenuBuilder:
                     self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
         # Pinned sessions that are NOT currently active
-        pins = self._app._bookmark_service.get_pins()
+        pins = self._app._bookmark_service.get_all()
         inactive_pins = [p for p in pins if p.cwd not in active_cwds]
         if inactive_pins:
             self._menu.addItem_(NSMenuItem.separatorItem())
@@ -174,7 +174,7 @@ class MenuBuilder:
                 sub = NSMenu.alloc().init()
                 sub.addItem_(summary_item)
                 sub.addItem_(NSMenuItem.separatorItem())
-                sub.addItem_(make_menu_item("Unpin", self._app._make_unpin_handler(pin.cwd), d))
+                sub.addItem_(make_menu_item("Unpin", self._app._make_unbookmark_handler(pin.cwd), d))
                 item.setSubmenu_(sub)
                 self._menu.addItem_(item)
                 # Date + model
@@ -351,11 +351,11 @@ class MenuBuilder:
         # Track for background refresh (auto-generates summaries)
         self._app._summary_service.track_session(s.cwd)
         if pinned:
-            sub.addItem_(make_menu_item("Unpin", self._app._make_unpin_handler(s.cwd), d))
+            sub.addItem_(make_menu_item("Unpin", self._app._make_unbookmark_handler(s.cwd), d))
             sub.addItem_(make_menu_item("Quit session", self._app._make_quit_handler(s), d))
         else:
             if s.session_id:
-                sub.addItem_(make_menu_item("Pin session...", self._app._make_pin_handler(s), d))
+                sub.addItem_(make_menu_item("Pin session...", self._app._make_bookmark_handler(s), d))
             sub.addItem_(make_menu_item("Quit session", self._app._make_quit_handler(s), d))
         item.setSubmenu_(sub)
         self._menu.addItem_(item)

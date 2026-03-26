@@ -7,7 +7,7 @@ backend/
 │   ├── dto.py                  # BaseDTO + shared DTOs (frozen dataclasses, *DTO suffix)
 │   ├── helpers.py              # AppleScript runner, escaping
 │   ├── paths.py                # Centralized file paths
-│   ├── service.py              # BaseService with ImportConstraint
+│   ├── service.py              # BaseService base class
 │   ├── settings.py             # App settings (config — replaces repositories/config.py)
 │   ├── features.py             # Feature flags
 │   ├── process/                # ProcessService — PID lookup + child PID registry

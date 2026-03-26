@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from claudewatch.backend.bookmark.service import BookmarkService
-from claudewatch.backend.core.dto import PinDTO
+from claudewatch.backend.core.dto import BookmarkDTO
 
 
 class TestBookmarkService:
@@ -13,18 +13,18 @@ class TestBookmarkService:
         self.svc = BookmarkService()
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
-    def test_pin_delegates_to_repo(self, mock_repo):
-        self.svc.pin("sid-1", "myproject", "/tmp/cwd", "a note")
-        mock_repo.pin_session.assert_called_once_with("sid-1", "myproject", "/tmp/cwd", "a note")
+    def test_add_delegates_to_repo(self, mock_repo):
+        self.svc.add("sid-1", "myproject", "/tmp/cwd", "a note")
+        mock_repo.add_bookmark.assert_called_once_with("sid-1", "myproject", "/tmp/cwd", "a note")
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
-    def test_unpin_delegates_to_repo(self, mock_repo):
-        self.svc.unpin("/tmp/cwd")
-        mock_repo.unpin_session.assert_called_once_with("/tmp/cwd")
+    def test_remove_delegates_to_repo(self, mock_repo):
+        self.svc.remove("/tmp/cwd")
+        mock_repo.remove_bookmark.assert_called_once_with("/tmp/cwd")
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
-    def test_get_pins_returns_pin_dtos(self, mock_repo):
-        mock_repo.get_pins.return_value = [
+    def test_get_all_returns_bookmark_dtos(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = [
             {
                 "session_id": "s1",
                 "project": "proj",
@@ -40,22 +40,22 @@ class TestBookmarkService:
                 "timestamp": "2025-01-02T00:00:00+00:00",
             },
         ]
-        result = self.svc.get_pins()
+        result = self.svc.get_all()
         assert len(result) == 2
-        assert all(isinstance(p, PinDTO) for p in result)
+        assert all(isinstance(p, BookmarkDTO) for p in result)
         assert result[0].session_id == "s1"
         assert result[0].cwd == "/tmp/a"
         assert result[1].note == "n2"
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
-    def test_get_pins_handles_empty(self, mock_repo):
-        mock_repo.get_pins.return_value = []
-        assert self.svc.get_pins() == []
+    def test_get_all_handles_empty(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = []
+        assert self.svc.get_all() == []
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
-    def test_get_pins_handles_missing_fields(self, mock_repo):
-        mock_repo.get_pins.return_value = [{"session_id": "s1"}]
-        result = self.svc.get_pins()
+    def test_get_all_handles_missing_fields(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = [{"session_id": "s1"}]
+        result = self.svc.get_all()
         assert len(result) == 1
         assert result[0].session_id == "s1"
         assert result[0].project == ""
@@ -64,15 +64,15 @@ class TestBookmarkService:
         assert result[0].timestamp == ""
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
-    def test_get_pinned_cwds_delegates_to_repo(self, mock_repo):
-        mock_repo.get_pinned_cwds.return_value = {"/tmp/a", "/tmp/b"}
-        result = self.svc.get_pinned_cwds()
+    def test_get_bookmarked_cwds_delegates_to_repo(self, mock_repo):
+        mock_repo.get_bookmarked_cwds.return_value = {"/tmp/a", "/tmp/b"}
+        result = self.svc.get_bookmarked_cwds()
         assert result == {"/tmp/a", "/tmp/b"}
-        mock_repo.get_pinned_cwds.assert_called_once()
+        mock_repo.get_bookmarked_cwds.assert_called_once()
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
-    def test_get_pins_returns_frozen_dtos(self, mock_repo):
-        mock_repo.get_pins.return_value = [
+    def test_get_all_returns_frozen_dtos(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = [
             {
                 "session_id": "s1",
                 "project": "proj",
@@ -81,11 +81,11 @@ class TestBookmarkService:
                 "timestamp": "2025-01-01T00:00:00+00:00",
             },
         ]
-        result = self.svc.get_pins()
-        pin = result[0]
-        # PinDTO is frozen — assignment should raise
+        result = self.svc.get_all()
+        bookmark = result[0]
+        # BookmarkDTO is frozen — assignment should raise
         try:
-            pin.session_id = "changed"  # type: ignore[misc]
+            bookmark.session_id = "changed"  # type: ignore[misc]
             raise AssertionError("Expected FrozenInstanceError")
         except AttributeError:
             pass

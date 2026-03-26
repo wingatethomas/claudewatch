@@ -67,9 +67,18 @@ class _NotificationDelegate(NSObject):
         return True
 
 
-# Singleton delegate — must stay alive for the lifetime of the app
-_delegate = _NotificationDelegate.alloc().init()
-NSUserNotificationCenter.defaultUserNotificationCenter().setDelegate_(_delegate)
+# Singleton delegate — must stay alive for the lifetime of the app.
+# Deferred to first NotificationService instantiation to avoid side effects at import.
+_delegate: _NotificationDelegate | None = None
+
+
+def _ensure_delegate() -> None:
+    """Initialize the notification delegate on first use (not at import time)."""
+    global _delegate  # noqa: PLW0603
+    if _delegate is not None:
+        return
+    _delegate = _NotificationDelegate.alloc().init()
+    NSUserNotificationCenter.defaultUserNotificationCenter().setDelegate_(_delegate)
 
 
 class NotificationService(BaseService):
@@ -77,6 +86,7 @@ class NotificationService(BaseService):
 
     def __init__(self) -> None:
         super().__init__()
+        _ensure_delegate()
         self._notified_pids: set[int] = set()
         self.cooldown = 30.0
         self.last_notification_time = 0.0
