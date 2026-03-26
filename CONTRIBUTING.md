@@ -1,4 +1,4 @@
-# Contributing to ClaudeWatch
+# Contributing
 
 ## Setup
 
@@ -9,70 +9,17 @@ uv sync
 uv run pre-commit install
 ```
 
-## Run
+## Dev
 
 ```bash
-uv run claudewatch
+uv run claudewatch          # run the app
+uv run pytest -v             # tests
+uv run ruff check .          # lint
 ```
 
-## Tests
+## PRs
 
-```bash
-uv run pytest -v
-```
-
-## Linting
-
-```bash
-uv run ruff check .
-uv run ruff format .
-```
-
-Pre-commit hooks run ruff automatically on each commit.
-
-## Architecture
-
-```
-claudewatch/
-├── backend/
-│   ├── core/                      # Shared infrastructure — no domain/UI imports
-│   │   ├── models.py              # Data models, enums, constants
-│   │   ├── dto.py                 # BaseDTO + shared DTOs (*DTO suffix)
-│   │   ├── helpers.py             # AppleScript runner, escaping
-│   │   ├── paths.py               # Centralized file paths
-│   │   ├── service.py             # BaseService with import constraint enforcement
-│   │   ├── settings.py            # App settings (config)
-│   │   ├── features.py            # Feature flags
-│   │   ├── process/               # ProcessService — PID lookup + child PID registry
-│   │   │   ├── service.py
-│   │   │   ├── dependencies.py
-│   │   │   └── procinfo.py
-│   │   └── session_log/           # SessionLogService — JSONL discovery/reading
-│   │       ├── service.py
-│   │       ├── dependencies.py
-│   │       └── jsonl.py
-│   ├── detection/                 # Each domain: service.py + dependencies.py
-│   ├── summary/
-│   ├── notifications/
-│   ├── onboarding/
-│   ├── updates/
-│   ├── usage/
-│   ├── activity/
-│   ├── bookmark/                  # Includes repository.py for persistence
-│   └── history/                   # Includes repository.py for persistence
-└── ui/
-    ├── menubar.py                 # Menu bar (AppKit NSStatusBar)
-    ├── focus.py                   # Window focusing
-    ├── preferences.py             # Preferences window
-    ├── welcome.py                 # First-launch permissions guide
-    └── activity.py                # Activity feed window
-```
-
-Each domain is a package with `service.py` (class extending `BaseService`) and `dependencies.py` (`@lru_cache` factory). **Layer rules:** `core/` has no imports from domains or UI. Domains can import from `core/`. UI imports from domains (via `dependencies.py`) and `core/` (DTOs/models/settings). Config is in `core/settings.py`.
-
-## PR Guidelines
-
-- Add tests for new pure-function logic
-- Run `uv run ruff check .` before pushing
-- Type hints on all new functions
-- Keep commits focused — one logical change per commit
+- One branch per feature/fix
+- Type hints on all functions
+- Tests for new backend logic
+- Run lint + tests before pushing
