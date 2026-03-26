@@ -103,22 +103,6 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             return ""
         return item.get("label", "")
 
-    def sidebarTableSelectionDidChange_(self, notification: objc.objc_object) -> None:  # noqa: N802
-        table = notification.object()
-        row = table.selectedRow()
-        if row < 0 or row >= len(self._sidebar_items):
-            return
-        item = self._sidebar_items[row]
-        if item["type"] == "separator":
-            # Skip separator — select next row
-            if row + 1 < len(self._sidebar_items):
-                table.selectRowIndexes_byExtendingSelection_(
-                    objc.objc_object(c_void_p=Foundation.NSIndexSet.indexSetWithIndex_(row + 1).__c_void_p__()),
-                    False,
-                )
-            return
-        self._show_pane(item)
-
     def _show_pane(self, item: dict) -> None:
         """Swap the content area to show the pane for the selected sidebar item."""
         if self._current_pane is not None:
@@ -296,6 +280,16 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         sender.setRepresentedObject_(entry.get("cwd", ""))
         self.deleteHistoryEntry_(sender)
 
+    # ── Sidebar click ──
+
+    def sidebarClicked_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        tag = sender.tag()
+        if tag < 0 or tag >= len(self._sidebar_items):
+            return
+        item = self._sidebar_items[tag]
+        if item["type"] != "separator":
+            self._show_pane(item)
+
     # ── Window close ──
 
     def windowWillClose_(self, notification: objc.objc_object) -> None:  # noqa: N802
@@ -304,8 +298,6 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
-
-import Foundation  # noqa: E402
 
 
 def _reload_history_data() -> None:
@@ -612,7 +604,7 @@ def _build_sidebar(delegate: _PrefsDelegate) -> NSView:
         btn.setAlignment_(0)  # left
         btn.setTag_(i)
         btn.setTarget_(delegate)
-        btn.setAction_(objc.selector(delegate._sidebar_clicked_, signature=b"v@:@"))
+        btn.setAction_(objc.selector(delegate.sidebarClicked_, signature=b"v@:@"))
         sidebar.addSubview_(btn)
         y -= 30
 
@@ -625,19 +617,6 @@ def _build_sidebar(delegate: _PrefsDelegate) -> NSView:
 
 
 # ── Public API ───────────────────────────────────────────────────────
-
-
-def _handle_sidebar_click(delegate: _PrefsDelegate, sender: objc.objc_object) -> None:
-    tag = sender.tag()
-    if tag < 0 or tag >= len(delegate._sidebar_items):
-        return
-    item = delegate._sidebar_items[tag]
-    if item["type"] == "separator":
-        return
-    delegate._show_pane(item)
-
-
-_PrefsDelegate._sidebar_clicked_ = _handle_sidebar_click
 
 
 def show_preferences() -> None:
