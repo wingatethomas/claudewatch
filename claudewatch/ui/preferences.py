@@ -435,10 +435,11 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     _facet_row_h = 40
     _card_gap = 12
 
-    _danger_row_h = 44
-    _danger_rows = 2  # Clear Bookmarks, Clear Summaries
-    _danger_h = _danger_row_h * _danger_rows
-    _danger_gap = 24
+    _danger_row_h = 40
+    _danger_header_h = 32  # "Danger Zone" label row inside card
+    _danger_rows = 2
+    _danger_h = _danger_header_h + _danger_row_h * _danger_rows
+    _danger_gap = 20
 
     # Calculate total height needed
     total_h = _PAD
@@ -460,44 +461,49 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     # Danger zone
     y -= _danger_gap - _card_gap  # extra space before danger zone
 
-    danger_label = _make_secondary_label("DANGER ZONE", _PAD, y, 200, 11.0)
-    danger_label.setTextColor_(NSColor.systemRedColor().colorWithAlphaComponent_(0.7))
-    inner.addSubview_(danger_label)
-    y -= 20
-
     danger_card = _make_card(_PAD, y - _danger_h, card_w, _danger_h)
     danger_card.setBorderColor_(NSColor.systemRedColor().colorWithAlphaComponent_(0.3))
     inner.addSubview_(danger_card)
     dc = danger_card.contentView()
 
-    _btn_w = 90
-    _btn_h = 24
+    # Header row inside card
+    header_y = _danger_h - _danger_header_h
+    danger_label = _make_label("Danger Zone", _CARD_PAD, header_y + 7, 200, 11.0)
+    danger_label.setTextColor_(NSColor.systemRedColor().colorWithAlphaComponent_(0.8))
+    danger_label.setFont_(NSFont.boldSystemFontOfSize_(11.0))
+    dc.addSubview_(danger_label)
+
+    header_sep = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, header_y - 1, card_w - _CARD_PAD * 2, 1))
+    header_sep.setBoxType_(2)
+    dc.addSubview_(header_sep)
+
+    _btn_w = 80
+    _btn_h = 22
 
     # Row 1: Clear Bookmarks
-    row1_y = _danger_h - _danger_row_h
-    label1 = _make_label("Clear all bookmarks", _CARD_PAD, row1_y + 12, card_w - _CARD_PAD * 2 - _btn_w - 8, 13.0)
+    row1_y = header_y - _danger_row_h
+    label1 = _make_label("Clear all bookmarks", _CARD_PAD, row1_y + 10, card_w - _CARD_PAD * 2 - _btn_w - 8, 12.0)
     dc.addSubview_(label1)
-    bm_btn = NSButton.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - _btn_w, row1_y + 9, _btn_w, _btn_h))
+    bm_btn = NSButton.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - _btn_w, row1_y + 8, _btn_w, _btn_h))
     bm_btn.setTitle_("Clear...")
     bm_btn.setBezelStyle_(1)
-    bm_btn.setFont_(NSFont.systemFontOfSize_(12.0))
+    bm_btn.setFont_(NSFont.systemFontOfSize_(11.0))
     bm_btn.setTarget_(delegate)
     bm_btn.setAction_(objc.selector(delegate.clearBookmarks_, signature=b"v@:@"))
     dc.addSubview_(bm_btn)
 
-    # Separator
-    sep = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, row1_y - 1, card_w - _CARD_PAD * 2, 1))
-    sep.setBoxType_(2)
-    dc.addSubview_(sep)
+    row_sep = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, row1_y - 1, card_w - _CARD_PAD * 2, 1))
+    row_sep.setBoxType_(2)
+    dc.addSubview_(row_sep)
 
     # Row 2: Clear Summaries
     row2_y = row1_y - _danger_row_h
-    label2 = _make_label("Clear all summaries", _CARD_PAD, row2_y + 12, card_w - _CARD_PAD * 2 - _btn_w - 8, 13.0)
+    label2 = _make_label("Clear all summaries", _CARD_PAD, row2_y + 10, card_w - _CARD_PAD * 2 - _btn_w - 8, 12.0)
     dc.addSubview_(label2)
-    sum_btn = NSButton.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - _btn_w, row2_y + 9, _btn_w, _btn_h))
+    sum_btn = NSButton.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - _btn_w, row2_y + 8, _btn_w, _btn_h))
     sum_btn.setTitle_("Clear...")
     sum_btn.setBezelStyle_(1)
-    sum_btn.setFont_(NSFont.systemFontOfSize_(12.0))
+    sum_btn.setFont_(NSFont.systemFontOfSize_(11.0))
     sum_btn.setTarget_(delegate)
     sum_btn.setAction_(objc.selector(delegate.clearSummaries_, signature=b"v@:@"))
     dc.addSubview_(sum_btn)
