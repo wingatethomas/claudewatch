@@ -176,6 +176,33 @@ class UpdateService(BaseService):
         with self._cache_lock:
             return self._cached_update
 
+    def fetch_changelog(self, limit: int = 10) -> list[tuple[str, str]]:
+        """Fetch recent release notes from GitHub. Returns [(tag, body), ...]."""
+        try:
+            result = subprocess.run(  # noqa: S603, S607
+                [
+                    "curl",
+                    "-sf",
+                    "--max-time",
+                    "10",
+                    f"https://api.github.com/repos/{_REPO}/releases?per_page={limit}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if result.returncode == 0:
+                releases = json.loads(result.stdout)
+                return [
+                    (r.get("tag_name", ""), r.get("body", "").strip())
+                    for r in releases
+                    if r.get("tag_name") and not r.get("prerelease")
+                ]
+        except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
+            pass
+        return []
+
     def download_and_apply(self, tag: str, on_ready: Callable[[], None] | None = None) -> bool:  # noqa: PLR0911
         """Download a release and prepare the swap. Returns True if swap is staged.
 
