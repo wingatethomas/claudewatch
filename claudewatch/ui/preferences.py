@@ -25,6 +25,9 @@ from AppKit import (
     NSPasteboard,
     NSPasteboardTypeString,
     NSPopUpButton,
+    NSSearchField,
+    NSSegmentedControl,
+    NSSegmentStyleSeparated,
     NSSound,
     NSSwitch,
     NSTableView,
@@ -120,6 +123,13 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     _feature_controls: dict
     _selected_idx: int
 
+    # History filter state
+    _history_search: str
+    _history_sort: str  # "date" or "name"
+    _history_bookmarked_only: bool
+    _history_scroll: AppKitScrollView | None
+    _history_inner: NSView | None
+
     def _show_pane(self, item: dict) -> None:
         if self._current_pane is not None:
             self._current_pane.removeFromSuperview()
@@ -161,6 +171,21 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             item = self._sidebar_items[idx]
             if item["type"] != "separator":
                 self._show_pane(item)
+
+    # ── History filter actions ──
+
+    def historySearchChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        self._history_search = str(sender.stringValue()).strip().lower()
+        _rebuild_history_rows(self)
+
+    def historySortChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        idx = sender.selectedSegment()
+        self._history_sort = "name" if idx == 1 else "date"
+        _rebuild_history_rows(self)
+
+    def historyBookmarkFilter_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        self._history_bookmarked_only = sender.state() == NSControlStateValueOn
+        _rebuild_history_rows(self)
 
     # ── Sidebar click ──
 
@@ -585,44 +610,136 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
 
 def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
-    """Build the history pane as session cards."""
+    """Build the history pane with search, sort, filter chips, and scrollable rows."""
     _reload_history_data()
+    delegate._history_search = ""
+    delegate._history_sort = "date"
+    delegate._history_bookmarked_only = False
 
-    if not _history_data:
-        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-        empty = _make_secondary_label("No session history yet.", _PAD, h // 2, w - _PAD * 2, 13.0)
-        empty.setAlignment_(1)
-        view.addSubview_(empty)
-        return view
+    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    _row_h = 54  # compact row height
+    # ── Toolbar: search + sort + filter ──
+    _toolbar_h = 36
+    toolbar_y = h - _toolbar_h
+
+    # Search field
+    search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y + 6, 200, 24))
+    search.setPlaceholderString_("Search sessions...")
+    search.setFont_(NSFont.systemFontOfSize_(12.0))
+    search.setTarget_(delegate)
+    search.setAction_(objc.selector(delegate.historySearchChanged_, signature=b"v@:@"))
+    view.addSubview_(search)
+
+    # Sort segmented control
+    sort_seg = NSSegmentedControl.alloc().initWithFrame_(NSMakeRect(_PAD + 210, toolbar_y + 6, 120, 24))
+    sort_seg.setSegmentCount_(2)
+    sort_seg.setLabel_forSegment_("Date", 0)
+    sort_seg.setLabel_forSegment_("Name", 1)
+    sort_seg.setWidth_forSegment_(55, 0)
+    sort_seg.setWidth_forSegment_(55, 1)
+    sort_seg.setSegmentStyle_(NSSegmentStyleSeparated)
+    sort_seg.setSelectedSegment_(0)
+    sort_seg.setFont_(NSFont.systemFontOfSize_(11.0))
+    sort_seg.setTarget_(delegate)
+    sort_seg.setAction_(objc.selector(delegate.historySortChanged_, signature=b"v@:@"))
+    view.addSubview_(sort_seg)
+
+    # Bookmarked filter chip
+    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 340, toolbar_y + 7, 22, 22))
+    bm_chip.setTitle_("\u2605")
+    bm_chip.setButtonType_(1)  # NSButtonTypeToggle
+    bm_chip.setBezelStyle_(1)
+    bm_chip.setFont_(NSFont.systemFontOfSize_(12.0))
+    bm_chip.setState_(NSControlStateValueOff)
+    bm_chip.setTarget_(delegate)
+    bm_chip.setAction_(objc.selector(delegate.historyBookmarkFilter_, signature=b"v@:@"))
+    bm_chip.setToolTip_("Show bookmarked only")
+    view.addSubview_(bm_chip)
+
+    # Separator under toolbar
+    sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, toolbar_y, w, 1))
+    sep.setBoxType_(2)
+    view.addSubview_(sep)
+
+    # Scroll area for rows
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, toolbar_y))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setDrawsBackground_(False)
+    view.addSubview_(scroll)
+
+    delegate._history_scroll = scroll
+    delegate._history_inner = None
+
+    _rebuild_history_rows(delegate)
+    return view
+
+
+def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:
+    """Rebuild the history row list based on current filter state."""
+    scroll = delegate._history_scroll
+    if scroll is None:
+        return
+
+    _reload_history_data()
+    w = int(scroll.frame().size.width)
+    h = int(scroll.frame().size.height)
+
+    # Filter
+    entries = list(_history_data)
+    pinned_cwds = get_bookmark_service().get_pinned_cwds()
+
+    if delegate._history_bookmarked_only:
+        entries = [e for e in entries if e.get("cwd", "") in pinned_cwds]
+
+    if delegate._history_search:
+        q = delegate._history_search
+        summary_svc = get_summary_service()
+        filtered = []
+        for e in entries:
+            if q in e.get("project", "").lower():
+                filtered.append(e)
+            else:
+                s = summary_svc.get_cached(e.get("cwd", ""))
+                if s and q in s.lower():
+                    filtered.append(e)
+        entries = filtered
+
+    # Sort
+    if delegate._history_sort == "name":
+        entries.sort(key=lambda e: e.get("project", "").lower())
+    # "date" is already newest-first from _reload_history_data
+
+    # Build rows
+    _row_h = 54
     _sep_h = 1
-    row_w = w
 
-    total_h = _PAD + len(_history_data) * (_row_h + _sep_h) + _PAD
+    if not entries:
+        inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
+        empty = _make_secondary_label("No matching sessions.", _PAD, h // 2, w - _PAD * 2, 13.0)
+        empty.setAlignment_(1)
+        inner.addSubview_(empty)
+        scroll.setDocumentView_(inner)
+        return
+
+    total_h = _PAD + len(entries) * (_row_h + _sep_h) + _PAD
     inner_h = max(h, total_h)
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
 
-    pinned_cwds = get_bookmark_service().get_pinned_cwds()
     usage_svc = get_usage_service()
     summary_svc = get_summary_service()
 
     y = inner_h - _PAD
-    for i, entry in enumerate(_history_data):
+    for i, entry in enumerate(entries):
         y -= _row_h
-        _add_history_row(inner, delegate, entry, 0, y, row_w, _row_h, pinned_cwds, usage_svc, summary_svc)
-        if i < len(_history_data) - 1:
-            sep = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y - 1, row_w - _PAD * 2, _sep_h))
+        _add_history_row(inner, delegate, entry, 0, y, w, _row_h, pinned_cwds, usage_svc, summary_svc)
+        if i < len(entries) - 1:
+            sep = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y - 1, w - _PAD * 2, _sep_h))
             sep.setBoxType_(2)
             inner.addSubview_(sep)
             y -= _sep_h
 
-    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-    scroll.setHasVerticalScroller_(True)
-    scroll.setDrawsBackground_(False)
     scroll.setDocumentView_(inner)
     inner.scrollPoint_((0, inner_h))
-    return scroll
 
 
 def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
