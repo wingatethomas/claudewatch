@@ -1191,7 +1191,7 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
 
     # Action buttons — y is currently above the top sessions card
     # Card was placed at (y - top_card_h), so bottom of card is at (y - top_card_h)
-    y = y - top_card_h - 16
+    y = y - top_card_h - 24
     btn_y = y
     _btn_h = 24
     _btn_font = NSFont.systemFontOfSize_(11.0)
