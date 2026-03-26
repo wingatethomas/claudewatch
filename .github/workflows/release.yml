@@ -74,9 +74,9 @@ jobs:
         run: |
           VERSION="${TAG#v}"
           SHA256=$(awk '{print $1}' checksums.txt)
-          git clone https://github.com/wingatethomas/homebrew-claudewatch.git tap
+          git clone https://github.com/wingatethomas/homebrew-brews.git tap
           cd tap
-          git remote set-url origin "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/wingatethomas/homebrew-claudewatch.git"
+          git remote set-url origin "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/wingatethomas/homebrew-brews.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           BRANCH="bump-${VERSION}"
@@ -86,10 +86,11 @@ jobs:
           git add Casks/claudewatch.rb
           git commit -m "bump claudewatch to ${VERSION}"
           git push -u origin "$BRANCH"
-          gh pr create \
-            --repo wingatethomas/homebrew-claudewatch \
+          PR_URL=$(gh pr create \
+            --repo wingatethomas/homebrew-brews \
             --title "bump claudewatch to ${VERSION}" \
-            --body "Automated update from [release ${TAG}](https://github.com/wingatethomas/claudewatch/releases/tag/${TAG}). SHA256: \`${SHA256}\`"
+            --body "Automated update from [release ${TAG}](https://github.com/wingatethomas/claudewatch/releases/tag/${TAG}). SHA256: \`${SHA256}\`")
+          gh pr merge "$PR_URL" --auto --squash
         env:
           TAG: ${{ github.ref_name }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
