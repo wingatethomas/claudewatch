@@ -111,7 +111,7 @@ def _add_pane_header(view: NSView, title: str, w: float, y: float) -> float:
     label.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 24))
     label.setFont_(NSFont.boldSystemFontOfSize_(18.0))
     view.addSubview_(label)
-    return y - 32
+    return y - 26
 
 
 def _make_label(text: str, x: float, y: float, w: float, size: float = 13.0, bold: bool = False) -> NSTextField:  # noqa: PLR0913
@@ -143,9 +143,11 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     # History filter state
     _history_search: str
     _history_sort: str  # "date" or "name"
+    _history_sort_asc: bool
     _history_bookmarked_only: bool
     _history_scroll: AppKitScrollView | None
     _history_inner: NSView | None
+    _history_sort_seg: NSSegmentedControl | None
 
     def _show_pane(self, item: dict) -> None:
         if self._current_pane is not None:
@@ -197,7 +199,22 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     def historySortChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
         idx = sender.selectedSegment()
-        self._history_sort = "name" if idx == 1 else "date"
+        new_sort = "name" if idx == 1 else "date"
+        if new_sort == self._history_sort:
+            # Same segment clicked again — toggle direction
+            self._history_sort_asc = not self._history_sort_asc
+        else:
+            self._history_sort = new_sort
+            self._history_sort_asc = new_sort == "name"  # name defaults asc, date defaults desc
+        # Update label to show direction
+        arrow_up = " ↑"
+        arrow_down = " ↓"
+        for i, base in enumerate(("Date", "Name")):
+            if i == idx:
+                arrow = arrow_up if self._history_sort_asc else arrow_down
+                sender.setLabel_forSegment_(base + arrow, i)
+            else:
+                sender.setLabel_forSegment_(base, i)
         _rebuild_history_rows(self)
 
     def historyBookmarkFilter_(self, sender: objc.objc_object) -> None:  # noqa: N802
@@ -549,13 +566,13 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
     _toggle_row_h = 56  # taller for sub-description
     _facet_row_h = 40
-    _card_gap = 12
+    _card_gap = 8
 
-    _danger_row_h = 40
-    _danger_header_h = 32  # "Danger Zone" label row inside card
+    _danger_row_h = 38
+    _danger_header_h = 30
     _danger_rows = 2
     _danger_h = _danger_header_h + _danger_row_h * _danger_rows
-    _danger_gap = 20
+    _danger_gap = 16
 
     # Calculate total height needed
     _header_h = 32
@@ -644,6 +661,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     _reload_history_data()
     delegate._history_search = ""
     delegate._history_sort = "date"
+    delegate._history_sort_asc = False  # date defaults newest first
     delegate._history_bookmarked_only = False
 
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
@@ -710,7 +728,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     return view
 
 
-def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:
+def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:  # noqa: PLR0912
     """Rebuild the history row list based on current filter state."""
     scroll = delegate._history_scroll
     if scroll is None:
@@ -741,9 +759,12 @@ def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:
         entries = filtered
 
     # Sort
+    asc = delegate._history_sort_asc
     if delegate._history_sort == "name":
-        entries.sort(key=lambda e: e.get("project", "").lower())
-    # "date" is already newest-first from _reload_history_data
+        entries.sort(key=lambda e: e.get("project", "").lower(), reverse=not asc)
+    elif asc:
+        # Date — _reload_history_data returns newest first, so reverse for asc
+        entries.reverse()
 
     # Build rows
     _row_h = 54
