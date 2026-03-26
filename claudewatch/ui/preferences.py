@@ -1187,8 +1187,9 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
         val.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(11.0, 0.0))
         tpc.addSubview_(val)
 
-    # Action buttons
-    y -= top_card_h + 20
+    # Action buttons — y is currently above the top sessions card
+    # Card was placed at (y - top_card_h), so bottom of card is at (y - top_card_h)
+    y = y - top_card_h - 16
     btn_y = y
     _btn_h = 24
     _btn_font = NSFont.systemFontOfSize_(11.0)
