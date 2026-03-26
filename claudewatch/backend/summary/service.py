@@ -274,17 +274,21 @@ class SummaryService(BaseService):
 
     # -- Background refresh -------------------------------------------------
 
-    def track_session(self, cwd: str) -> None:
+    def track_session(self, cwd: str, *, urgent: bool = False) -> None:
         """Register a CWD for periodic background summary refresh.
 
-        If no summary exists yet, queues it for immediate generation.
+        If no summary exists yet, queues it for generation.
+        *urgent* sessions (Attention/Working) are inserted at the front of the queue.
         """
         with self._tracked_lock:
             self._tracked_cwds.add(cwd)
         if self.get_cached(cwd) is None:
             with self._priority_lock:
                 if cwd not in self._priority_queue:
-                    self._priority_queue.append(cwd)
+                    if urgent:
+                        self._priority_queue.insert(0, cwd)
+                    else:
+                        self._priority_queue.append(cwd)
         self._ensure_bg_thread()
 
     def pending_summary_count(self) -> int:
