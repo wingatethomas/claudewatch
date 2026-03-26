@@ -1040,6 +1040,15 @@ def _parse_release_notes(body: str) -> list[str]:
         stripped = line.strip()
         if stripped.startswith(("* ", "- ", "• ")):
             text = stripped.lstrip("*-• ").strip()
+            if not text:
+                continue
+            # Strip GitHub auto-generated suffixes: "by @user in https://..."
+            by_idx = text.find(" by @")
+            if by_idx > 0:
+                text = text[:by_idx]
+            # Skip lines that are just "Full Changelog" links or headers
+            if text.startswith(("**Full Changelog", "Full Changelog", "## ")):
+                continue
             if text:
                 items.append(text)
     return items
