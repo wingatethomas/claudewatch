@@ -25,6 +25,9 @@ from AppKit import (
     NSPasteboard,
     NSPasteboardTypeString,
     NSPopUpButton,
+    NSSearchField,
+    NSSegmentedControl,
+    NSSegmentStyleTexturedRounded,
     NSSound,
     NSSwitch,
     NSTableView,
@@ -52,7 +55,7 @@ _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
 # Layout
 _W = 660
-_H = 580
+_H = 620
 _SIDEBAR_W = 170
 _CONTENT_W = _W - _SIDEBAR_W
 _PAD = 24
@@ -63,6 +66,14 @@ _ROW_H = 36  # sidebar row height
 _window: NSWindow | None = None
 _delegate: "_PrefsDelegate | None" = None
 _history_data: list[dict] = []
+
+# Sub-descriptions for feature toggles
+_FEATURE_DETAILS: dict[str, str] = {
+    "bookmarks": "Pin sessions to resume later from the menu bar.",
+    "notifications": "Get alerts when Claude needs your attention.",
+    "summaries": "Auto-generate one-line session summaries.",
+    "auto_updates": "Check GitHub for new releases periodically.",
+}
 
 
 # ── Sidebar items ────────────────────────────────────────────────────
@@ -94,6 +105,22 @@ def _make_card(x: float, y: float, w: float, h: float) -> NSBox:
     return card
 
 
+def _add_pane_header(view: NSView, title: str, w: float, h: float) -> float:
+    """Add a large title header to a content pane. Returns y below the header.
+
+    Places header 12px below the top of the view (h). NSView is bottom-up,
+    so label bottom = h - 36, label top = h - 12.
+    """
+    _header_label_h = 24
+    _top_inset = 12
+    y = h - _top_inset - _header_label_h
+    label = NSTextField.labelWithString_(title)
+    label.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, _header_label_h))
+    label.setFont_(NSFont.boldSystemFontOfSize_(18.0))
+    view.addSubview_(label)
+    return y - 8  # 8px gap below header
+
+
 def _make_label(text: str, x: float, y: float, w: float, size: float = 13.0, bold: bool = False) -> NSTextField:  # noqa: PLR0913
     label = NSTextField.labelWithString_(text)
     label.setFrame_(NSMakeRect(x, y, w, 18))
@@ -119,6 +146,15 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     _current_pane: NSView | None
     _feature_controls: dict
     _selected_idx: int
+
+    # History filter state
+    _history_search: str
+    _history_sort: str  # "date" or "name"
+    _history_sort_asc: bool
+    _history_bookmarked_only: bool
+    _history_scroll: AppKitScrollView | None
+    _history_inner: NSView | None
+    _history_sort_seg: NSSegmentedControl | None
 
     def _show_pane(self, item: dict) -> None:
         if self._current_pane is not None:
@@ -161,6 +197,36 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             item = self._sidebar_items[idx]
             if item["type"] != "separator":
                 self._show_pane(item)
+
+    # ── History filter actions ──
+
+    def historySearchChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        self._history_search = str(sender.stringValue()).strip().lower()
+        _rebuild_history_rows(self)
+
+    def historySortChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        idx = sender.selectedSegment()
+        new_sort = "name" if idx == 1 else "date"
+        if new_sort == self._history_sort:
+            # Same segment clicked again — toggle direction
+            self._history_sort_asc = not self._history_sort_asc
+        else:
+            self._history_sort = new_sort
+            self._history_sort_asc = new_sort == "name"  # name defaults asc, date defaults desc
+        # Update label to show direction
+        arrow_up = " ↑"
+        arrow_down = " ↓"
+        for i, base in enumerate(("Date", "Name")):
+            if i == idx:
+                arrow = arrow_up if self._history_sort_asc else arrow_down
+                sender.setLabel_forSegment_(base + arrow, i)
+            else:
+                sender.setLabel_forSegment_(base, i)
+        _rebuild_history_rows(self)
+
+    def historyBookmarkFilter_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        self._history_bookmarked_only = sender.state() == NSControlStateValueOn
+        _rebuild_history_rows(self)
 
     # ── Sidebar click ──
 
@@ -432,11 +498,12 @@ def _add_feature_card(  # noqa: PLR0913, PLR0915
     card_y: float,
     card_w: float,
 ) -> None:
-    """Add a single feature card with toggle row + facet rows."""
+    """Add a single feature card with toggle row + sub-description + facet rows."""
     feature_key = feature.key
     enabled = features.is_enabled(feature_key)
+    detail = _FEATURE_DETAILS.get(feature_key, "")
 
-    _toggle_row_h = 44
+    _toggle_row_h = 56 if detail else 44
     _facet_row_h = 40
     card_h = _toggle_row_h + len(feature.facets) * _facet_row_h
 
@@ -444,12 +511,20 @@ def _add_feature_card(  # noqa: PLR0913, PLR0915
     view.addSubview_(card)
     content = card.contentView()
 
-    # Toggle row
+    # Toggle row — name + detail + switch
     row_y = card_h - _toggle_row_h
-    name_label = _make_label(feature.description, _CARD_PAD, row_y + 12, card_w - _CARD_PAD * 2 - 60, 13.0)
+    name_y = row_y + (_toggle_row_h - 18) // 2 + (6 if detail else 0)
+    name_label = _make_label(feature.description, _CARD_PAD, name_y, card_w - _CARD_PAD * 2 - 60, 13.0)
     content.addSubview_(name_label)
 
-    toggle = NSSwitch.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - 46, row_y + 10, 46, 22))
+    if detail:
+        detail_label = _make_secondary_label(detail, _CARD_PAD, name_y - 16, card_w - _CARD_PAD * 2 - 60, 10.0)
+        detail_label.setTextColor_(NSColor.tertiaryLabelColor())
+        content.addSubview_(detail_label)
+
+    toggle = NSSwitch.alloc().initWithFrame_(
+        NSMakeRect(card_w - _CARD_PAD - 46, row_y + (_toggle_row_h - 22) // 2, 46, 22)
+    )
     toggle.setState_(NSControlStateValueOn if enabled else NSControlStateValueOff)
     toggle.setRepresentedObject_(feature_key)
     toggle.setTarget_(delegate)
@@ -496,29 +571,33 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     delegate._feature_controls = {}
     all_features = features.get_all()
 
-    _toggle_row_h = 44
+    _toggle_row_h = 56  # taller for sub-description
     _facet_row_h = 40
-    _card_gap = 12
+    _card_gap = 8
 
-    _danger_row_h = 40
-    _danger_header_h = 32  # "Danger Zone" label row inside card
+    _danger_row_h = 38
+    _danger_header_h = 30
     _danger_rows = 2
     _danger_h = _danger_header_h + _danger_row_h * _danger_rows
-    _danger_gap = 20
+    _danger_gap = 16
 
     # Calculate total height needed
-    total_h = _PAD
+    # Header: 12px inset + 24px label + 8px gap = 44px
+    _header_band = 44
+    total_h = _header_band
     for f in all_features:
-        total_h += _toggle_row_h + len(f.facets) * _facet_row_h + _card_gap
+        feat_toggle_h = 56 if _FEATURE_DETAILS.get(f.key) else 44
+        total_h += feat_toggle_h + len(f.facets) * _facet_row_h + _card_gap
     total_h += _danger_gap + _danger_h + _PAD
     inner_h = max(h, total_h)
 
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
     card_w = w - _PAD * 2
 
-    y = inner_h - _PAD
+    y = _add_pane_header(inner, "General", w, inner_h)
     for feature in all_features:
-        card_h = _toggle_row_h + len(feature.facets) * _facet_row_h
+        feat_toggle_h = 56 if _FEATURE_DETAILS.get(feature.key) else 44
+        card_h = feat_toggle_h + len(feature.facets) * _facet_row_h
         y -= card_h
         _add_feature_card(inner, delegate, feature, _PAD, y, card_w)
         y -= _card_gap
@@ -585,44 +664,146 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
 
 def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
-    """Build the history pane as session cards."""
+    """Build the history pane with search, sort, filter chips, and scrollable rows."""
     _reload_history_data()
+    # Preserve sort state across pane switches — only init if not set
+    if not hasattr(delegate, "_history_sort") or delegate._history_sort is None:
+        delegate._history_search = ""
+        delegate._history_sort = "date"
+        delegate._history_sort_asc = False
+        delegate._history_bookmarked_only = False
 
-    if not _history_data:
-        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-        empty = _make_secondary_label("No session history yet.", _PAD, h // 2, w - _PAD * 2, 13.0)
-        empty.setAlignment_(1)
-        view.addSubview_(empty)
-        return view
+    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    _row_h = 54  # compact row height
+    below_header = _add_pane_header(view, "History", w, h)
+    _toolbar_ctrl_h = 22
+    toolbar_y = below_header - _toolbar_ctrl_h
+    search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 22))
+    search.setPlaceholderString_("Search...")
+    search.setFont_(NSFont.systemFontOfSize_(12.0))
+    search.setTarget_(delegate)
+    search.setAction_(objc.selector(delegate.historySearchChanged_, signature=b"v@:@"))
+    view.addSubview_(search)
+
+    sort_seg = NSSegmentedControl.alloc().initWithFrame_(NSMakeRect(_PAD + 190, toolbar_y, 110, 22))
+    sort_seg.setSegmentCount_(2)
+    sort_seg.setLabel_forSegment_("Date \u2193", 0)  # default arrow
+    sort_seg.setLabel_forSegment_("Name", 1)
+    sort_seg.setWidth_forSegment_(52, 0)
+    sort_seg.setWidth_forSegment_(50, 1)
+    sort_seg.setSegmentStyle_(NSSegmentStyleTexturedRounded)
+    sort_seg.setSelectedSegment_(0)
+    sort_seg.setFont_(NSFont.systemFontOfSize_(11.0))
+    sort_seg.setTarget_(delegate)
+    sort_seg.setAction_(objc.selector(delegate.historySortChanged_, signature=b"v@:@"))
+    view.addSubview_(sort_seg)
+
+    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y, 50, 22))
+    bm_chip.setTitle_("\u2605 Only")
+    bm_chip.setButtonType_(1)  # NSButtonTypeToggle
+    bm_chip.setBezelStyle_(1)
+    bm_chip.setFont_(NSFont.systemFontOfSize_(10.0))
+    bm_chip.setState_(NSControlStateValueOff)
+    bm_chip.setTarget_(delegate)
+    bm_chip.setAction_(objc.selector(delegate.historyBookmarkFilter_, signature=b"v@:@"))
+    bm_chip.setToolTip_("Show bookmarked only")
+    bm_chip.setState_(NSControlStateValueOn if delegate._history_bookmarked_only else NSControlStateValueOff)
+    view.addSubview_(bm_chip)
+
+    # Restore sort state into controls
+    sel_idx = 1 if delegate._history_sort == "name" else 0
+    sort_seg.setSelectedSegment_(sel_idx)
+    arrow = " \u2191" if delegate._history_sort_asc else " \u2193"
+    for i, base in enumerate(("Date", "Name")):
+        sort_seg.setLabel_forSegment_(base + arrow if i == sel_idx else base, i)
+
+    content_top = toolbar_y - 10
+    sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, content_top, w, 1))
+    sep.setBoxType_(2)
+    view.addSubview_(sep)
+
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, content_top))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setDrawsBackground_(False)
+    view.addSubview_(scroll)
+
+    delegate._history_scroll = scroll
+    delegate._history_inner = None
+
+    _rebuild_history_rows(delegate)
+    return view
+
+
+def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:  # noqa: PLR0912
+    """Rebuild the history row list based on current filter state."""
+    scroll = delegate._history_scroll
+    if scroll is None:
+        return
+
+    _reload_history_data()
+    w = int(scroll.frame().size.width)
+    h = int(scroll.frame().size.height)
+
+    # Filter
+    entries = list(_history_data)
+    pinned_cwds = get_bookmark_service().get_pinned_cwds()
+
+    if delegate._history_bookmarked_only:
+        entries = [e for e in entries if e.get("cwd", "") in pinned_cwds]
+
+    if delegate._history_search:
+        q = delegate._history_search
+        summary_svc = get_summary_service()
+        filtered = []
+        for e in entries:
+            if q in e.get("project", "").lower():
+                filtered.append(e)
+            else:
+                s = summary_svc.get_cached(e.get("cwd", ""))
+                if s and q in s.lower():
+                    filtered.append(e)
+        entries = filtered
+
+    # Sort
+    asc = delegate._history_sort_asc
+    if delegate._history_sort == "name":
+        entries.sort(key=lambda e: e.get("project", "").lower(), reverse=not asc)
+    elif asc:
+        # Date — _reload_history_data returns newest first, so reverse for asc
+        entries.reverse()
+
+    # Build rows
+    _row_h = 54
     _sep_h = 1
-    row_w = w
 
-    total_h = _PAD + len(_history_data) * (_row_h + _sep_h) + _PAD
+    if not entries:
+        inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
+        empty = _make_secondary_label("No matching sessions.", _PAD, h // 2, w - _PAD * 2, 13.0)
+        empty.setAlignment_(1)
+        inner.addSubview_(empty)
+        scroll.setDocumentView_(inner)
+        return
+
+    _list_pad = 8  # tight padding above first row and below last
+    total_h = _list_pad + len(entries) * (_row_h + _sep_h) + _list_pad
     inner_h = max(h, total_h)
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
 
-    pinned_cwds = get_bookmark_service().get_pinned_cwds()
     usage_svc = get_usage_service()
     summary_svc = get_summary_service()
 
-    y = inner_h - _PAD
-    for i, entry in enumerate(_history_data):
+    y = inner_h - _list_pad
+    for i, entry in enumerate(entries):
         y -= _row_h
-        _add_history_row(inner, delegate, entry, 0, y, row_w, _row_h, pinned_cwds, usage_svc, summary_svc)
-        if i < len(_history_data) - 1:
-            sep = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y - 1, row_w - _PAD * 2, _sep_h))
+        _add_history_row(inner, delegate, entry, 0, y, w, _row_h, pinned_cwds, usage_svc, summary_svc)
+        if i < len(entries) - 1:
+            sep = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y - 1, w - _PAD * 2, _sep_h))
             sep.setBoxType_(2)
             inner.addSubview_(sep)
             y -= _sep_h
 
-    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-    scroll.setHasVerticalScroller_(True)
-    scroll.setDrawsBackground_(False)
     scroll.setDocumentView_(inner)
     inner.scrollPoint_((0, inner_h))
-    return scroll
 
 
 def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
@@ -767,9 +948,11 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
     """Build the about pane with a grouped card."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
+    y = _add_pane_header(view, "About", w, h)
+
     card_h = 100
     card_w = w - _PAD * 2
-    card = _make_card(_PAD, h - _PAD - card_h, card_w, card_h)
+    card = _make_card(_PAD, y - card_h, card_w, card_h)
     view.addSubview_(card)
     content = card.contentView()
 
