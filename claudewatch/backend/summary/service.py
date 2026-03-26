@@ -23,15 +23,48 @@ log = logging.getLogger("claudewatch")
 
 _MAX_STORE_ENTRIES = 500
 _STORE_MAX_AGE = 30 * 86400  # 30 days
-_MAX_CONTEXT_CHARS = 8000
-_TIMEOUT_SECONDS = 45
+_MAX_CONTEXT_CHARS = 12000
+_TIMEOUT_SECONDS = 60
 _REFRESH_INTERVAL = 60  # seconds between background refresh cycles
 _MAX_FAILURES = 3  # stop retrying after this many consecutive failures per CWD
 
 _PROMPT = (
-    "Summarize in under 50 characters. Action verb, no fluff. "
-    "Examples: 'Fix auth token storage' / 'Add CI coverage' / 'Refactor prefs UI'\n\n"
+    "Analyze this Claude Code session and respond with EXACTLY this format, nothing else:\n"
+    "TITLE: <under 50 chars, what's happening now, action verb>\n"
+    "• <action taken>\n"
+    "• <action taken>\n"
+    "• <action taken>\n\n"
+    "The TITLE is a short present-tense description of the most recent activity.\n"
+    "The bullets summarize ALL key actions taken in the session (3-8 bullets).\n"
+    "Keep bullets concise (under 60 chars each). No fluff.\n"
+    "OMIT boilerplate like 'waiting for input', 'greeting user', 'session started'.\n"
+    "Focus on substantive actions: code changes, file edits, commands run, features built.\n\n"
 )
+
+
+def _parse_summary_response(raw: str) -> tuple[str, str]:
+    """Parse the TITLE + bullets format from claude -p output.
+
+    Returns (title, bullets_string). Falls back gracefully if format is unexpected.
+    """
+    lines = raw.strip().splitlines()
+    title = ""
+    bullets: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.upper().startswith("TITLE:"):
+            title = stripped[6:].strip()
+        elif stripped.startswith("•") or stripped.startswith("-"):
+            bullet = stripped.lstrip("•-").strip()
+            if bullet:
+                bullets.append(f"• {bullet}")
+
+    # Fallback: if no structured output, use first line as title
+    if not title and lines:
+        title = lines[0].strip()[:50]
+
+    return title, "\n".join(bullets)
 
 
 class SummaryService(BaseService):
@@ -110,8 +143,8 @@ class SummaryService(BaseService):
 
     # -- Public API ---------------------------------------------------------
 
-    def get_cached(self, cwd: str) -> str | None:
-        """Return stored summary if JSONL hasn't changed since generation."""
+    def _get_entry(self, cwd: str) -> dict | None:
+        """Return the cached entry if JSONL hasn't changed since generation."""
         with self._store_lock:
             self._load_store()
             entry = self._store.get(cwd)
@@ -120,15 +153,47 @@ class SummaryService(BaseService):
         cached_mtime = entry.get("mtime", 0)
         current_mtime = self._get_jsonl_mtime(cwd)
         if current_mtime and current_mtime <= cached_mtime:
-            return entry.get("summary", "")
+            return entry
         return None
 
+    def get_cached(self, cwd: str) -> str | None:
+        """Return the title (one-liner). Backward compatible — used by menu bar."""
+        entry = self._get_entry(cwd)
+        if not entry:
+            return None
+        # Support old format (plain "summary" string) and new format ("title" + "summary")
+        return entry.get("title") or entry.get("summary", "")
+
+    def get_cached_title(self, cwd: str) -> str | None:
+        """Return the short title (what's happening now)."""
+        return self.get_cached(cwd)
+
+    def get_cached_summary(self, cwd: str) -> str | None:
+        """Return the bulleted summary of all session actions."""
+        entry = self._get_entry(cwd)
+        if not entry:
+            return None
+        return entry.get("summary", "")
+
     def cache(self, cwd: str, summary: str) -> None:
-        """Persist a summary keyed to the current JSONL mtime."""
+        """Persist a summary. Accepts plain string (becomes title) or title+summary."""
         mtime = self._get_jsonl_mtime(cwd) or time.time()
         with self._store_lock:
             self._load_store()
-            self._store[cwd] = {"summary": summary, "mtime": mtime}
+            existing = self._store.get(cwd, {})
+            if isinstance(existing, dict) and existing.get("summary"):
+                # Preserve existing summary if only updating title
+                self._store[cwd] = {"title": summary, "summary": existing["summary"], "mtime": mtime}
+            else:
+                self._store[cwd] = {"title": summary, "summary": "", "mtime": mtime}
+            self._save_store()
+
+    def cache_full(self, cwd: str, title: str, summary: str) -> None:
+        """Persist both title and bulleted summary."""
+        mtime = self._get_jsonl_mtime(cwd) or time.time()
+        with self._store_lock:
+            self._load_store()
+            self._store[cwd] = {"title": title, "summary": summary, "mtime": mtime}
             self._save_store()
 
     def clear_all(self) -> None:
@@ -168,9 +233,10 @@ class SummaryService(BaseService):
             if not self._generating.acquire(timeout=1):
                 return ""
             try:
-                summary = self._call_claude(cwd)
-                if summary:
-                    self.cache(cwd, summary)
+                raw = self._call_claude(cwd)
+                if raw:
+                    title, bullets = _parse_summary_response(raw)
+                    self.cache_full(cwd, title, bullets)
                     with self._failures_lock:
                         self._failures.pop(cwd, None)
                 else:
@@ -183,7 +249,8 @@ class SummaryService(BaseService):
                             os.path.basename(cwd),
                             count,
                         )
-                return summary
+                    title = ""
+                return title
             finally:
                 self._generating.release()
         finally:
@@ -225,6 +292,8 @@ class SummaryService(BaseService):
             self._tracked_cwds.discard(cwd)
 
     def _ensure_bg_thread(self) -> None:
+        if not features.get_facet("summaries", "background_refresh"):
+            return
         if self._bg_thread is not None and self._bg_thread.is_alive():
             return
         self._bg_thread = threading.Thread(target=self._bg_refresh_loop, daemon=True)
@@ -265,12 +334,16 @@ class SummaryService(BaseService):
         return 0.0
 
     def _extract_conversation_text(self, cwd: str) -> str:  # noqa: PLR0912
-        """Extract a condensed conversation from the most recent JSONL."""
+        """Extract a structured event timeline from JSONL — token-efficient.
+
+        Instead of raw conversation text, extracts: user prompts, tool calls
+        (name + key args), and short assistant text. Skips boilerplate.
+        """
         path = self._session_log_service.find_most_recent(cwd)
         if not path:
             return ""
 
-        tail = self._session_log_service.read_tail(path, tail_bytes=50000)
+        tail = self._session_log_service.read_tail(path, tail_bytes=80000)
         if not tail:
             return ""
 
@@ -290,19 +363,36 @@ class SummaryService(BaseService):
             if dtype == "user":
                 content = msg.get("content", "")
                 if isinstance(content, str) and content.strip():
-                    text = f"User: {content.strip()}"
-                    parts.append(text)
+                    # Truncate long user messages
+                    text = content.strip()[:200]
+                    parts.append(f"USER: {text}")
                     total += len(text)
 
             elif dtype == "assistant":
                 content = msg.get("content", [])
                 if isinstance(content, list):
                     for block in content:
-                        if isinstance(block, dict) and block.get("type") == "text":
+                        if not isinstance(block, dict):
+                            continue
+                        if block.get("type") == "tool_use":
+                            # Structured tool call — very token-efficient
+                            name = block.get("name", "")
+                            inp = block.get("input", {})
+                            if isinstance(inp, dict):
+                                key_arg = inp.get("command") or inp.get("file_path") or inp.get("pattern") or ""
+                                if key_arg:
+                                    parts.append(f"TOOL: {name} → {str(key_arg)[:100]}")
+                                else:
+                                    parts.append(f"TOOL: {name}")
+                            else:
+                                parts.append(f"TOOL: {name}")
+                            total += 30  # approximate
+                        elif block.get("type") == "text":
                             text = block.get("text", "").strip()
-                            if text:
-                                parts.append(f"Assistant: {text}")
-                                total += len(text)
+                            _min_text = 20
+                            if text and len(text) > _min_text:
+                                parts.append(f"ASSISTANT: {text[:150]}")
+                                total += min(len(text), 150)
 
             if total > _MAX_CONTEXT_CHARS:
                 break

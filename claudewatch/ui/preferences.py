@@ -71,7 +71,7 @@ _history_data: list[dict] = []
 _FEATURE_DETAILS: dict[str, str] = {
     "bookmarks": "Pin sessions to resume later from the menu bar.",
     "notifications": "Get alerts when Claude needs your attention.",
-    "summaries": "Auto-generate one-line session summaries.",
+    "summaries": "Generate session titles and bulleted action summaries.",
     "auto_updates": "Check GitHub for new releases periodically.",
 }
 
@@ -806,6 +806,12 @@ def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:  # noqa: PLR0912, P
     scroll.setDocumentView_(inner)
     inner.scrollPoint_((0, inner_h))
 
+    # Queue background generation for sessions missing summaries
+    for entry in entries:
+        cwd = entry.get("cwd", "")
+        if cwd and summary_svc.get_cached(cwd) is None:
+            summary_svc.track_session(cwd)
+
 
 def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     view: NSView,
@@ -843,28 +849,18 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     view.addSubview_(name_label)
 
     # ··· menu
-    summary = summary_svc.get_cached(cwd) if cwd else None
+    title = summary_svc.get_cached_title(cwd) if cwd else None
+    bullets = summary_svc.get_cached_summary(cwd) if cwd else None
     menu = NSMenu.alloc().init()
 
-    # Full summary at the top (if available)
-    if summary:
-        _wrap = 50
-        words = summary.split()
-        lines: list[str] = []
-        cur = ""
-        for word in words:
-            test = f"{cur} {word}".strip()
-            if len(test) > _wrap and cur:
-                lines.append(cur)
-                cur = word
-            else:
-                cur = test
-        if cur:
-            lines.append(cur)
-        for line in lines:
-            si = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(line, None, "")
-            si.setEnabled_(False)
-            menu.addItem_(si)
+    # Bulleted summary at the top (if available)
+    if bullets:
+        for line in bullets.splitlines():
+            stripped = line.strip()
+            if stripped:
+                si = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(stripped, None, "")
+                si.setEnabled_(False)
+                menu.addItem_(si)
         menu.addItem_(NSMenuItem.separatorItem())
 
     for title, action, obj in [
@@ -935,11 +931,11 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     meta_label = _make_secondary_label(meta, _name_col, ly2, w - _name_col - _p, 11.0)
     view.addSubview_(meta_label)
 
-    # ── Line 3: short summary (full in ··· menu)
+    # ── Line 3: title one-liner (full bullets in ··· menu)
     ly3 = ly2 - 16
-    _max_summary = 50
-    if summary:
-        s_text = summary[:_max_summary] + "…" if len(summary) > _max_summary else summary
+    _max_title = 50
+    if title:
+        s_text = title[:_max_title] + "…" if len(title) > _max_title else title
         s_label = _make_secondary_label(s_text, _name_col, ly3, w - _name_col - _p, 11.0)
         s_label.setTextColor_(NSColor.tertiaryLabelColor())
         view.addSubview_(s_label)
