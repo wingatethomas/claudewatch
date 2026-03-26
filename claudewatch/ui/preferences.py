@@ -1051,27 +1051,32 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     y -= 8
 
     scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_PAD, 0, card_w, y))
-    scroll.setHasVerticalScroller_(True)
+    scroll.setHasVerticalScroller_(False)
+    scroll.setAutohidesScrollers_(True)
     scroll.setDrawsBackground_(False)
 
     # Calculate inner height
-    inner_h = 8
+    _ver_h = 18  # version label height
+    _bullet_h = 14  # bullet line height
+    _ver_gap = 8  # gap between version sections
+    inner_h = 4
     for _ver, items in _CHANGELOG:
-        inner_h += 22 + len(items) * 16 + 12
+        inner_h += _ver_h + len(items) * _bullet_h + _ver_gap
     inner_h = max(y, inner_h)
 
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, inner_h))
-    cy = inner_h - 8
+    cy = inner_h - 4
 
     for version, items in _CHANGELOG:
-        ver = _make_label(version, 0, cy - 16, 200, 12.0, bold=True)
+        cy -= _ver_h
+        ver = _make_label(version, 0, cy, 200, 11.0, bold=True)
         inner.addSubview_(ver)
-        cy -= 22
         for item in items:
-            bullet = _make_secondary_label(f"• {item}", 8, cy - 12, card_w - 16, 11.0)
+            cy -= _bullet_h
+            bullet = _make_secondary_label(f"• {item}", 8, cy, card_w - 16, 11.0)
+            bullet.setFont_(NSFont.systemFontOfSize_(10.0))
             inner.addSubview_(bullet)
-            cy -= 16
-        cy -= 12
+        cy -= _ver_gap
 
     scroll.setDocumentView_(inner)
     inner.scrollPoint_((0, inner_h))
