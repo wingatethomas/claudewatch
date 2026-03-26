@@ -351,6 +351,28 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     # ── Static actions ──
 
+    def openClaudeUsage_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        """Open claude /usage in Terminal using a known trusted directory."""
+        # Find a trusted CWD from history
+        history = get_history_service().get_all()
+        cwd = ""
+        for entry in history:
+            if entry.cwd and os.path.isdir(entry.cwd):
+                cwd = entry.cwd
+                break
+        if not cwd:
+            cwd = os.path.expanduser("~")
+        safe_cwd = escape_applescript(cwd)
+        run_applescript(f'''
+            tell application "Terminal"
+                activate
+                do script "cd \\"{safe_cwd}\\" && claude /usage"
+            end tell
+        ''')
+
+    def openAnthropicConsole_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        webbrowser.open("https://console.anthropic.com/settings/usage")
+
     def viewAuditLog_(self, sender: objc.objc_object) -> None:  # noqa: N802
         if os.path.exists(LOG_PATH):
             subprocess.run(["open", "-a", "Console", LOG_PATH], check=False)  # noqa: S603, S607
@@ -1164,6 +1186,28 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
         )
         val.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(11.0, 0.0))
         tpc.addSubview_(val)
+
+    # Action buttons
+    y -= top_card_h + 16
+    btn_y = y
+    _btn_h = 24
+    _btn_font = NSFont.systemFontOfSize_(11.0)
+
+    claude_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, btn_y, 140, _btn_h))
+    claude_btn.setTitle_("View usage in Claude")
+    claude_btn.setBezelStyle_(1)
+    claude_btn.setFont_(_btn_font)
+    claude_btn.setTarget_(delegate)
+    claude_btn.setAction_(objc.selector(delegate.openClaudeUsage_, signature=b"v@:@"))
+    view.addSubview_(claude_btn)
+
+    console_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 150, btn_y, 160, _btn_h))
+    console_btn.setTitle_("View on Anthropic Console")
+    console_btn.setBezelStyle_(1)
+    console_btn.setFont_(_btn_font)
+    console_btn.setTarget_(delegate)
+    console_btn.setAction_(objc.selector(delegate.openAnthropicConsole_, signature=b"v@:@"))
+    view.addSubview_(console_btn)
 
     return view
 
