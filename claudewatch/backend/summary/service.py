@@ -116,6 +116,12 @@ class SummaryService(BaseService):
             self._store[cwd] = {"summary": summary, "mtime": mtime}
             self._save_store()
 
+    def clear_all(self) -> None:
+        """Delete all cached summaries."""
+        with self._store_lock:
+            self._store.clear()
+            self._save_store()
+
     def is_generating(self, cwd: str) -> bool:
         """Check if a summary is currently being generated for a CWD."""
         with self._in_progress_lock:
