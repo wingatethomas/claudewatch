@@ -41,8 +41,7 @@ from claudewatch.backend.core import features
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.history.dependencies import get_history_service
-from claudewatch.backend.usage.dependencies import get_usage_service
-from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_breakdown
+from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES
 from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
@@ -66,15 +65,13 @@ _history_data: list[dict] = []
 
 
 def _sidebar_items() -> list[dict]:
-    """Build sidebar item list from registered features + static sections."""
-    items: list[dict] = []
-    for f in features.get_all():
-        items.append({"type": "feature", "key": f.key, "label": f.description})
-    items.append({"type": "separator"})
-    items.append({"type": "static", "key": "history", "label": "History"})
-    items.append({"type": "static", "key": "usage", "label": "Usage"})
-    items.append({"type": "static", "key": "about", "label": "About"})
-    return items
+    """Build sidebar item list."""
+    return [
+        {"type": "static", "key": "general", "label": "General"},
+        {"type": "static", "key": "history", "label": "History"},
+        {"type": "separator"},
+        {"type": "static", "key": "about", "label": "About"},
+    ]
 
 
 # ── UI helpers ───────────────────────────────────────────────────────
@@ -125,12 +122,10 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             self._current_pane = None
 
         content_h = _H
-        if item["type"] == "feature":
-            pane = _build_feature_pane(self, item["key"], _CONTENT_W, content_h)
+        if item["key"] == "general":
+            pane = _build_general_pane(self, _CONTENT_W, content_h)
         elif item["key"] == "history":
             pane = _build_history_pane(self, _CONTENT_W, content_h)
-        elif item["key"] == "usage":
-            pane = _build_usage_pane(_CONTENT_W, content_h)
         elif item["key"] == "about":
             pane = _build_about_pane(self, _CONTENT_W, content_h)
         else:
@@ -341,32 +336,29 @@ def _reload_history_data() -> None:
 # ── Content pane builders ────────────────────────────────────────────
 
 
-def _build_feature_pane(delegate: _PrefsDelegate, feature_key: str, w: int, h: int) -> NSView:  # noqa: PLR0915
-    """Build a feature settings pane with a grouped card containing toggle + facets."""
-    feature = next((f for f in features.get_all() if f.key == feature_key), None)
-    if feature is None:
-        return NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-    delegate._feature_controls = getattr(delegate, "_feature_controls", {})
+def _add_feature_card(  # noqa: PLR0913, PLR0915
+    view: NSView,
+    delegate: _PrefsDelegate,
+    feature: features.Feature,
+    card_x: float,
+    card_y: float,
+    card_w: float,
+) -> None:
+    """Add a single feature card with toggle row + facet rows."""
+    feature_key = feature.key
     enabled = features.is_enabled(feature_key)
 
-    # Calculate card height: toggle row + facet rows
     _toggle_row_h = 44
     _facet_row_h = 40
     card_h = _toggle_row_h + len(feature.facets) * _facet_row_h
-    card_w = w - _PAD * 2
-    card_x = _PAD
-    card_y = h - _PAD - card_h
 
-    # Grouped card
     card = _make_card(card_x, card_y, card_w, card_h)
     view.addSubview_(card)
     content = card.contentView()
 
-    # Toggle row — feature name left, switch right
+    # Toggle row
     row_y = card_h - _toggle_row_h
-    name_label = _make_label(feature.description, _CARD_PAD, row_y + 12, card_w - _CARD_PAD * 2 - 60, 14.0)
+    name_label = _make_label(feature.description, _CARD_PAD, row_y + 12, card_w - _CARD_PAD * 2 - 60, 13.0)
     content.addSubview_(name_label)
 
     toggle = NSSwitch.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - 46, row_y + 10, 46, 22))
@@ -381,14 +373,13 @@ def _build_feature_pane(delegate: _PrefsDelegate, feature_key: str, w: int, h: i
     for i, facet in enumerate(feature.facets):
         fy = row_y - (i + 1) * _facet_row_h
 
-        # Separator above each facet row
         sep = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, fy + _facet_row_h - 1, card_w - _CARD_PAD * 2, 1))
         sep.setBoxType_(2)
         content.addSubview_(sep)
 
         facet_label = facet.description or facet.name.replace("_", " ").title()
-        label = _make_secondary_label(facet_label, _CARD_PAD, fy + 11, 140, 13.0)
-        label.setTextColor_(NSColor.labelColor())
+        label = _make_label(facet_label, _CARD_PAD, fy + 11, 140, 12.0)
+        label.setTextColor_(NSColor.secondaryLabelColor())
         content.addSubview_(label)
 
         if facet.type == "choice":
@@ -397,7 +388,7 @@ def _build_feature_pane(delegate: _PrefsDelegate, feature_key: str, w: int, h: i
                 NSMakeRect(card_w - _CARD_PAD - _popup_w, fy + 8, _popup_w, 24),
                 False,
             )
-            popup.setFont_(NSFont.systemFontOfSize_(13.0))
+            popup.setFont_(NSFont.systemFontOfSize_(12.0))
             popup.addItemsWithTitles_(list(facet.options))
             current = features.get_facet(feature_key, facet.name)
             if current is not None:
@@ -410,7 +401,43 @@ def _build_feature_pane(delegate: _PrefsDelegate, feature_key: str, w: int, h: i
             facet_controls.append(popup)
 
     delegate._feature_controls[feature_key] = facet_controls
-    return view
+
+
+def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
+    """Build the General pane — all features as stacked cards."""
+    delegate._feature_controls = {}
+    all_features = features.get_all()
+
+    _toggle_row_h = 44
+    _facet_row_h = 40
+    _card_gap = 12
+
+    # Calculate total height needed
+    total_h = _PAD
+    for f in all_features:
+        total_h += _toggle_row_h + len(f.facets) * _facet_row_h + _card_gap
+    total_h += _PAD
+    inner_h = max(h, total_h)
+
+    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
+    card_w = w - _PAD * 2
+
+    y = inner_h - _PAD
+    for feature in all_features:
+        card_h = _toggle_row_h + len(feature.facets) * _facet_row_h
+        y -= card_h
+        _add_feature_card(inner, delegate, feature, _PAD, y, card_w)
+        y -= _card_gap
+
+    # Wrap in scroll view if needed
+    if inner_h <= h:
+        return inner
+
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setDrawsBackground_(False)
+    scroll.setDocumentView_(inner)
+    return scroll
 
 
 def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
@@ -488,38 +515,6 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
     scroll.setDocumentView_(table)
     view.addSubview_(scroll)
-    return view
-
-
-def _build_usage_pane(w: int, h: int) -> NSView:
-    """Build usage statistics in a grouped card."""
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-
-    history = get_history_service().get_all()
-    usage_svc = get_usage_service()
-    total_tokens: dict[str, int] = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
-    for entry in history:
-        tokens = usage_svc.get_tokens(entry.cwd)
-        for k in total_tokens:
-            total_tokens[k] += tokens[k]
-
-    lines = format_tokens_breakdown(total_tokens) or ["No usage data yet"]
-
-    card_h = len(lines) * 24 + _CARD_PAD * 2
-    card_w = w - _PAD * 2
-    card = _make_card(_PAD, h - _PAD - card_h, card_w, card_h)
-    view.addSubview_(card)
-    content = card.contentView()
-
-    y = card_h - _CARD_PAD
-    for line in lines:
-        label = NSTextField.labelWithString_(line)
-        label.setFrame_(NSMakeRect(_CARD_PAD, y - 16, card_w - _CARD_PAD * 2, 18))
-        label.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(13.0, 0))
-        label.setTextColor_(NSColor.secondaryLabelColor())
-        content.addSubview_(label)
-        y -= 24
-
     return view
 
 
