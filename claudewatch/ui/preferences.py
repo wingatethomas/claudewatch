@@ -19,6 +19,7 @@ from AppKit import (
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
+    NSMenu,
     NSMenuItem,
     NSMutableAttributedString,
     NSPasteboard,
@@ -194,6 +195,17 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             sound = NSSound.soundNamed_(value)
             if sound:
                 sound.play()
+
+    # ── Row menu ──
+
+    def showRowMenu_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        menu = sender.menu()
+        if menu:
+            NSMenu.popUpContextMenu_withEvent_forView_(
+                menu,
+                NSApplication.sharedApplication().currentEvent(),
+                sender,
+            )
 
     # ── History card actions ──
 
@@ -621,68 +633,68 @@ def _add_history_row(  # noqa: PLR0913, PLR0915
     is_pinned = cwd in pinned_cwds
     _p = _PAD
 
-    # ── Line 1: project name              model ★  ···
+    # ── Line 1: project name              ★  ···
     ly1 = y + h - 20
 
-    name_label = _make_label(project, _p, ly1, w - _p - 120, 13.0, bold=True)
+    name_label = _make_label(project, _p, ly1, w - _p - 60, 13.0, bold=True)
     view.addSubview_(name_label)
 
-    # Right side: model + pin + meatball menu
-    right_parts = []
-    if model:
-        right_parts.append(model)
+    # Pin star
     if is_pinned:
-        right_parts.append("\u2605")
-    right_text = "  ".join(right_parts)
+        star = _make_secondary_label("\u2605", w - _p - 42, ly1 + 1, 14, 12.0)
+        view.addSubview_(star)
 
-    # Meatball ··· as a small pulldown — no border, just text
-    meatball = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(w - _p - 24, ly1 - 1, 24, 18), True)
-    meatball.setFont_(NSFont.systemFontOfSize_(11.0))
-    meatball.setBordered_(False)
-    meatball.addItemWithTitle_("···")
+    # ··· button — plain text button that pops a menu
+    menu = NSMenu.alloc().init()
     for title, action, obj in [
         ("Resume", delegate.resumeSession_, f"{session_id}|{cwd}"),
         ("Activity", delegate.viewActivity_, f"{project}|{cwd}"),
     ]:
-        meatball.addItemWithTitle_(title)
-        idx = meatball.numberOfItems() - 1
-        meatball.itemAtIndex_(idx).setRepresentedObject_(obj)
-        meatball.itemAtIndex_(idx).setTarget_(delegate)
-        meatball.itemAtIndex_(idx).setAction_(objc.selector(action, signature=b"v@:@"))
-    meatball.menu().addItem_(NSMenuItem.separatorItem())
+        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
+        mi.setRepresentedObject_(obj)
+        mi.setTarget_(delegate)
+        mi.setAction_(objc.selector(action, signature=b"v@:@"))
+        menu.addItem_(mi)
+    menu.addItem_(NSMenuItem.separatorItem())
     for title, action, obj in [
         ("Copy Path", delegate.copyCwd_, cwd),
         ("Open in Finder", delegate.revealInFinder_, cwd),
     ]:
-        meatball.addItemWithTitle_(title)
-        idx = meatball.numberOfItems() - 1
-        meatball.itemAtIndex_(idx).setRepresentedObject_(obj)
-        meatball.itemAtIndex_(idx).setTarget_(delegate)
-        meatball.itemAtIndex_(idx).setAction_(objc.selector(action, signature=b"v@:@"))
-    meatball.menu().addItem_(NSMenuItem.separatorItem())
-    meatball.addItemWithTitle_("Delete")
-    d_idx = meatball.numberOfItems() - 1
-    meatball.itemAtIndex_(d_idx).setRepresentedObject_(cwd)
-    meatball.itemAtIndex_(d_idx).setTarget_(delegate)
-    meatball.itemAtIndex_(d_idx).setAction_(objc.selector(delegate.deleteHistoryEntry_, signature=b"v@:@"))
+        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
+        mi.setRepresentedObject_(obj)
+        mi.setTarget_(delegate)
+        mi.setAction_(objc.selector(action, signature=b"v@:@"))
+        menu.addItem_(mi)
+    menu.addItem_(NSMenuItem.separatorItem())
+    del_mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Delete", None, "")
+    del_mi.setRepresentedObject_(cwd)
+    del_mi.setTarget_(delegate)
+    del_mi.setAction_(objc.selector(delegate.deleteHistoryEntry_, signature=b"v@:@"))
     d_attr = NSMutableAttributedString.alloc().initWithString_("Delete")
     d_attr.addAttribute_value_range_("NSColor", NSColor.systemRedColor(), NSRange(0, 6))
-    meatball.itemAtIndex_(d_idx).setAttributedTitle_(d_attr)
-    view.addSubview_(meatball)
+    del_mi.setAttributedTitle_(d_attr)
+    menu.addItem_(del_mi)
 
-    if right_text:
-        rt_label = _make_secondary_label(right_text, w - _p - 24 - 70, ly1 + 1, 65, 11.0)
-        rt_label.setAlignment_(2)
-        view.addSubview_(rt_label)
+    dots_btn = NSButton.alloc().initWithFrame_(NSMakeRect(w - _p - 22, ly1 - 1, 22, 18))
+    dots_btn.setTitle_("···")
+    dots_btn.setBordered_(False)
+    dots_btn.setFont_(NSFont.systemFontOfSize_(12.0))
+    dots_btn.setMenu_(menu)
+    dots_btn.setAction_(objc.selector(delegate.showRowMenu_, signature=b"v@:@"))
+    dots_btn.setTarget_(delegate)
+    view.addSubview_(dots_btn)
 
-    # ── Line 2: time · tokens
+    # ── Line 2: time · model · tokens (total)
     ly2 = ly1 - 17
     time_str = _relative_time(ended_at)
     tokens = usage_svc.get_tokens(cwd) if cwd else {}
     token_str = format_tokens_compact(tokens) if tokens else ""
-    meta = time_str
+    parts = [time_str]
+    if model:
+        parts.append(model)
     if token_str:
-        meta += f"  ·  {token_str}"
+        parts.append(token_str)
+    meta = "  ·  ".join(parts)
     meta_label = _make_secondary_label(meta, _p, ly2, w - _p * 2, 11.0)
     view.addSubview_(meta_label)
 

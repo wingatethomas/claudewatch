@@ -44,9 +44,11 @@ def format_tokens_compact(tokens: dict[str, int]) -> str:
     cache = tokens["cache_create"] + tokens["cache_read"]
     if total_in + total_out + cache == 0:
         return ""
+    total = total_in + total_out + cache
     parts = [f"{_fmt_tokens(total_in)} in", f"{_fmt_tokens(total_out)} out"]
     if cache:
         parts.append(f"{_fmt_tokens(cache)} cache")
+    parts.append(f"{_fmt_tokens(total)} total")
     return " · ".join(parts)
 
 
