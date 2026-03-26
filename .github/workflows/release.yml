@@ -50,3 +50,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+
+      - name: Update Homebrew tap
+        if: "!contains(github.ref_name, '-')"
+        run: |
+          VERSION="${TAG#v}"
+          SHA256=$(awk '{print $1}' checksums.txt)
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/wingatethomas/homebrew-claudewatch.git tap
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/claudewatch.rb
+          sed -i '' "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/claudewatch.rb
+          git add Casks/claudewatch.rb
+          git commit -m "bump claudewatch to ${VERSION}"
+          git push
+        env:
+          TAG: ${{ github.ref_name }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
