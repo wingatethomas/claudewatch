@@ -355,11 +355,22 @@ class MenuBuilder:
         # Detail line: model + summary (or status as fallback)
         model = self._app._usage_service.get_model(s.cwd)
         cached = self._app._summary_service.get_cached(s.cwd)
+        generating = self._app._summary_service.is_generating(s.cwd)
         _max_detail_total = 55
-        oneliner = cached.replace("\n", " ").strip() if cached else s.detail_line
+        if cached:
+            oneliner = cached.replace("\n", " ").strip()
+        elif generating:
+            oneliner = "Generating summary…"
+        else:
+            oneliner = s.detail_line
         detail_parts = [p for p in [model, oneliner] if p]
         if detail_parts:
             detail_text = " · ".join(detail_parts)
             if len(detail_text) > _max_detail_total:
-                detail_text = detail_text[: _max_detail_total - 1] + "…"
+                # Truncate at word boundary
+                truncated = detail_text[: _max_detail_total - 1]
+                last_space = truncated.rfind(" ")
+                if last_space > _max_detail_total // 2:
+                    truncated = truncated[:last_space]
+                detail_text = truncated + "…"
             self._menu.addItem_(disabled_item(f"      {detail_text}"))

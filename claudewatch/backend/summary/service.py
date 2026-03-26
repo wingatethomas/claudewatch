@@ -30,7 +30,7 @@ _MAX_FAILURES = 3  # stop retrying after this many consecutive failures per CWD
 
 _PROMPT = (
     "Analyze this Claude Code session and respond with EXACTLY this format, nothing else:\n"
-    "TITLE: <under 50 chars, what's happening now, action verb>\n"
+    "TITLE: <under 40 chars, what's happening now, action verb>\n"
     "• <action taken>\n"
     "• <action taken>\n"
     "• <action taken>\n\n"
@@ -62,7 +62,16 @@ def _parse_summary_response(raw: str) -> tuple[str, str]:
 
     # Fallback: if no structured output, use first line as title
     if not title and lines:
-        title = lines[0].strip()[:50]
+        title = lines[0].strip()
+
+    # Clamp title at word boundary
+    _max_title = 40
+    if len(title) > _max_title:
+        truncated = title[:_max_title]
+        last_space = truncated.rfind(" ")
+        if last_space > _max_title // 2:
+            truncated = truncated[:last_space]
+        title = truncated
 
     return title, "\n".join(bullets)
 
@@ -395,9 +404,20 @@ class SummaryService(BaseService):
 
         return "\n".join(parts)
 
+    @staticmethod
+    def _find_claude() -> str | None:
+        """Find the claude CLI, checking common install paths if PATH is limited."""
+        found = shutil.which("claude")
+        if found:
+            return found
+        for path in ("/opt/homebrew/bin/claude", "/usr/local/bin/claude", os.path.expanduser("~/.claude/bin/claude")):
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                return path
+        return None
+
     def _call_claude(self, cwd: str) -> str:
         """Call claude -p to generate a summary. Returns empty string on failure."""
-        claude_path = shutil.which("claude")
+        claude_path = self._find_claude()
         if not claude_path:
             log.warning("summarize: claude CLI not found")
             return ""
