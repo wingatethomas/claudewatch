@@ -70,7 +70,7 @@ class ClaudeSession:
 
     @property
     def menu_label(self) -> str:
-        _max_label = 40
+        _max_label = 50
         ind = STATUS_INDICATOR[self.status]
         task = self.task_summary
         tab = f" (tab {self.tab_index + 1})" if self.tab_index is not None else ""

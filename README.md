@@ -36,18 +36,18 @@ ClaudeWatch shows all active Claude Code sessions in your menu bar, grouped by s
 - **✦ Working** (green) — Claude is actively running
 - **⏸ Idle** (yellow) — session is idle
 
-Click any session to focus its window. Hover for actions: Activity log, Pin, Quit.
+Click any session to focus its window. Hover for actions: Activity log, Bookmark, Quit.
 
 ### Features
 
 - **Multi-environment** — Terminal.app, PyCharm, VS Code, tmux
 - **Activity feed** — timeline of user messages, assistant responses, and tool calls
-- **Pinned sessions** — bookmark sessions to resume later with ★
+- **Bookmarked sessions** — save sessions to resume later from the Bookmarks submenu
 - **Notifications** — native macOS alerts when sessions need attention, with context about what's being asked
-- **Session summaries** — auto-generated one-line summaries via `claude -p`
-- **Token usage** — input/output/cache token breakdown per session
-- **Self-update** — checks GitHub Releases every 6 hours, one-click update from the menu
-- **Preferences** — notifications, sounds, session history with search and sort
+- **Session summaries** — auto-generated titles and bulleted action summaries
+- **Token usage** — per-session and aggregated usage stats with top sessions breakdown
+- **Self-update** — checks GitHub Releases periodically, one-click update from the menu
+- **Preferences** — sidebar settings with feature toggles, session history with search/sort/filter, usage dashboard, changelog
 
 ### Permissions
 
