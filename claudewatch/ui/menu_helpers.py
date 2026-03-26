@@ -75,20 +75,25 @@ def disabled_item(title: str) -> NSMenuItem:
 def add_summary_lines(submenu: NSMenu, text: str, delegate: AppDelegate) -> None:
     """Split a summary into wrapped menu items — non-interactive, readable text."""
     _wrap = 55
-    words = text.split()
-    line = ""
-    for word in words:
-        if line and len(line) + 1 + len(word) > _wrap:
+    for raw_bullet in text.splitlines():
+        stripped = raw_bullet.strip()
+        if not stripped:
+            continue
+        # Wrap long bullets across multiple menu items
+        words = stripped.split()
+        line = ""
+        for word in words:
+            if line and len(line) + 1 + len(word) > _wrap:
+                item = make_menu_item(f"  {line}", None, delegate)
+                style_summary_item(item)
+                submenu.addItem_(item)
+                line = f"    {word}"  # indent continuation lines
+            else:
+                line = f"{line} {word}" if line else word
+        if line:
             item = make_menu_item(f"  {line}", None, delegate)
             style_summary_item(item)
             submenu.addItem_(item)
-            line = word
-        else:
-            line = f"{line} {word}" if line else word
-    if line:
-        item = make_menu_item(f"  {line}", None, delegate)
-        style_summary_item(item)
-        submenu.addItem_(item)
 
 
 def style_summary_item(item: NSMenuItem) -> None:
