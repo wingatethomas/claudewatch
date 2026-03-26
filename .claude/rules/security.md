@@ -1,6 +1,11 @@
+---
+paths:
+  - "claudewatch/backend/**/*.py"
+  - "claudewatch/ui/**/*.py"
+---
+
 - Never pass user-controlled strings (project names, window titles, paths) to shell commands without validation.
 - Session IDs must be validated as UUIDs before use in commands or clipboard content.
 - All values interpolated into AppleScript must go through `escape_applescript()` which strips control chars and escapes quotes. Exception: integer values (e.g. `window_id`) verified via `isdigit()` may be interpolated directly — add a comment noting the safety invariant.
 - JSONL file reads must validate the resolved path stays within `~/.claude/projects/` via `is_safe_jsonl_path()` in `jsonl.py`.
 - Notification content must never include raw terminal buffer data. Only tool names and project names. Truncation limit: 200 chars.
-- GitHub Actions must be pinned to commit hashes, not mutable tags. Comment the version for readability (e.g. `actions/checkout@abc123 # v4`).

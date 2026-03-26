@@ -1,5 +1,11 @@
+---
+paths:
+  - "tests/**/*.py"
+  - "claudewatch/backend/**/*.py"
+---
+
 - All pure functions in `backend/` should have tests.
-- CI enforces ≥75% backend coverage (`ui/` and `dependencies.py` files excluded).
+- CI enforces ≥70% backend coverage (`ui/` and `dependencies.py` files excluded).
 - CI runs pip-audit for dependency vulnerability scanning.
 - Tests must never call real system commands. Use `unittest.mock.patch` to mock external calls.
 - Use `tmp_path` fixture for tests that need filesystem state.
