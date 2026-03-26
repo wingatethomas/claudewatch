@@ -213,9 +213,6 @@ class SummaryService(BaseService):
         Skips if already cached and fresh, if another generation is in progress,
         or if this CWD has failed too many times consecutively.
         """
-        if not features.is_enabled("summaries"):
-            return ""
-
         cached = self.get_cached(cwd)
         if cached is not None:
             return cached
@@ -292,7 +289,7 @@ class SummaryService(BaseService):
             self._tracked_cwds.discard(cwd)
 
     def _ensure_bg_thread(self) -> None:
-        if not features.get_facet("summaries", "background_refresh"):
+        if not features.is_enabled("background_summaries"):
             return
         if self._bg_thread is not None and self._bg_thread.is_alive():
             return
