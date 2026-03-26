@@ -171,7 +171,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         elif item["key"] == "history":
             pane = _build_history_pane(self, _CONTENT_W, content_h)
         elif item["key"] == "usage":
-            pane = _build_usage_pane(_CONTENT_W, content_h)
+            pane = _build_usage_pane(self, _CONTENT_W, content_h)
         elif item["key"] == "about":
             pane = _build_about_pane(self, _CONTENT_W, content_h)
         else:
@@ -278,6 +278,21 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
                 NSApplication.sharedApplication().currentEvent(),
                 sender,
             )
+
+    # ── Navigation ──
+
+    def jumpToSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        """Switch to History pane filtered to the given project name."""
+        project = str(sender.representedObject())
+        self._history_search = project.lower()
+        self._history_sort = getattr(self, "_history_sort", "date")
+        self._history_sort_asc = getattr(self, "_history_sort_asc", False)
+        self._history_bookmarked_only = False
+        # Find and select the History sidebar item
+        for i, item in enumerate(self._sidebar_items):
+            if item.get("key") == "history":
+                self._select_sidebar(i)
+                break
 
     # ── Bookmark actions ──
 
@@ -1038,7 +1053,7 @@ _CHANGELOG = [
 ]
 
 
-def _build_usage_pane(w: int, h: int) -> NSView:  # noqa: PLR0915
+def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
     """Build the Usage pane — total accumulated stats + top sessions."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
     y = _add_pane_header(view, "Usage", w, h)
@@ -1046,8 +1061,8 @@ def _build_usage_pane(w: int, h: int) -> NSView:  # noqa: PLR0915
     history = get_history_service().get_all()
     usage_svc = get_usage_service()
 
-    # Gather per-session stats
-    session_stats: list[tuple[str, dict[str, int]]] = []
+    # Gather per-session stats: (project, tokens, ended_at)
+    session_stats: list[tuple[str, dict[str, int], str]] = []
     total: dict[str, int] = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
     _month_seconds = 30 * 86400
     now_ts = time.time()
@@ -1056,7 +1071,7 @@ def _build_usage_pane(w: int, h: int) -> NSView:  # noqa: PLR0915
         tokens = usage_svc.get_tokens(entry.cwd)
         session_total = sum(tokens.values())
         if session_total > 0:
-            session_stats.append((entry.project, tokens))
+            session_stats.append((entry.project, tokens, entry.ended_at))
             # Only count toward total if within past month
             try:
                 ended = datetime.fromisoformat(entry.ended_at).timestamp()
@@ -1075,7 +1090,11 @@ def _build_usage_pane(w: int, h: int) -> NSView:  # noqa: PLR0915
         view.addSubview_(no_data)
         return view
 
-    # ── Total usage card ──
+    # ── Section: Total usage ──
+    total_header = _make_secondary_label("LAST 30 DAYS", _PAD, y, 200, 10.0)
+    total_header.setTextColor_(NSColor.tertiaryLabelColor())
+    view.addSubview_(total_header)
+    y -= 16
     _row_h = 22
     total_lines = [
         ("Input", total["input"]),
@@ -1100,23 +1119,42 @@ def _build_usage_pane(w: int, h: int) -> NSView:  # noqa: PLR0915
 
     y -= total_card_h + 16
 
-    # ── Top sessions card ──
+    # ── Section: Top sessions ──
+    top_header = _make_secondary_label("TOP SESSIONS", _PAD, y, 200, 10.0)
+    top_header.setTextColor_(NSColor.tertiaryLabelColor())
+    view.addSubview_(top_header)
+    y -= 16
+
     session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
     _top_n = 5
     top_entries = session_stats[:_top_n]
-    top_card_h = _CARD_PAD + len(top_entries) * _row_h + _CARD_PAD
+    _top_row_h = 32  # taller rows for name + date
+    top_card_h = _CARD_PAD + len(top_entries) * _top_row_h + _CARD_PAD
     top_card = _make_card(_PAD, y - top_card_h, card_w, top_card_h)
     view.addSubview_(top_card)
     tpc = top_card.contentView()
 
     tpy = top_card_h - _CARD_PAD
-    for project, tokens in top_entries:
-        tpy -= _row_h
-        name = _make_label(project, _CARD_PAD, tpy, 140, 12.0)
-        tpc.addSubview_(name)
+    for project, tokens, ended_at in top_entries:
+        tpy -= _top_row_h
+        # Project name (clickable)
+        name_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, tpy + 10, 140, 16))
+        name_btn.setTitle_(project)
+        name_btn.setBordered_(False)
+        name_btn.setFont_(NSFont.systemFontOfSize_(12.0))
+        name_btn.setAlignment_(0)
+        name_btn.setRepresentedObject_(project)
+        name_btn.setTarget_(delegate)
+        name_btn.setAction_(objc.selector(delegate.jumpToSession_, signature=b"v@:@"))
+        tpc.addSubview_(name_btn)
+        # Date below name
+        date_str = _relative_time(ended_at)
+        date_label = _make_secondary_label(date_str, _CARD_PAD, tpy - 2, 140, 10.0)
+        tpc.addSubview_(date_label)
+        # Token count right-aligned
         total_tok = sum(tokens.values())
         val = _make_secondary_label(
-            _fmt_token_count(total_tok), _CARD_PAD + 145, tpy + 1, card_w - _CARD_PAD * 2 - 145, 11.0
+            _fmt_token_count(total_tok), _CARD_PAD + 145, tpy + 6, card_w - _CARD_PAD * 2 - 145, 11.0
         )
         val.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(11.0, 0.0))
         tpc.addSubview_(val)
