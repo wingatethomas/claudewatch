@@ -325,7 +325,9 @@ class MenuBuilder:
             summary_sub.addItem_(make_menu_item("Generating…", None, d))
         else:
             summary_sub.addItem_(make_menu_item("Generating…", None, d))
-            self._app._summary_service.track_session(s.cwd)
+            self._app._summary_service.track_session(
+                s.cwd, urgent=s.status in (SessionStatus.ATTENTION, SessionStatus.WORKING)
+            )
         summary_item.setSubmenu_(summary_sub)
         sub.addItem_(summary_item)
         # Usage submenu with token breakdown + Activity link
@@ -342,7 +344,8 @@ class MenuBuilder:
         sub.addItem_(usage_item)
         sub.addItem_(NSMenuItem.separatorItem())
         # Track for background refresh (auto-generates summaries)
-        self._app._summary_service.track_session(s.cwd)
+        is_active = s.status in (SessionStatus.ATTENTION, SessionStatus.WORKING)
+        self._app._summary_service.track_session(s.cwd, urgent=is_active)
         if pinned:
             sub.addItem_(make_menu_item("Remove Bookmark", self._app._make_unbookmark_handler(s.cwd), d))
             sub.addItem_(make_menu_item("Quit session", self._app._make_quit_handler(s), d))
