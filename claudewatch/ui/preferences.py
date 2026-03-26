@@ -323,6 +323,12 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         if alert.runModal() == NSAlertFirstButtonReturn:
             get_summary_service().clear_all()
 
+    def facetBoolChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        info = str(sender.representedObject())
+        key, facet_name = info.split("|", 1)
+        value = sender.state() == NSControlStateValueOn
+        features.set_facet(key, facet_name, value)
+
     # ── Static actions ──
 
     def viewAuditLog_(self, sender: objc.objc_object) -> None:  # noqa: N802
@@ -563,6 +569,16 @@ def _add_feature_card(  # noqa: PLR0913, PLR0915
             popup.setEnabled_(enabled)
             content.addSubview_(popup)
             facet_controls.append(popup)
+        elif facet.type == FacetType.BOOL:
+            val = features.get_facet(feature_key, facet.name)
+            toggle = NSSwitch.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - 46, fy + 9, 46, 22))
+            toggle.setState_(NSControlStateValueOn if val else NSControlStateValueOff)
+            toggle.setRepresentedObject_(f"{feature_key}|{facet.name}")
+            toggle.setTarget_(delegate)
+            toggle.setAction_(objc.selector(delegate.facetBoolChanged_, signature=b"v@:@"))
+            toggle.setEnabled_(enabled)
+            content.addSubview_(toggle)
+            facet_controls.append(toggle)
 
     delegate._feature_controls[feature_key] = facet_controls
 
