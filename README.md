@@ -4,24 +4,22 @@ macOS menu bar app that monitors all your running [Claude Code](https://docs.ant
 
 ## Install
 
-### Download the App (recommended)
+### Homebrew (recommended)
+
+```bash
+brew tap wingatethomas/claudewatch
+brew install --cask claudewatch
+```
+
+### Download Manually
 
 Download the latest `.zip` from the [releases page](https://github.com/wingatethomas/claudewatch/releases/latest), unzip, and drag to `/Applications`.
 
-To verify the download, check the SHA-256 checksum against `checksums.txt` from the same release:
+The app is not notarized, so macOS will block it. Fix with:
 
 ```bash
-shasum -a 256 ClaudeWatch-*.zip
-# Compare with the hash in checksums.txt
+xattr -cr /Applications/ClaudeWatch.app
 ```
-
-**macOS Gatekeeper:** The app is not notarized, so macOS may show "damaged and can't be opened." Fix with:
-
-```bash
-xattr -cr /path/to/ClaudeWatch.app
-```
-
-On first launch, a welcome window explains what permissions are needed.
 
 ### From Source
 

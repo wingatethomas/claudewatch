@@ -4,12 +4,13 @@ on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   build:
     runs-on: macos-14  # ARM64
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -50,3 +51,46 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+
+      - name: Upload checksums artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: checksums
+          path: checksums.txt
+
+  update-tap:
+    needs: build
+    if: "!contains(github.ref_name, '-')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download checksums
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: checksums
+
+      - name: Update Homebrew tap
+        run: |
+          VERSION="${TAG#v}"
+          SHA256=$(awk '{print $1}' checksums.txt)
+          git clone https://github.com/wingatethomas/homebrew-claudewatch.git tap
+          cd tap
+          git remote set-url origin "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/wingatethomas/homebrew-claudewatch.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH="bump-${VERSION}"
+          git checkout -b "$BRANCH"
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" Casks/claudewatch.rb
+          sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/claudewatch.rb
+          git add Casks/claudewatch.rb
+          git commit -m "bump claudewatch to ${VERSION}"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --repo wingatethomas/homebrew-claudewatch \
+            --title "bump claudewatch to ${VERSION}" \
+            --body "Automated update from [release ${TAG}](https://github.com/wingatethomas/claudewatch/releases/tag/${TAG}). SHA256: \`${SHA256}\`"
+        env:
+          TAG: ${{ github.ref_name }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
