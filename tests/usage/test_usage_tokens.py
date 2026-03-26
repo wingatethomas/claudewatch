@@ -7,6 +7,7 @@ from claudewatch.backend.usage.service import (
     UsageService,
     _fmt_tokens,
     format_tokens_breakdown,
+    format_tokens_compact,
 )
 
 
@@ -144,3 +145,22 @@ class TestUsageServiceGetTokens:
         svc1.get_tokens("/Users/dev/myapp")
         assert len(svc1._token_cache) == 1
         assert len(svc2._token_cache) == 0
+
+
+class TestFormatTokensCompact:
+    def test_zero_returns_empty(self):
+        tokens = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
+        assert format_tokens_compact(tokens) == ""
+
+    def test_basic_in_out(self):
+        tokens = {"input": 1000, "output": 500, "cache_create": 0, "cache_read": 0}
+        result = format_tokens_compact(tokens)
+        assert "1K in" in result
+        assert "500 out" in result
+        assert "cache" not in result
+
+    def test_with_cache(self):
+        tokens = {"input": 1000, "output": 500, "cache_create": 200, "cache_read": 300}
+        result = format_tokens_compact(tokens)
+        assert "cache" in result
+        assert "total" in result
