@@ -872,12 +872,32 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
 
     # Bulleted summary at the top (if available)
     if bullets:
+        _wrap = 55
         for line in bullets.splitlines():
             stripped = line.strip()
-            if stripped:
+            if not stripped:
+                continue
+            # Word-wrap long lines (old-format summaries)
+            if len(stripped) <= _wrap:
                 si = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(stripped, None, "")
                 si.setEnabled_(False)
                 menu.addItem_(si)
+            else:
+                words = stripped.split()
+                cur = ""
+                for word in words:
+                    test = f"{cur} {word}".strip()
+                    if len(test) > _wrap and cur:
+                        si = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(cur, None, "")
+                        si.setEnabled_(False)
+                        menu.addItem_(si)
+                        cur = word
+                    else:
+                        cur = test
+                if cur:
+                    si = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(cur, None, "")
+                    si.setEnabled_(False)
+                    menu.addItem_(si)
         menu.addItem_(NSMenuItem.separatorItem())
 
     for mi_title, action, obj in [
