@@ -1188,21 +1188,21 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
         tpc.addSubview_(val)
 
     # Action buttons
-    y -= top_card_h + 16
+    y -= top_card_h + 20
     btn_y = y
     _btn_h = 24
     _btn_font = NSFont.systemFontOfSize_(11.0)
 
     claude_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, btn_y, 140, _btn_h))
-    claude_btn.setTitle_("View usage in Claude")
+    claude_btn.setTitle_("Open in Claude")
     claude_btn.setBezelStyle_(1)
     claude_btn.setFont_(_btn_font)
     claude_btn.setTarget_(delegate)
     claude_btn.setAction_(objc.selector(delegate.openClaudeUsage_, signature=b"v@:@"))
     view.addSubview_(claude_btn)
 
-    console_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 150, btn_y, 160, _btn_h))
-    console_btn.setTitle_("View on Anthropic Console")
+    console_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 130, btn_y, 140, _btn_h))
+    console_btn.setTitle_("Anthropic Console")
     console_btn.setBezelStyle_(1)
     console_btn.setFont_(_btn_font)
     console_btn.setTarget_(delegate)
