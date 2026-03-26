@@ -717,7 +717,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     for i, base in enumerate(("Date", "Name")):
         sort_seg.setLabel_forSegment_(base + arrow if i == sel_idx else base, i)
 
-    content_top = toolbar_y - 6
+    content_top = toolbar_y - 10
     sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, content_top, w, 1))
     sep.setBoxType_(2)
     view.addSubview_(sep)
