@@ -676,7 +676,8 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
     below_header = _add_pane_header(view, "History", w, h)
-    toolbar_y = below_header
+    _toolbar_ctrl_h = 22
+    toolbar_y = below_header - _toolbar_ctrl_h
     search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 22))
     search.setPlaceholderString_("Search...")
     search.setFont_(NSFont.systemFontOfSize_(12.0))
@@ -716,7 +717,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     for i, base in enumerate(("Date", "Name")):
         sort_seg.setLabel_forSegment_(base + arrow if i == sel_idx else base, i)
 
-    content_top = toolbar_y - 4
+    content_top = toolbar_y - 6
     sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, content_top, w, 1))
     sep.setBoxType_(2)
     view.addSubview_(sep)
