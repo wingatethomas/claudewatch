@@ -15,6 +15,12 @@ shasum -a 256 ClaudeWatch-*.zip
 # Compare with the hash in checksums.txt
 ```
 
+**macOS Gatekeeper:** The app is not notarized, so macOS may show "damaged and can't be opened." Fix with:
+
+```bash
+xattr -cr /path/to/ClaudeWatch.app
+```
+
 On first launch, a welcome window explains what permissions are needed.
 
 ### From Source
