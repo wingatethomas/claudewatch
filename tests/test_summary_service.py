@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import time
 from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.core.process.service import ProcessService
@@ -199,7 +200,7 @@ class TestCallClaude:
 class TestPersistentStore:
     def test_load_from_file(self, tmp_path):
         store_file = tmp_path / "summaries.json"
-        store_file.write_text(json.dumps({"/test": {"summary": "hello", "mtime": 100.0}}))
+        store_file.write_text(json.dumps({"/test": {"summary": "hello", "mtime": time.time()}}))
         svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
         svc._load_store()
         assert svc._store["/test"]["summary"] == "hello"

@@ -17,6 +17,8 @@ MODEL_DISPLAY_NAMES: dict[str, str] = {
     "claude-opus-4-20250512": "o4",
 }
 
+_MAX_TOKEN_CACHE = 200
+
 _EMPTY_TOKENS: dict[str, int] = {
     "input": 0,
     "output": 0,
@@ -153,5 +155,9 @@ class UsageService(BaseService):
             "cache_create": total_cache_create,
             "cache_read": total_cache_read,
         }
+        if len(self._token_cache) >= _MAX_TOKEN_CACHE:
+            # Evict oldest entry by mtime
+            oldest = min(self._token_cache, key=lambda k: self._token_cache[k][1])
+            del self._token_cache[oldest]
         self._token_cache[cwd] = (result, mtime)
         return result
