@@ -51,6 +51,7 @@ from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
 from claudewatch.ui.activity import show_activity
+from claudewatch.ui.icons import sf_icon
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
@@ -715,11 +716,11 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     sort_seg.setAction_(objc.selector(delegate.historySortChanged_, signature=b"v@:@"))
     view.addSubview_(sort_seg)
 
-    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 50, 24))
-    bm_chip.setTitle_("\u25b8 Only")
+    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 28, 24))
+    bm_chip.setTitle_("")
+    bm_chip.setImage_(sf_icon("bookmark.fill", size=12.0))
     bm_chip.setButtonType_(1)  # NSButtonTypeToggle
     bm_chip.setBezelStyle_(1)
-    bm_chip.setFont_(NSFont.systemFontOfSize_(10.0))
     bm_chip.setState_(NSControlStateValueOff)
     bm_chip.setTarget_(delegate)
     bm_chip.setAction_(objc.selector(delegate.historyBookmarkFilter_, signature=b"v@:@"))
@@ -978,35 +979,103 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
         view.addSubview_(s_label)
 
 
-def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
-    """Build the about pane with a grouped card."""
+_CHANGELOG = [
+    (
+        "v0.7.0",
+        [
+            "Backend restructuring: domain ownership, NSUserDefaults, feature flags",
+            "Sidebar preferences (General / History / About)",
+            "Session history cards with search, sort, bookmark filter",
+            "Title + bulleted summaries with structured extraction",
+            "Background summary refresh toggle",
+            "Bookmarks submenu, ▸ indicator, danger zone",
+            "CI: manual dispatch, lint on Ubuntu",
+        ],
+    ),
+    (
+        "v0.6.1",
+        [
+            "Native macOS notifications (replaced terminal-notifier)",
+            "Compact model names in menu bar",
+        ],
+    ),
+    (
+        "v0.6.0",
+        [
+            "Self-update from GitHub Releases",
+            "Onboarding tips with replay",
+            "Session token usage breakdown",
+        ],
+    ),
+]
+
+
+def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
+    """Build the about pane with version, links, and changelog."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
     y = _add_pane_header(view, "About", w, h)
 
-    card_h = 100
+    # Version + buttons card
+    card_h = 80
     card_w = w - _PAD * 2
     card = _make_card(_PAD, y - card_h, card_w, card_h)
     view.addSubview_(card)
     content = card.contentView()
 
-    ver_label = _make_label(f"ClaudeWatch v{__version__}", _CARD_PAD, card_h - _CARD_PAD - 20, 300, 14.0, bold=True)
+    ver_label = _make_label(f"ClaudeWatch v{__version__}", _CARD_PAD, card_h - _CARD_PAD - 18, 300, 14.0, bold=True)
     content.addSubview_(ver_label)
 
     btn_y = _CARD_PAD
-    log_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, btn_y, 100, 28))
+    log_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, btn_y, 100, 24))
     log_btn.setTitle_("Audit Log")
     log_btn.setBezelStyle_(1)
+    log_btn.setFont_(NSFont.systemFontOfSize_(11.0))
     log_btn.setTarget_(delegate)
     log_btn.setAction_(objc.selector(delegate.viewAuditLog_, signature=b"v@:@"))
     content.addSubview_(log_btn)
 
-    repo_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD + 112, btn_y, 80, 28))
+    repo_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD + 108, btn_y, 80, 24))
     repo_btn.setTitle_("GitHub")
     repo_btn.setBezelStyle_(1)
+    repo_btn.setFont_(NSFont.systemFontOfSize_(11.0))
     repo_btn.setTarget_(delegate)
     repo_btn.setAction_(objc.selector(delegate.openRepo_, signature=b"v@:@"))
     content.addSubview_(repo_btn)
+
+    y -= card_h + 16
+
+    # Changelog — scrollable
+    changelog_header = _make_label("What's New", _PAD, y, 200, 13.0, bold=True)
+    view.addSubview_(changelog_header)
+    y -= 8
+
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_PAD, 0, card_w, y))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setDrawsBackground_(False)
+
+    # Calculate inner height
+    inner_h = 8
+    for _ver, items in _CHANGELOG:
+        inner_h += 22 + len(items) * 16 + 12
+    inner_h = max(y, inner_h)
+
+    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, inner_h))
+    cy = inner_h - 8
+
+    for version, items in _CHANGELOG:
+        ver = _make_label(version, 0, cy - 16, 200, 12.0, bold=True)
+        inner.addSubview_(ver)
+        cy -= 22
+        for item in items:
+            bullet = _make_secondary_label(f"• {item}", 8, cy - 12, card_w - 16, 11.0)
+            inner.addSubview_(bullet)
+            cy -= 16
+        cy -= 12
+
+    scroll.setDocumentView_(inner)
+    inner.scrollPoint_((0, inner_h))
+    view.addSubview_(scroll)
 
     return view
 
