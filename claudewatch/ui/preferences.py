@@ -613,7 +613,7 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     _card_gap = 8
 
     _danger_row_h = 38
-    _danger_header_h = 30
+    _danger_header_h = 34
     _danger_rows = 2
     _danger_h = _danger_header_h + _danger_row_h * _danger_rows
     _danger_gap = 16
@@ -1091,10 +1091,11 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
         return view
 
     # ── Section: Total usage ──
+    y -= 14  # space below pane header
     total_header = _make_secondary_label("LAST 30 DAYS", _PAD, y, 200, 10.0)
     total_header.setTextColor_(NSColor.tertiaryLabelColor())
     view.addSubview_(total_header)
-    y -= 16
+    y -= 6
     _row_h = 22
     total_lines = [
         ("Input", total["input"]),
@@ -1120,10 +1121,11 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     y -= total_card_h + 16
 
     # ── Section: Top sessions ──
+    y -= 4
     top_header = _make_secondary_label("TOP SESSIONS", _PAD, y, 200, 10.0)
     top_header.setTextColor_(NSColor.tertiaryLabelColor())
     view.addSubview_(top_header)
-    y -= 16
+    y -= 6
 
     session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
     _top_n = 5
@@ -1208,27 +1210,33 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
 
     y -= card_h + 24
 
-    # Changelog
-    changelog_header = _make_label("What's New", _PAD, y, 200, 13.0, bold=True)
-    view.addSubview_(changelog_header)
-    y -= 12
+    # Changelog in a scrollable card
+    changelog_label = _make_secondary_label("WHAT'S NEW", _PAD, y, 200, 10.0)
+    changelog_label.setTextColor_(NSColor.tertiaryLabelColor())
+    view.addSubview_(changelog_label)
+    y -= 16
 
-    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(_PAD, 0, card_w, y))
+    _ver_h = 18
+    _bullet_h = 14
+    _ver_gap = 8
+    inner_content_h = _CARD_PAD
+    for _ver, items in _CHANGELOG:
+        inner_content_h += _ver_h + len(items) * _bullet_h + _ver_gap
+    inner_content_h += _CARD_PAD
+
+    changelog_card_h = min(y, inner_content_h)
+    changelog_card = _make_card(_PAD, y - changelog_card_h, card_w, changelog_card_h)
+    view.addSubview_(changelog_card)
+
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, changelog_card_h))
     scroll.setHasVerticalScroller_(False)
     scroll.setAutohidesScrollers_(True)
     scroll.setDrawsBackground_(False)
 
-    # Calculate inner height
-    _ver_h = 18  # version label height
-    _bullet_h = 14  # bullet line height
-    _ver_gap = 8  # gap between version sections
-    inner_h = 4
-    for _ver, items in _CHANGELOG:
-        inner_h += _ver_h + len(items) * _bullet_h + _ver_gap
-    inner_h = max(y, inner_h)
-
-    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, inner_h))
-    cy = inner_h - 4
+    _inner_w = card_w - _CARD_PAD * 2
+    inner_h = max(changelog_card_h, inner_content_h)
+    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _inner_w, inner_h))
+    cy = inner_h - _CARD_PAD
 
     for version, items in _CHANGELOG:
         cy -= _ver_h
@@ -1236,14 +1244,13 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
         inner.addSubview_(ver)
         for item in items:
             cy -= _bullet_h
-            bullet = _make_secondary_label(f"• {item}", 8, cy, card_w - 16, 11.0)
-            bullet.setFont_(NSFont.systemFontOfSize_(10.0))
+            bullet = _make_secondary_label(f"• {item}", 8, cy, _inner_w - 16, 10.0)
             inner.addSubview_(bullet)
         cy -= _ver_gap
 
     scroll.setDocumentView_(inner)
     inner.scrollPoint_((0, inner_h))
-    view.addSubview_(scroll)
+    changelog_card.contentView().addSubview_(scroll)
 
     return view
 
