@@ -80,7 +80,10 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     def facetChanged_(self, sender: objc.objc_object) -> None:
         info = str(sender.cell().representedObject())
         key, facet_name = info.split("|", 1)
-        value = sender.titleOfSelectedItem()
+        if hasattr(sender, "titleOfSelectedItem"):
+            value: object = sender.titleOfSelectedItem()
+        else:
+            value = sender.state() == NSControlStateValueOn
         features.set_facet(key, facet_name, value)
         # Sound preview
         if key == "notifications" and facet_name == "sound":
