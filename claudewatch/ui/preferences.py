@@ -159,6 +159,8 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     _history_scroll: AppKitScrollView | None
     _history_inner: NSView | None
     _history_sort_seg: NSSegmentedControl | None
+    _usage_range: str  # "24h", "7d", "30d", "90d", "all"
+    _usage_content: NSView | None
 
     def _show_pane(self, item: dict) -> None:
         if self._current_pane is not None:
@@ -1269,10 +1271,13 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
 
     changelog_card_h = min(y - 8, inner_content_h)  # 8px bottom margin
     changelog_card = _make_card(_PAD, y - changelog_card_h, card_w, changelog_card_h)
+    changelog_card.setWantsLayer_(True)
+    changelog_card.layer().setMasksToBounds_(True)
     view.addSubview_(changelog_card)
 
     scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, changelog_card_h))
     scroll.setHasVerticalScroller_(True)
+    scroll.setAutohidesScrollers_(True)
     scroll.setDrawsBackground_(False)
 
     inner_h = max(changelog_card_h, inner_content_h)
