@@ -1038,7 +1038,7 @@ _CHANGELOG = [
 ]
 
 
-def _build_usage_pane(w: int, h: int) -> NSView:
+def _build_usage_pane(w: int, h: int) -> NSView:  # noqa: PLR0915
     """Build the Usage pane — total accumulated stats + top sessions."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
     y = _add_pane_header(view, "Usage", w, h)
@@ -1067,49 +1067,72 @@ def _build_usage_pane(w: int, h: int) -> NSView:
                 for k in total:
                     total[k] += tokens[k]
 
-    # Total usage card
     total_sum = sum(total.values())
     card_w = w - _PAD * 2
 
-    if total_sum > 0:
-        total_lines = format_tokens_compact(total)
-        total_card_h = 50
-        total_card = _make_card(_PAD, y - total_card_h, card_w, total_card_h)
-        view.addSubview_(total_card)
-        tc = total_card.contentView()
-
-        header = _make_label("Last 30 days", _CARD_PAD, total_card_h - _CARD_PAD - 14, 200, 11.0)
-        header.setTextColor_(NSColor.secondaryLabelColor())
-        tc.addSubview_(header)
-
-        stats = _make_label(total_lines, _CARD_PAD, _CARD_PAD - 2, card_w - _CARD_PAD * 2, 13.0, bold=True)
-        tc.addSubview_(stats)
-
-        y -= total_card_h + 16
-    else:
+    if total_sum == 0:
         no_data = _make_secondary_label("No usage data yet.", _PAD, y - 20, card_w, 13.0)
         view.addSubview_(no_data)
         return view
 
-    # Top 5 sessions by total tokens
-    top_label = _make_label("Top sessions", _PAD, y, 200, 13.0, bold=True)
-    view.addSubview_(top_label)
-    y -= 20
+    # ── Total usage card ──
+    _row_h = 22
+    total_lines = [
+        ("Input", total["input"]),
+        ("Output", total["output"]),
+        ("Cache", total["cache_create"] + total["cache_read"]),
+        ("Total", sum(total.values())),
+    ]
+    total_card_h = _CARD_PAD + len(total_lines) * _row_h + _CARD_PAD
+    total_card = _make_card(_PAD, y - total_card_h, card_w, total_card_h)
+    view.addSubview_(total_card)
+    tc = total_card.contentView()
 
+    ty = total_card_h - _CARD_PAD
+    for label_text, count in total_lines:
+        ty -= _row_h
+        lbl = _make_label(label_text, _CARD_PAD, ty, 80, 12.0)
+        lbl.setTextColor_(NSColor.secondaryLabelColor())
+        tc.addSubview_(lbl)
+        val = _make_label(_fmt_token_count(count), _CARD_PAD + 80, ty, card_w - _CARD_PAD * 2 - 80, 12.0, bold=True)
+        val.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(12.0, 0.0))
+        tc.addSubview_(val)
+
+    y -= total_card_h + 16
+
+    # ── Top sessions card ──
     session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
     _top_n = 5
+    top_entries = session_stats[:_top_n]
+    top_card_h = _CARD_PAD + len(top_entries) * _row_h + _CARD_PAD
+    top_card = _make_card(_PAD, y - top_card_h, card_w, top_card_h)
+    view.addSubview_(top_card)
+    tpc = top_card.contentView()
 
-    for project, tokens in session_stats[:_top_n]:
-        compact = format_tokens_compact(tokens)
-        row_label = _make_label(project, _PAD, y, 160, 12.0, bold=True)
-        view.addSubview_(row_label)
-
-        tokens_label = _make_secondary_label(compact, _PAD + 165, y + 1, card_w - 165, 10.0)
-        tokens_label.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(10.0, 0))
-        view.addSubview_(tokens_label)
-        y -= 20
+    tpy = top_card_h - _CARD_PAD
+    for project, tokens in top_entries:
+        tpy -= _row_h
+        name = _make_label(project, _CARD_PAD, tpy, 140, 12.0)
+        tpc.addSubview_(name)
+        total_tok = sum(tokens.values())
+        val = _make_secondary_label(
+            _fmt_token_count(total_tok), _CARD_PAD + 145, tpy + 1, card_w - _CARD_PAD * 2 - 145, 11.0
+        )
+        val.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(11.0, 0.0))
+        tpc.addSubview_(val)
 
     return view
+
+
+def _fmt_token_count(n: int) -> str:
+    """Format token count with suffix: 1.2M, 45K, 123."""
+    _m = 1_000_000
+    _k = 1000
+    if n >= _m:
+        return f"{n / _m:.1f}M tokens"
+    if n >= _k:
+        return f"{n / _k:.0f}K tokens"
+    return f"{n} tokens"
 
 
 def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
