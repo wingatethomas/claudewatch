@@ -11,6 +11,7 @@ from AppKit import (
     NSAlertFirstButtonReturn,
     NSApplication,
     NSApplicationActivationPolicyAccessory,
+    NSBackingStoreBuffered,
     NSBox,
     NSButton,
     NSColor,
@@ -46,12 +47,15 @@ from claudewatch.ui.activity import show_activity
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
-# Window dimensions
-_W = 680
-_H = 480
-_SIDEBAR_W = 180
+# Layout
+_W = 660
+_H = 460
+_SIDEBAR_W = 170
 _CONTENT_W = _W - _SIDEBAR_W
-_PAD = 20
+_PAD = 24
+_CARD_PAD = 16  # padding inside grouped cards
+_CARD_RADIUS = 10.0
+_ROW_H = 36  # sidebar row height
 
 _window: NSWindow | None = None
 _delegate: "_PrefsDelegate | None" = None
@@ -73,6 +77,35 @@ def _sidebar_items() -> list[dict]:
     return items
 
 
+# ── UI helpers ───────────────────────────────────────────────────────
+
+
+def _make_card(x: float, y: float, w: float, h: float) -> NSBox:
+    """Create a rounded-rect grouped container like macOS Settings cards."""
+    card = NSBox.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
+    card.setBoxType_(4)  # NSBoxCustom
+    card.setBorderType_(1)  # NSLineBorder
+    card.setCornerRadius_(_CARD_RADIUS)
+    card.setFillColor_(NSColor.windowBackgroundColor().blendedColorWithFraction_ofColor_(0.06, NSColor.whiteColor()))
+    card.setBorderColor_(NSColor.separatorColor().colorWithAlphaComponent_(0.3))
+    card.setTitlePosition_(0)  # NSNoTitle
+    card.setContentViewMargins_((0, 0))
+    return card
+
+
+def _make_label(text: str, x: float, y: float, w: float, size: float = 13.0, bold: bool = False) -> NSTextField:  # noqa: PLR0913
+    label = NSTextField.labelWithString_(text)
+    label.setFrame_(NSMakeRect(x, y, w, 18))
+    label.setFont_(NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size))
+    return label
+
+
+def _make_secondary_label(text: str, x: float, y: float, w: float, size: float = 12.0) -> NSTextField:
+    label = _make_label(text, x, y, w, size)
+    label.setTextColor_(NSColor.secondaryLabelColor())
+    return label
+
+
 # ── Delegate ─────────────────────────────────────────────────────────
 
 
@@ -80,31 +113,13 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     """Handles sidebar selection, feature toggles, facets, and history table."""
 
     _sidebar_items: list[dict]
-    _sidebar_table: NSTableView | None
+    _sidebar_btns: list[NSButton]
     _content_area: NSView | None
     _current_pane: NSView | None
-    _feature_controls: dict  # feature_key -> list of facet controls
-
-    # ── Sidebar data source ──
-
-    def numberOfRowsInSidebarTable_(self, table: objc.objc_object) -> int:  # noqa: N802
-        return len(self._sidebar_items)
-
-    def sidebarTable_objectValueForColumn_row_(  # noqa: N802
-        self,
-        table: objc.objc_object,
-        col: objc.objc_object,
-        row: int,
-    ) -> str:
-        if row >= len(self._sidebar_items):
-            return ""
-        item = self._sidebar_items[row]
-        if item["type"] == "separator":
-            return ""
-        return item.get("label", "")
+    _feature_controls: dict
+    _selected_idx: int
 
     def _show_pane(self, item: dict) -> None:
-        """Swap the content area to show the pane for the selected sidebar item."""
         if self._current_pane is not None:
             self._current_pane.removeFromSuperview()
             self._current_pane = None
@@ -125,10 +140,45 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         self._content_area.addSubview_(pane)
         self._current_pane = pane
 
+    def _select_sidebar(self, idx: int) -> None:
+        """Update sidebar selection highlight and show the corresponding pane."""
+        # Un-highlight previous
+        if hasattr(self, "_selected_idx") and 0 <= self._selected_idx < len(self._sidebar_btns):
+            old_btn = self._sidebar_btns[self._selected_idx]
+            if old_btn is not None:
+                old_btn.wantsLayer()  # ensure layer exists
+                old_btn.layer().setBackgroundColor_(NSColor.clearColor().CGColor())
+
+        self._selected_idx = idx
+
+        # Highlight new
+        if 0 <= idx < len(self._sidebar_btns):
+            btn = self._sidebar_btns[idx]
+            if btn is not None:
+                btn.wantsLayer()
+                btn.layer().setBackgroundColor_(NSColor.controlAccentColor().colorWithAlphaComponent_(0.18).CGColor())
+
+        if 0 <= idx < len(self._sidebar_items):
+            item = self._sidebar_items[idx]
+            if item["type"] != "separator":
+                self._show_pane(item)
+
+    # ── Sidebar click ──
+
+    def sidebarClicked_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        tag = sender.tag()
+        if tag < 0 or tag >= len(self._sidebar_items):
+            return
+        item = self._sidebar_items[tag]
+        if item["type"] != "separator":
+            self._select_sidebar(tag)
+
     # ── Feature actions ──
 
     def featureToggled_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        key = str(sender.representedObject() or sender.cell().representedObject())
+        key = str(sender.representedObject() or "")
+        if not key:
+            key = str(sender.cell().representedObject())
         enabled = sender.state() == NSControlStateValueOn
         features.set_enabled(key, enabled)
         for ctrl in self._feature_controls.get(key, []):
@@ -156,7 +206,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     def openRepo_(self, sender: objc.objc_object) -> None:  # noqa: N802
         webbrowser.open(_REPO_URL)
 
-    # ── History actions ──
+    # ── History ──
 
     _history_table: NSTableView | None = None
     _actions_popup: NSPopUpButton | None = None
@@ -196,8 +246,6 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             return
         project, cwd = data.split("|", 1)
         show_activity(project, cwd)
-
-    # ── History table data source ──
 
     def numberOfRowsInTableView_(self, table: objc.objc_object) -> int:  # noqa: N802
         return len(_history_data)
@@ -261,36 +309,21 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     def resumeSelected_(self, sender: objc.objc_object) -> None:  # noqa: N802
         entry = self._selected_entry()
-        if not entry:
-            return
-        sender.setRepresentedObject_(f"{entry.get('session_id', '')}|{entry.get('cwd', '')}")
-        self.resumeSession_(sender)
+        if entry:
+            sender.setRepresentedObject_(f"{entry.get('session_id', '')}|{entry.get('cwd', '')}")
+            self.resumeSession_(sender)
 
     def activitySelected_(self, sender: objc.objc_object) -> None:  # noqa: N802
         entry = self._selected_entry()
-        if not entry:
-            return
-        sender.setRepresentedObject_(f"{entry.get('project', '')}|{entry.get('cwd', '')}")
-        self.viewActivity_(sender)
+        if entry:
+            sender.setRepresentedObject_(f"{entry.get('project', '')}|{entry.get('cwd', '')}")
+            self.viewActivity_(sender)
 
     def deleteSelected_(self, sender: objc.objc_object) -> None:  # noqa: N802
         entry = self._selected_entry()
-        if not entry:
-            return
-        sender.setRepresentedObject_(entry.get("cwd", ""))
-        self.deleteHistoryEntry_(sender)
-
-    # ── Sidebar click ──
-
-    def sidebarClicked_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        tag = sender.tag()
-        if tag < 0 or tag >= len(self._sidebar_items):
-            return
-        item = self._sidebar_items[tag]
-        if item["type"] != "separator":
-            self._show_pane(item)
-
-    # ── Window close ──
+        if entry:
+            sender.setRepresentedObject_(entry.get("cwd", ""))
+            self.deleteHistoryEntry_(sender)
 
     def windowWillClose_(self, notification: objc.objc_object) -> None:  # noqa: N802
         global _window  # noqa: PLW0603
@@ -309,53 +342,59 @@ def _reload_history_data() -> None:
 
 
 def _build_feature_pane(delegate: _PrefsDelegate, feature_key: str, w: int, h: int) -> NSView:  # noqa: PLR0915
-    """Build the content pane for a single feature — toggle + facets."""
+    """Build a feature settings pane with a grouped card containing toggle + facets."""
     feature = next((f for f in features.get_all() if f.key == feature_key), None)
     if feature is None:
         return NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
     delegate._feature_controls = getattr(delegate, "_feature_controls", {})
-
-    y = h - _PAD - 10
-
-    # Feature title
-    title = NSTextField.labelWithString_(feature.description)
-    title.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2 - 60, 24))
-    title.setFont_(NSFont.boldSystemFontOfSize_(16.0))
-    view.addSubview_(title)
-
-    # Toggle switch — right aligned with title
     enabled = features.is_enabled(feature_key)
-    toggle = NSSwitch.alloc().initWithFrame_(NSMakeRect(w - _PAD - 46, y + 2, 46, 22))
+
+    # Calculate card height: toggle row + facet rows
+    _toggle_row_h = 44
+    _facet_row_h = 40
+    card_h = _toggle_row_h + len(feature.facets) * _facet_row_h
+    card_w = w - _PAD * 2
+    card_x = _PAD
+    card_y = h - _PAD - card_h
+
+    # Grouped card
+    card = _make_card(card_x, card_y, card_w, card_h)
+    view.addSubview_(card)
+    content = card.contentView()
+
+    # Toggle row — feature name left, switch right
+    row_y = card_h - _toggle_row_h
+    name_label = _make_label(feature.description, _CARD_PAD, row_y + 12, card_w - _CARD_PAD * 2 - 60, 14.0)
+    content.addSubview_(name_label)
+
+    toggle = NSSwitch.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - 46, row_y + 10, 46, 22))
     toggle.setState_(NSControlStateValueOn if enabled else NSControlStateValueOff)
     toggle.setRepresentedObject_(feature_key)
     toggle.setTarget_(delegate)
     toggle.setAction_(objc.selector(delegate.featureToggled_, signature=b"v@:@"))
-    view.addSubview_(toggle)
+    content.addSubview_(toggle)
 
-    y -= 12
-
-    # Separator
-    sep = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 1))
-    sep.setBoxType_(2)
-    view.addSubview_(sep)
-
-    y -= 24
-
-    # Facets
+    # Facet rows
     facet_controls: list[objc.objc_object] = []
-    for facet in feature.facets:
+    for i, facet in enumerate(feature.facets):
+        fy = row_y - (i + 1) * _facet_row_h
+
+        # Separator above each facet row
+        sep = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, fy + _facet_row_h - 1, card_w - _CARD_PAD * 2, 1))
+        sep.setBoxType_(2)
+        content.addSubview_(sep)
+
         facet_label = facet.description or facet.name.replace("_", " ").title()
-        label = NSTextField.labelWithString_(facet_label)
-        label.setFrame_(NSMakeRect(_PAD, y + 2, 140, 18))
-        label.setFont_(NSFont.systemFontOfSize_(13.0))
-        label.setTextColor_(NSColor.secondaryLabelColor())
-        view.addSubview_(label)
+        label = _make_secondary_label(facet_label, _CARD_PAD, fy + 11, 140, 13.0)
+        label.setTextColor_(NSColor.labelColor())
+        content.addSubview_(label)
 
         if facet.type == "choice":
+            _popup_w = 160
             popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-                NSMakeRect(_PAD + 150, y - 1, w - _PAD * 2 - 150, 24),
+                NSMakeRect(card_w - _CARD_PAD - _popup_w, fy + 8, _popup_w, 24),
                 False,
             )
             popup.setFont_(NSFont.systemFontOfSize_(13.0))
@@ -367,69 +406,38 @@ def _build_feature_pane(delegate: _PrefsDelegate, feature_key: str, w: int, h: i
             popup.setTarget_(delegate)
             popup.setAction_(objc.selector(delegate.facetChanged_, signature=b"v@:@"))
             popup.setEnabled_(enabled)
-            view.addSubview_(popup)
+            content.addSubview_(popup)
             facet_controls.append(popup)
-        elif facet.type == "bool":
-            checkbox = NSSwitch.alloc().initWithFrame_(NSMakeRect(_PAD + 150, y, 46, 22))
-            val = features.get_facet(feature_key, facet.name)
-            checkbox.setState_(NSControlStateValueOn if val else NSControlStateValueOff)
-            checkbox.setRepresentedObject_(f"{feature_key}|{facet.name}")
-            checkbox.setTarget_(delegate)
-            checkbox.setAction_(objc.selector(delegate.facetChanged_, signature=b"v@:@"))
-            checkbox.setEnabled_(enabled)
-            view.addSubview_(checkbox)
-            facet_controls.append(checkbox)
-
-        y -= 34
 
     delegate._feature_controls[feature_key] = facet_controls
-
-    # Description hint at the bottom if no facets
-    if not feature.facets:
-        hint = NSTextField.labelWithString_("Toggle this feature on or off.")
-        hint.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 16))
-        hint.setFont_(NSFont.systemFontOfSize_(11.0))
-        hint.setTextColor_(NSColor.tertiaryLabelColor())
-        view.addSubview_(hint)
-
     return view
 
 
 def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
-    """Build the history pane with an NSTableView."""
+    """Build the history table pane."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-
     _reload_history_data()
 
     if not _history_data:
-        empty = NSTextField.labelWithString_("No session history yet.")
-        empty.setFrame_(NSMakeRect(_PAD, h // 2, w - _PAD * 2, 20))
-        empty.setFont_(NSFont.systemFontOfSize_(13.0))
-        empty.setTextColor_(NSColor.secondaryLabelColor())
+        empty = _make_secondary_label("No session history yet.", _PAD, h // 2, w - _PAD * 2, 13.0)
         empty.setAlignment_(1)
         view.addSubview_(empty)
         return view
 
-    # Bottom toolbar
     _bar_h = 36
     bar = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, _bar_h))
 
-    actions_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-        NSMakeRect(_PAD, 6, 100, 24),
-        True,
-    )
+    actions_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(_PAD, 6, 100, 24), True)
     actions_popup.setFont_(NSFont.systemFontOfSize_(12.0))
     actions_popup.setEnabled_(False)
     actions_popup.addItemWithTitle_("Select a row")
-    actions_popup.addItemWithTitle_("Resume")
-    actions_popup.addItemWithTitle_("Activity")
-    actions_popup.addItemWithTitle_("Delete")
-    actions_popup.itemAtIndex_(1).setTarget_(delegate)
-    actions_popup.itemAtIndex_(1).setAction_(objc.selector(delegate.resumeSelected_, signature=b"v@:@"))
-    actions_popup.itemAtIndex_(2).setTarget_(delegate)
-    actions_popup.itemAtIndex_(2).setAction_(objc.selector(delegate.activitySelected_, signature=b"v@:@"))
-    actions_popup.itemAtIndex_(3).setTarget_(delegate)
-    actions_popup.itemAtIndex_(3).setAction_(objc.selector(delegate.deleteSelected_, signature=b"v@:@"))
+    for title, sel in [("Resume", "resumeSelected:"), ("Activity", "activitySelected:"), ("Delete", "deleteSelected:")]:
+        actions_popup.addItemWithTitle_(title)
+        idx = actions_popup.numberOfItems() - 1
+        actions_popup.itemAtIndex_(idx).setTarget_(delegate)
+        actions_popup.itemAtIndex_(idx).setAction_(
+            objc.selector(getattr(delegate, sel.replace(":", "_")), signature=b"v@:@")
+        )
     bar.addSubview_(actions_popup)
 
     sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, _bar_h - 1, w, 1))
@@ -446,26 +454,17 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     table.setRowHeight_(28)
     table.setGridStyleMask_(1)
 
-    col_project = NSTableColumn.alloc().initWithIdentifier_("project")
-    col_project.headerCell().setStringValue_("Project")
-    col_project.setWidth_(180)
-    col_project.setEditable_(False)
-    col_project.setSortDescriptorPrototype_(NSSortDescriptor.alloc().initWithKey_ascending_("project", True))
-    table.addTableColumn_(col_project)
-
-    col_date = NSTableColumn.alloc().initWithIdentifier_("date")
-    col_date.headerCell().setStringValue_("Last Active")
-    col_date.setWidth_(140)
-    col_date.setEditable_(False)
-    col_date.setSortDescriptorPrototype_(NSSortDescriptor.alloc().initWithKey_ascending_("date", False))
-    table.addTableColumn_(col_date)
-
-    col_model = NSTableColumn.alloc().initWithIdentifier_("model")
-    col_model.headerCell().setStringValue_("Model")
-    col_model.setWidth_(80)
-    col_model.setEditable_(False)
-    col_model.setSortDescriptorPrototype_(NSSortDescriptor.alloc().initWithKey_ascending_("model", True))
-    table.addTableColumn_(col_model)
+    for col_id, title, width, asc in [
+        ("project", "Project", 180, True),
+        ("date", "Last Active", 140, False),
+        ("model", "Model", 80, True),
+    ]:
+        col = NSTableColumn.alloc().initWithIdentifier_(col_id)
+        col.headerCell().setStringValue_(title)
+        col.setWidth_(width)
+        col.setEditable_(False)
+        col.setSortDescriptorPrototype_(NSSortDescriptor.alloc().initWithKey_ascending_(col_id, asc))
+        table.addTableColumn_(col)
 
     table.setColumnAutoresizingStyle_(1)
     table.setDataSource_(delegate)
@@ -473,14 +472,11 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     delegate._history_table = table
     delegate._actions_popup = actions_popup
 
-    # Context menu
     ctx_menu = NSMenu.alloc().init()
-    ctx_resume = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Resume", "resumeSelected:", "")
-    ctx_resume.setTarget_(delegate)
-    ctx_menu.addItem_(ctx_resume)
-    ctx_activity = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Activity", "activitySelected:", "")
-    ctx_activity.setTarget_(delegate)
-    ctx_menu.addItem_(ctx_activity)
+    for title, sel in [("Resume", "resumeSelected:"), ("Activity", "activitySelected:")]:
+        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, sel, "")
+        mi.setTarget_(delegate)
+        ctx_menu.addItem_(mi)
     ctx_menu.addItem_(NSMenuItem.separatorItem())
     ctx_delete = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Delete", "deleteSelected:", "")
     ctx_delete.setTarget_(delegate)
@@ -492,86 +488,68 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
     scroll.setDocumentView_(table)
     view.addSubview_(scroll)
-
     return view
 
 
 def _build_usage_pane(w: int, h: int) -> NSView:
-    """Build the usage statistics pane."""
+    """Build usage statistics in a grouped card."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-    y = h - _PAD - 10
-
-    title = NSTextField.labelWithString_("Usage")
-    title.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 24))
-    title.setFont_(NSFont.boldSystemFontOfSize_(16.0))
-    view.addSubview_(title)
-
-    y -= 12
-    sep = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 1))
-    sep.setBoxType_(2)
-    view.addSubview_(sep)
-
-    y -= 28
 
     history = get_history_service().get_all()
     usage_svc = get_usage_service()
-
     total_tokens: dict[str, int] = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
     for entry in history:
         tokens = usage_svc.get_tokens(entry.cwd)
         for k in total_tokens:
             total_tokens[k] += tokens[k]
 
-    lines = format_tokens_breakdown(total_tokens)
-    if not lines:
-        lines = ["No usage data yet"]
+    lines = format_tokens_breakdown(total_tokens) or ["No usage data yet"]
 
+    card_h = len(lines) * 24 + _CARD_PAD * 2
+    card_w = w - _PAD * 2
+    card = _make_card(_PAD, h - _PAD - card_h, card_w, card_h)
+    view.addSubview_(card)
+    content = card.contentView()
+
+    y = card_h - _CARD_PAD
     for line in lines:
         label = NSTextField.labelWithString_(line)
-        label.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 18))
+        label.setFrame_(NSMakeRect(_CARD_PAD, y - 16, card_w - _CARD_PAD * 2, 18))
         label.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(13.0, 0))
         label.setTextColor_(NSColor.secondaryLabelColor())
-        view.addSubview_(label)
-        y -= 22
+        content.addSubview_(label)
+        y -= 24
 
     return view
 
 
 def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
-    """Build the about pane."""
+    """Build the about pane with a grouped card."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-    y = h - _PAD - 10
 
-    title = NSTextField.labelWithString_("About")
-    title.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 24))
-    title.setFont_(NSFont.boldSystemFontOfSize_(16.0))
-    view.addSubview_(title)
+    card_h = 100
+    card_w = w - _PAD * 2
+    card = _make_card(_PAD, h - _PAD - card_h, card_w, card_h)
+    view.addSubview_(card)
+    content = card.contentView()
 
-    y -= 12
-    sep = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 1))
-    sep.setBoxType_(2)
-    view.addSubview_(sep)
+    ver_label = _make_label(f"ClaudeWatch v{__version__}", _CARD_PAD, card_h - _CARD_PAD - 20, 300, 14.0, bold=True)
+    content.addSubview_(ver_label)
 
-    y -= 28
-    ver_label = NSTextField.labelWithString_(f"ClaudeWatch v{__version__}")
-    ver_label.setFrame_(NSMakeRect(_PAD, y, 300, 20))
-    ver_label.setFont_(NSFont.systemFontOfSize_(13.0))
-    view.addSubview_(ver_label)
-
-    y -= 36
-    log_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, y, 110, 28))
+    btn_y = _CARD_PAD
+    log_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, btn_y, 100, 28))
     log_btn.setTitle_("Audit Log")
     log_btn.setBezelStyle_(1)
     log_btn.setTarget_(delegate)
     log_btn.setAction_(objc.selector(delegate.viewAuditLog_, signature=b"v@:@"))
-    view.addSubview_(log_btn)
+    content.addSubview_(log_btn)
 
-    repo_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 120, y, 90, 28))
+    repo_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD + 112, btn_y, 80, 28))
     repo_btn.setTitle_("GitHub")
     repo_btn.setBezelStyle_(1)
     repo_btn.setTarget_(delegate)
     repo_btn.setAction_(objc.selector(delegate.openRepo_, signature=b"v@:@"))
-    view.addSubview_(repo_btn)
+    content.addSubview_(repo_btn)
 
     return view
 
@@ -580,39 +558,49 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
 
 
 def _build_sidebar(delegate: _PrefsDelegate) -> NSView:
-    """Build the sidebar list."""
+    """Build the sidebar with selection-highlighted rows."""
     sidebar = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _SIDEBAR_W, _H))
     sidebar.setWantsLayer_(True)
+    sidebar.layer().setBackgroundColor_(
+        NSColor.windowBackgroundColor().blendedColorWithFraction_ofColor_(0.03, NSColor.blackColor()).CGColor()
+    )
 
     items = delegate._sidebar_items
-    y = _H - 12
+    btns: list[NSButton] = []
+    y = _H - 8
 
     for i, item in enumerate(items):
         if item["type"] == "separator":
-            y -= 8
+            y -= 6
             sep = NSBox.alloc().initWithFrame_(NSMakeRect(12, y, _SIDEBAR_W - 24, 1))
             sep.setBoxType_(2)
             sidebar.addSubview_(sep)
-            y -= 8
+            y -= 6
+            btns.append(None)  # placeholder to keep indices aligned
             continue
 
-        btn = NSButton.alloc().initWithFrame_(NSMakeRect(8, y - 28, _SIDEBAR_W - 16, 28))
-        btn.setTitle_(item["label"])
-        btn.setBezelStyle_(0)  # inline
+        btn_h = _ROW_H - 4
+        btn = NSButton.alloc().initWithFrame_(NSMakeRect(8, y - btn_h, _SIDEBAR_W - 16, btn_h))
+        btn.setTitle_(f"  {item['label']}")
+        btn.setBezelStyle_(0)
         btn.setBordered_(False)
         btn.setFont_(NSFont.systemFontOfSize_(13.0))
         btn.setAlignment_(0)  # left
+        btn.setWantsLayer_(True)
+        btn.layer().setCornerRadius_(6.0)
         btn.setTag_(i)
         btn.setTarget_(delegate)
         btn.setAction_(objc.selector(delegate.sidebarClicked_, signature=b"v@:@"))
         sidebar.addSubview_(btn)
-        y -= 30
+        btns.append(btn)
+        y -= _ROW_H
 
-    # Vertical separator on the right edge
+    # Vertical separator
     vsep = NSBox.alloc().initWithFrame_(NSMakeRect(_SIDEBAR_W - 1, 0, 1, _H))
     vsep.setBoxType_(2)
     sidebar.addSubview_(vsep)
 
+    delegate._sidebar_btns = btns
     return sidebar
 
 
@@ -634,12 +622,13 @@ def show_preferences() -> None:
     _delegate._sidebar_items = _sidebar_items()
     _delegate._feature_controls = {}
     _delegate._current_pane = None
+    _delegate._selected_idx = -1
 
     style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
     window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(200, 200, _W, _H),
         style,
-        2,
+        NSBackingStoreBuffered,
         False,
     )
     window.setTitle_("ClaudeWatch")
@@ -648,19 +637,18 @@ def show_preferences() -> None:
 
     root = window.contentView()
 
-    # Sidebar
     sidebar = _build_sidebar(_delegate)
     root.addSubview_(sidebar)
 
-    # Content area
     content = NSView.alloc().initWithFrame_(NSMakeRect(_SIDEBAR_W, 0, _CONTENT_W, _H))
     root.addSubview_(content)
     _delegate._content_area = content
 
-    # Show first item by default
-    first_item = next((i for i in _delegate._sidebar_items if i["type"] != "separator"), None)
-    if first_item:
-        _delegate._show_pane(first_item)
+    # Select first non-separator item
+    for i, item in enumerate(_delegate._sidebar_items):
+        if item["type"] != "separator":
+            _delegate._select_sidebar(i)
+            break
 
     _window = window
     window.center()
