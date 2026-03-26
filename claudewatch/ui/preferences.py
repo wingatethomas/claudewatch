@@ -866,7 +866,7 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     view.addSubview_(name_label)
 
     # ··· menu
-    title = summary_svc.get_cached_title(cwd) if cwd else None
+    cached_title = summary_svc.get_cached_title(cwd) if cwd else None
     bullets = summary_svc.get_cached_summary(cwd) if cwd else None
     menu = NSMenu.alloc().init()
 
@@ -880,11 +880,11 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
                 menu.addItem_(si)
         menu.addItem_(NSMenuItem.separatorItem())
 
-    for title, action, obj in [
+    for mi_title, action, obj in [
         ("Resume", delegate.resumeSession_, f"{session_id}|{cwd}"),
         ("Activity", delegate.viewActivity_, f"{project}|{cwd}"),
     ]:
-        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
+        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(mi_title, None, "")
         mi.setRepresentedObject_(obj)
         mi.setTarget_(delegate)
         mi.setAction_(objc.selector(action, signature=b"v@:@"))
@@ -905,11 +905,11 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
         bm_mi.setAction_(objc.selector(delegate.bookmarkSession_, signature=b"v@:@"))
     menu.addItem_(bm_mi)
 
-    for title, action, obj in [
+    for mi_title, action, obj in [
         ("Copy Path", delegate.copyCwd_, cwd),
         ("Open in Finder", delegate.revealInFinder_, cwd),
     ]:
-        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
+        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(mi_title, None, "")
         mi.setRepresentedObject_(obj)
         mi.setTarget_(delegate)
         mi.setAction_(objc.selector(action, signature=b"v@:@"))
@@ -951,8 +951,8 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     # ── Line 3: title one-liner (full bullets in ··· menu)
     ly3 = ly2 - 16
     _max_title = 50
-    if title:
-        s_text = title[:_max_title] + "…" if len(title) > _max_title else title
+    if cached_title:
+        s_text = cached_title[:_max_title] + "…" if len(cached_title) > _max_title else cached_title
         s_label = _make_secondary_label(s_text, _name_col, ly3, w - _name_col - _p, 11.0)
         s_label.setTextColor_(NSColor.tertiaryLabelColor())
         view.addSubview_(s_label)
