@@ -43,6 +43,7 @@ from Foundation import NSMakeRect, NSObject, NSRange
 from claudewatch import __version__
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.core import features
+from claudewatch.backend.core.features import FacetType
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.history.dependencies import get_history_service
@@ -71,7 +72,7 @@ _history_data: list[dict] = []
 _FEATURE_DETAILS: dict[str, str] = {
     "bookmarks": "Pin sessions to resume later from the menu bar.",
     "notifications": "Get alerts when Claude needs your attention.",
-    "summaries": "Auto-generate one-line session summaries.",
+    "background_summaries": "Periodically regenerate session summaries in the background.",
     "auto_updates": "Check GitHub for new releases periodically.",
 }
 
@@ -322,6 +323,12 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         if alert.runModal() == NSAlertFirstButtonReturn:
             get_summary_service().clear_all()
 
+    def facetBoolChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        info = str(sender.representedObject())
+        key, facet_name = info.split("|", 1)
+        value = sender.state() == NSControlStateValueOn
+        features.set_facet(key, facet_name, value)
+
     # ── Static actions ──
 
     def viewAuditLog_(self, sender: objc.objc_object) -> None:  # noqa: N802
@@ -387,7 +394,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         col_id = str(col.identifier())
         if col_id == "project":
             pinned = entry.get("cwd", "") in get_bookmark_service().get_bookmarked_cwds()
-            return f"{entry.get('project', 'unknown')}{'  \u2605' if pinned else ''}"
+            return f"{entry.get('project', 'unknown')}{'  \u25b8' if pinned else ''}"
         if col_id == "date":
             return entry.get("ended_at", "")[:16].replace("T", " ")
         if col_id == "model":
@@ -545,7 +552,7 @@ def _add_feature_card(  # noqa: PLR0913, PLR0915
         label.setTextColor_(NSColor.secondaryLabelColor())
         content.addSubview_(label)
 
-        if facet.type == "choice":
+        if facet.type == FacetType.CHOICE:
             _popup_w = 160
             popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
                 NSMakeRect(card_w - _CARD_PAD - _popup_w, fy + 8, _popup_w, 24),
@@ -562,6 +569,16 @@ def _add_feature_card(  # noqa: PLR0913, PLR0915
             popup.setEnabled_(enabled)
             content.addSubview_(popup)
             facet_controls.append(popup)
+        elif facet.type == FacetType.BOOL:
+            val = features.get_facet(feature_key, facet.name)
+            toggle = NSSwitch.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - 46, fy + 9, 46, 22))
+            toggle.setState_(NSControlStateValueOn if val else NSControlStateValueOff)
+            toggle.setRepresentedObject_(f"{feature_key}|{facet.name}")
+            toggle.setTarget_(delegate)
+            toggle.setAction_(objc.selector(delegate.facetBoolChanged_, signature=b"v@:@"))
+            toggle.setEnabled_(enabled)
+            content.addSubview_(toggle)
+            facet_controls.append(toggle)
 
     delegate._feature_controls[feature_key] = facet_controls
 
@@ -698,8 +715,8 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     sort_seg.setAction_(objc.selector(delegate.historySortChanged_, signature=b"v@:@"))
     view.addSubview_(sort_seg)
 
-    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y, 50, 22))
-    bm_chip.setTitle_("\u2605 Only")
+    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 50, 24))
+    bm_chip.setTitle_("\u25b8 Only")
     bm_chip.setButtonType_(1)  # NSButtonTypeToggle
     bm_chip.setBezelStyle_(1)
     bm_chip.setFont_(NSFont.systemFontOfSize_(10.0))
@@ -806,6 +823,12 @@ def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:  # noqa: PLR0912, P
     scroll.setDocumentView_(inner)
     inner.scrollPoint_((0, inner_h))
 
+    # Queue background generation for sessions missing summaries
+    for entry in entries:
+        cwd = entry.get("cwd", "")
+        if cwd and summary_svc.get_cached(cwd) is None:
+            summary_svc.track_session(cwd)
+
 
 def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     view: NSView,
@@ -829,49 +852,59 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     is_pinned = cwd in pinned_cwds
     _p = _PAD
 
-    # ── Line 1: [★]  project name                  ···
-    _star_col = _p  # star column (fixed width)
-    _name_col = _p + 18  # content starts after star column
+    # ── Line 1: [bookmark icon]  project name       ···
+    _bm_col = _p  # bookmark icon column (fixed width)
+    _name_col = _p + 18  # content starts after bookmark column
     ly1 = y + h - 20
 
     if is_pinned:
-        star = _make_label("\u2605", _star_col, ly1, 14, 12.0)
-        star.setTextColor_(NSColor.secondaryLabelColor())
-        view.addSubview_(star)
+        mark = _make_label("▸", _bm_col, ly1, 14, 12.0)
+        mark.setTextColor_(NSColor.secondaryLabelColor())
+        view.addSubview_(mark)
 
     name_label = _make_label(project, _name_col, ly1, w - _name_col - 30, 13.0, bold=True)
     view.addSubview_(name_label)
 
     # ··· menu
-    summary = summary_svc.get_cached(cwd) if cwd else None
+    cached_title = summary_svc.get_cached_title(cwd) if cwd else None
+    bullets = summary_svc.get_cached_summary(cwd) if cwd else None
     menu = NSMenu.alloc().init()
 
-    # Full summary at the top (if available)
-    if summary:
-        _wrap = 50
-        words = summary.split()
-        lines: list[str] = []
-        cur = ""
-        for word in words:
-            test = f"{cur} {word}".strip()
-            if len(test) > _wrap and cur:
-                lines.append(cur)
-                cur = word
+    # Bulleted summary at the top (if available)
+    if bullets:
+        _wrap = 55
+        for line in bullets.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            # Word-wrap long lines (old-format summaries)
+            if len(stripped) <= _wrap:
+                si = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(stripped, None, "")
+                si.setEnabled_(False)
+                menu.addItem_(si)
             else:
-                cur = test
-        if cur:
-            lines.append(cur)
-        for line in lines:
-            si = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(line, None, "")
-            si.setEnabled_(False)
-            menu.addItem_(si)
+                words = stripped.split()
+                cur = ""
+                for word in words:
+                    test = f"{cur} {word}".strip()
+                    if len(test) > _wrap and cur:
+                        si = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(cur, None, "")
+                        si.setEnabled_(False)
+                        menu.addItem_(si)
+                        cur = word
+                    else:
+                        cur = test
+                if cur:
+                    si = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(cur, None, "")
+                    si.setEnabled_(False)
+                    menu.addItem_(si)
         menu.addItem_(NSMenuItem.separatorItem())
 
-    for title, action, obj in [
+    for mi_title, action, obj in [
         ("Resume", delegate.resumeSession_, f"{session_id}|{cwd}"),
         ("Activity", delegate.viewActivity_, f"{project}|{cwd}"),
     ]:
-        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
+        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(mi_title, None, "")
         mi.setRepresentedObject_(obj)
         mi.setTarget_(delegate)
         mi.setAction_(objc.selector(action, signature=b"v@:@"))
@@ -892,11 +925,11 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
         bm_mi.setAction_(objc.selector(delegate.bookmarkSession_, signature=b"v@:@"))
     menu.addItem_(bm_mi)
 
-    for title, action, obj in [
+    for mi_title, action, obj in [
         ("Copy Path", delegate.copyCwd_, cwd),
         ("Open in Finder", delegate.revealInFinder_, cwd),
     ]:
-        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
+        mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(mi_title, None, "")
         mi.setRepresentedObject_(obj)
         mi.setTarget_(delegate)
         mi.setAction_(objc.selector(action, signature=b"v@:@"))
@@ -935,11 +968,11 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     meta_label = _make_secondary_label(meta, _name_col, ly2, w - _name_col - _p, 11.0)
     view.addSubview_(meta_label)
 
-    # ── Line 3: short summary (full in ··· menu)
+    # ── Line 3: title one-liner (full bullets in ··· menu)
     ly3 = ly2 - 16
-    _max_summary = 50
-    if summary:
-        s_text = summary[:_max_summary] + "…" if len(summary) > _max_summary else summary
+    _max_title = 50
+    if cached_title:
+        s_text = cached_title[:_max_title] + "…" if len(cached_title) > _max_title else cached_title
         s_label = _make_secondary_label(s_text, _name_col, ly3, w - _name_col - _p, 11.0)
         s_label.setTextColor_(NSColor.tertiaryLabelColor())
         view.addSubview_(s_label)

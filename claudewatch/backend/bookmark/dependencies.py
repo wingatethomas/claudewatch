@@ -1,18 +1,18 @@
 from functools import lru_cache
 
 from claudewatch.backend.bookmark.service import BookmarkService
-from claudewatch.backend.core.features import Facet, Feature, register
+from claudewatch.backend.core.features import Facet, FacetType, Feature, register
 
 register(
     Feature(
-        "bookmarks",
-        "Bookmarks",
+        key="bookmarks",
+        description="Bookmarks",
         facets=(
             Facet(
-                "expiry_days",
-                "choice",
-                "30 days",
-                "Expiry",
+                name="expiry_days",
+                type=FacetType.CHOICE,
+                default="30 days",
+                description="Expiry",
                 options=("Never", "7 days", "14 days", "30 days", "60 days", "90 days"),
             ),
         ),

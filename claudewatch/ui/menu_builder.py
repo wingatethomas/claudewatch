@@ -147,45 +147,35 @@ class MenuBuilder:
                     is_pinned = s.cwd in pinned_cwds
                     self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
-        # Pinned sessions that are NOT currently active
+        # Bookmarked sessions that are NOT currently active
         pins = self._app._bookmark_service.get_all()
         inactive_pins = [p for p in pins if p.cwd not in active_cwds]
         if inactive_pins:
             self._menu.addItem_(NSMenuItem.separatorItem())
-            self._menu.addItem_(disabled_item(f"★ Pinned ({len(inactive_pins)})"))
+            bm_menu_item = make_menu_item(f"Bookmarks ({len(inactive_pins)})", None, d)
+            bm_menu_item.setImage_(sf_icon("bookmark.fill"))
+            bm_submenu = NSMenu.alloc().init()
             for pin in inactive_pins:
                 _max_note = 25
-                label = f"  {pin.project}"
+                label = pin.project
                 if pin.note:
                     short_note = pin.note[:_max_note] + "…" if len(pin.note) > _max_note else pin.note
                     label += f" — {short_note}"
                 item = make_menu_item(label, self._app._make_resume_handler(pin.session_id, pin.cwd), d)
-                # Summary submenu
-                summary_menu = NSMenu.alloc().init()
-                summary_item = make_menu_item("Summary", None, d)
+                sub = NSMenu.alloc().init()
                 cached = self._app._summary_service.get_cached(pin.cwd)
                 if cached:
-                    add_summary_lines(summary_menu, cached, d)
-                elif pin.note:
-                    add_summary_lines(summary_menu, pin.note, d)
-                else:
-                    summary_menu.addItem_(make_menu_item("No summary available", None, d))
-                summary_item.setSubmenu_(summary_menu)
-                sub = NSMenu.alloc().init()
-                sub.addItem_(summary_item)
+                    summary_item = make_menu_item("Summary", None, d)
+                    summary_sub = NSMenu.alloc().init()
+                    add_summary_lines(summary_sub, cached, d)
+                    summary_item.setSubmenu_(summary_sub)
+                    sub.addItem_(summary_item)
                 sub.addItem_(NSMenuItem.separatorItem())
-                sub.addItem_(make_menu_item("Unpin", self._app._make_unbookmark_handler(pin.cwd), d))
+                sub.addItem_(make_menu_item("Remove Bookmark", self._app._make_unbookmark_handler(pin.cwd), d))
                 item.setSubmenu_(sub)
-                self._menu.addItem_(item)
-                # Date + model
-                detail_parts = []
-                if pin.timestamp:
-                    detail_parts.append(pin.timestamp[:10])
-                model = self._app._usage_service.get_model(pin.cwd)
-                if model:
-                    detail_parts.append(model)
-                if detail_parts:
-                    self._menu.addItem_(disabled_item(f"      {' · '.join(detail_parts)}"))
+                bm_submenu.addItem_(item)
+            bm_menu_item.setSubmenu_(bm_submenu)
+            self._menu.addItem_(bm_menu_item)
 
         # Recent sessions (last 3 days, not active, not pinned)
         _recent_days = 3
@@ -269,7 +259,7 @@ class MenuBuilder:
         for tip in (
             "Click → focus window",
             "Hover → Activity · Pin · Quit",
-            "★ = pinned (resume later)",
+            "▸ = bookmarked (resume later)",
         ):
             help_submenu.addItem_(make_menu_item(f"  {tip}", None, d))
 
@@ -305,9 +295,6 @@ class MenuBuilder:
         help_item.setSubmenu_(help_submenu)
         self._menu.addItem_(help_item)
 
-        restart_item = make_menu_item("Restart", self._app._restart, d)
-        restart_item.setImage_(sf_icon("arrow.clockwise"))
-        self._menu.addItem_(restart_item)
         quit_item = make_menu_item("Quit", self._app._quit, d)
         quit_item.setImage_(sf_icon("xmark.circle"))
         self._menu.addItem_(quit_item)
@@ -315,8 +302,8 @@ class MenuBuilder:
     def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> None:  # noqa: PLR0912, PLR0915
         """Add a session entry + detail line to the menu."""
         d = self._delegate
-        pin_mark = " ★" if pinned else ""
-        label = s.menu_label + suffix + pin_mark
+        bm_mark = " ▸" if pinned else ""
+        label = s.menu_label + suffix + bm_mark
         item = make_menu_item(label, self._app._make_click_handler(s), d)
         icon = get_app_icon(s.host_app)
         if icon:
@@ -351,11 +338,11 @@ class MenuBuilder:
         # Track for background refresh (auto-generates summaries)
         self._app._summary_service.track_session(s.cwd)
         if pinned:
-            sub.addItem_(make_menu_item("Unpin", self._app._make_unbookmark_handler(s.cwd), d))
+            sub.addItem_(make_menu_item("Remove Bookmark", self._app._make_unbookmark_handler(s.cwd), d))
             sub.addItem_(make_menu_item("Quit session", self._app._make_quit_handler(s), d))
         else:
             if s.session_id:
-                sub.addItem_(make_menu_item("Pin session...", self._app._make_bookmark_handler(s), d))
+                sub.addItem_(make_menu_item("Bookmark...", self._app._make_bookmark_handler(s), d))
             sub.addItem_(make_menu_item("Quit session", self._app._make_quit_handler(s), d))
         item.setSubmenu_(sub)
         self._menu.addItem_(item)
