@@ -27,7 +27,7 @@ from AppKit import (
     NSPopUpButton,
     NSSearchField,
     NSSegmentedControl,
-    NSSegmentStyleSeparated,
+    NSSegmentStyleTexturedRounded,
     NSSound,
     NSSwitch,
     NSTableView,
@@ -55,7 +55,7 @@ _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
 # Layout
 _W = 660
-_H = 580
+_H = 620
 _SIDEBAR_W = 170
 _CONTENT_W = _W - _SIDEBAR_W
 _PAD = 24
@@ -66,6 +66,14 @@ _ROW_H = 36  # sidebar row height
 _window: NSWindow | None = None
 _delegate: "_PrefsDelegate | None" = None
 _history_data: list[dict] = []
+
+# Sub-descriptions for feature toggles
+_FEATURE_DETAILS: dict[str, str] = {
+    "bookmarks": "Pin sessions to resume later from the menu bar.",
+    "notifications": "Get alerts when Claude needs your attention.",
+    "summaries": "Auto-generate one-line session summaries.",
+    "auto_updates": "Check GitHub for new releases periodically.",
+}
 
 
 # ── Sidebar items ────────────────────────────────────────────────────
@@ -95,6 +103,15 @@ def _make_card(x: float, y: float, w: float, h: float) -> NSBox:
     card.setTitlePosition_(0)  # NSNoTitle
     card.setContentViewMargins_((0, 0))
     return card
+
+
+def _add_pane_header(view: NSView, title: str, w: float, y: float) -> float:
+    """Add a large title header to a content pane. Returns new y position."""
+    label = NSTextField.labelWithString_(title)
+    label.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 24))
+    label.setFont_(NSFont.boldSystemFontOfSize_(18.0))
+    view.addSubview_(label)
+    return y - 32
 
 
 def _make_label(text: str, x: float, y: float, w: float, size: float = 13.0, bold: bool = False) -> NSTextField:  # noqa: PLR0913
@@ -457,11 +474,12 @@ def _add_feature_card(  # noqa: PLR0913, PLR0915
     card_y: float,
     card_w: float,
 ) -> None:
-    """Add a single feature card with toggle row + facet rows."""
+    """Add a single feature card with toggle row + sub-description + facet rows."""
     feature_key = feature.key
     enabled = features.is_enabled(feature_key)
+    detail = _FEATURE_DETAILS.get(feature_key, "")
 
-    _toggle_row_h = 44
+    _toggle_row_h = 56 if detail else 44
     _facet_row_h = 40
     card_h = _toggle_row_h + len(feature.facets) * _facet_row_h
 
@@ -469,12 +487,20 @@ def _add_feature_card(  # noqa: PLR0913, PLR0915
     view.addSubview_(card)
     content = card.contentView()
 
-    # Toggle row
+    # Toggle row — name + detail + switch
     row_y = card_h - _toggle_row_h
-    name_label = _make_label(feature.description, _CARD_PAD, row_y + 12, card_w - _CARD_PAD * 2 - 60, 13.0)
+    name_y = row_y + (_toggle_row_h - 18) // 2 + (6 if detail else 0)
+    name_label = _make_label(feature.description, _CARD_PAD, name_y, card_w - _CARD_PAD * 2 - 60, 13.0)
     content.addSubview_(name_label)
 
-    toggle = NSSwitch.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - 46, row_y + 10, 46, 22))
+    if detail:
+        detail_label = _make_secondary_label(detail, _CARD_PAD, name_y - 16, card_w - _CARD_PAD * 2 - 60, 10.0)
+        detail_label.setTextColor_(NSColor.tertiaryLabelColor())
+        content.addSubview_(detail_label)
+
+    toggle = NSSwitch.alloc().initWithFrame_(
+        NSMakeRect(card_w - _CARD_PAD - 46, row_y + (_toggle_row_h - 22) // 2, 46, 22)
+    )
     toggle.setState_(NSControlStateValueOn if enabled else NSControlStateValueOff)
     toggle.setRepresentedObject_(feature_key)
     toggle.setTarget_(delegate)
@@ -521,7 +547,7 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     delegate._feature_controls = {}
     all_features = features.get_all()
 
-    _toggle_row_h = 44
+    _toggle_row_h = 56  # taller for sub-description
     _facet_row_h = 40
     _card_gap = 12
 
@@ -532,9 +558,11 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     _danger_gap = 20
 
     # Calculate total height needed
-    total_h = _PAD
+    _header_h = 32
+    total_h = _PAD + _header_h
     for f in all_features:
-        total_h += _toggle_row_h + len(f.facets) * _facet_row_h + _card_gap
+        feat_toggle_h = 56 if _FEATURE_DETAILS.get(f.key) else 44
+        total_h += feat_toggle_h + len(f.facets) * _facet_row_h + _card_gap
     total_h += _danger_gap + _danger_h + _PAD
     inner_h = max(h, total_h)
 
@@ -542,8 +570,10 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     card_w = w - _PAD * 2
 
     y = inner_h - _PAD
+    y = _add_pane_header(inner, "General", w, y)
     for feature in all_features:
-        card_h = _toggle_row_h + len(feature.facets) * _facet_row_h
+        feat_toggle_h = 56 if _FEATURE_DETAILS.get(feature.key) else 44
+        card_h = feat_toggle_h + len(feature.facets) * _facet_row_h
         y -= card_h
         _add_feature_card(inner, delegate, feature, _PAD, y, card_w)
         y -= _card_gap
@@ -618,38 +648,43 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    # ── Toolbar: search + sort + filter ──
-    _toolbar_h = 36
-    toolbar_y = h - _toolbar_h
+    # ── Header ──
+    _header_h = 32
+    header_y = h - _PAD
+    _add_pane_header(view, "History", w, header_y)
+
+    # ── Toolbar: search + sort + bookmark filter ──
+    _toolbar_h = 34
+    toolbar_y = h - _header_h - _toolbar_h
 
     # Search field
-    search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y + 6, 200, 24))
-    search.setPlaceholderString_("Search sessions...")
+    search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y + 5, 180, 24))
+    search.setPlaceholderString_("Search...")
     search.setFont_(NSFont.systemFontOfSize_(12.0))
     search.setTarget_(delegate)
     search.setAction_(objc.selector(delegate.historySearchChanged_, signature=b"v@:@"))
     view.addSubview_(search)
 
-    # Sort segmented control
-    sort_seg = NSSegmentedControl.alloc().initWithFrame_(NSMakeRect(_PAD + 210, toolbar_y + 6, 120, 24))
+    # Sort: small text labels
+    sort_seg = NSSegmentedControl.alloc().initWithFrame_(NSMakeRect(_PAD + 190, toolbar_y + 5, 110, 24))
     sort_seg.setSegmentCount_(2)
     sort_seg.setLabel_forSegment_("Date", 0)
     sort_seg.setLabel_forSegment_("Name", 1)
-    sort_seg.setWidth_forSegment_(55, 0)
-    sort_seg.setWidth_forSegment_(55, 1)
-    sort_seg.setSegmentStyle_(NSSegmentStyleSeparated)
+    sort_seg.setWidth_forSegment_(50, 0)
+    sort_seg.setWidth_forSegment_(50, 1)
+    sort_seg.setSegmentStyle_(NSSegmentStyleTexturedRounded)
     sort_seg.setSelectedSegment_(0)
     sort_seg.setFont_(NSFont.systemFontOfSize_(11.0))
     sort_seg.setTarget_(delegate)
     sort_seg.setAction_(objc.selector(delegate.historySortChanged_, signature=b"v@:@"))
     view.addSubview_(sort_seg)
 
-    # Bookmarked filter chip
-    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 340, toolbar_y + 7, 22, 22))
-    bm_chip.setTitle_("\u2605")
+    # Bookmark filter — toggle button with star
+    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y + 5, 50, 24))
+    bm_chip.setTitle_("\u2605 Only")
     bm_chip.setButtonType_(1)  # NSButtonTypeToggle
     bm_chip.setBezelStyle_(1)
-    bm_chip.setFont_(NSFont.systemFontOfSize_(12.0))
+    bm_chip.setFont_(NSFont.systemFontOfSize_(10.0))
     bm_chip.setState_(NSControlStateValueOff)
     bm_chip.setTarget_(delegate)
     bm_chip.setAction_(objc.selector(delegate.historyBookmarkFilter_, signature=b"v@:@"))
@@ -657,12 +692,13 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     view.addSubview_(bm_chip)
 
     # Separator under toolbar
-    sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, toolbar_y, w, 1))
+    content_top = toolbar_y
+    sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, content_top, w, 1))
     sep.setBoxType_(2)
     view.addSubview_(sep)
 
     # Scroll area for rows
-    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, toolbar_y))
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, content_top))
     scroll.setHasVerticalScroller_(True)
     scroll.setDrawsBackground_(False)
     view.addSubview_(scroll)
@@ -884,9 +920,12 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
     """Build the about pane with a grouped card."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
+    y = h - _PAD
+    y = _add_pane_header(view, "About", w, y)
+
     card_h = 100
     card_w = w - _PAD * 2
-    card = _make_card(_PAD, h - _PAD - card_h, card_w, card_h)
+    card = _make_card(_PAD, y - card_h, card_w, card_h)
     view.addSubview_(card)
     content = card.contentView()
 
