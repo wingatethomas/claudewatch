@@ -659,36 +659,34 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
     """Build the history pane with search, sort, filter chips, and scrollable rows."""
     _reload_history_data()
-    delegate._history_search = ""
-    delegate._history_sort = "date"
-    delegate._history_sort_asc = False  # date defaults newest first
-    delegate._history_bookmarked_only = False
+    # Preserve sort state across pane switches — only init if not set
+    if not hasattr(delegate, "_history_sort") or delegate._history_sort is None:
+        delegate._history_search = ""
+        delegate._history_sort = "date"
+        delegate._history_sort_asc = False
+        delegate._history_bookmarked_only = False
 
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    # ── Header ──
-    _header_h = 32
-    header_y = h - _PAD
+    # Layout: header (24px) + 4px gap + toolbar (28px) + 4px gap + separator
+    # Total top band = ~60px
+    _top = 8
+    header_y = h - _top
     _add_pane_header(view, "History", w, header_y)
 
-    # ── Toolbar: search + sort + bookmark filter ──
-    _toolbar_h = 34
-    toolbar_y = h - _header_h - _toolbar_h
-
-    # Search field
-    search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y + 5, 180, 24))
+    toolbar_y = h - _top - 30  # right below header
+    search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 22))
     search.setPlaceholderString_("Search...")
     search.setFont_(NSFont.systemFontOfSize_(12.0))
     search.setTarget_(delegate)
     search.setAction_(objc.selector(delegate.historySearchChanged_, signature=b"v@:@"))
     view.addSubview_(search)
 
-    # Sort: small text labels
-    sort_seg = NSSegmentedControl.alloc().initWithFrame_(NSMakeRect(_PAD + 190, toolbar_y + 5, 110, 24))
+    sort_seg = NSSegmentedControl.alloc().initWithFrame_(NSMakeRect(_PAD + 190, toolbar_y, 110, 22))
     sort_seg.setSegmentCount_(2)
-    sort_seg.setLabel_forSegment_("Date", 0)
+    sort_seg.setLabel_forSegment_("Date \u2193", 0)  # default arrow
     sort_seg.setLabel_forSegment_("Name", 1)
-    sort_seg.setWidth_forSegment_(50, 0)
+    sort_seg.setWidth_forSegment_(52, 0)
     sort_seg.setWidth_forSegment_(50, 1)
     sort_seg.setSegmentStyle_(NSSegmentStyleTexturedRounded)
     sort_seg.setSelectedSegment_(0)
@@ -697,8 +695,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     sort_seg.setAction_(objc.selector(delegate.historySortChanged_, signature=b"v@:@"))
     view.addSubview_(sort_seg)
 
-    # Bookmark filter — toggle button with star
-    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y + 5, 50, 24))
+    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y, 50, 22))
     bm_chip.setTitle_("\u2605 Only")
     bm_chip.setButtonType_(1)  # NSButtonTypeToggle
     bm_chip.setBezelStyle_(1)
@@ -707,15 +704,21 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     bm_chip.setTarget_(delegate)
     bm_chip.setAction_(objc.selector(delegate.historyBookmarkFilter_, signature=b"v@:@"))
     bm_chip.setToolTip_("Show bookmarked only")
+    bm_chip.setState_(NSControlStateValueOn if delegate._history_bookmarked_only else NSControlStateValueOff)
     view.addSubview_(bm_chip)
 
-    # Separator under toolbar
-    content_top = toolbar_y
+    # Restore sort state into controls
+    sel_idx = 1 if delegate._history_sort == "name" else 0
+    sort_seg.setSelectedSegment_(sel_idx)
+    arrow = " \u2191" if delegate._history_sort_asc else " \u2193"
+    for i, base in enumerate(("Date", "Name")):
+        sort_seg.setLabel_forSegment_(base + arrow if i == sel_idx else base, i)
+
+    content_top = toolbar_y - 4
     sep = NSBox.alloc().initWithFrame_(NSMakeRect(0, content_top, w, 1))
     sep.setBoxType_(2)
     view.addSubview_(sep)
 
-    # Scroll area for rows
     scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, content_top))
     scroll.setHasVerticalScroller_(True)
     scroll.setDrawsBackground_(False)
