@@ -1033,6 +1033,27 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
 
 _CHANGELOG = [
     (
+        "v0.7.4",
+        [
+            "Homebrew tap: brew tap wingatethomas/brews",
+            "Getting Started guide in preferences",
+            "Launch at login toggle",
+            "Homebrew-aware update flow (copies brew upgrade command)",
+            "Activity window: Focus/Resume button, fixed all toolbar buttons",
+            "Summary fixes: word-boundary truncation, background refresh, CLI discovery",
+            "Bookmark/Recent parity: same options everywhere",
+            "SF Symbol icons on menu actions",
+        ],
+    ),
+    (
+        "v0.7.1 – v0.7.3",
+        [
+            "App icon and Gatekeeper instructions",
+            "Welcome window layout fix",
+            "Renamed Pin to Bookmark across UI",
+        ],
+    ),
+    (
         "v0.7.0",
         [
             "Sidebar preferences with feature toggles",
