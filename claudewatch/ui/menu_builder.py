@@ -80,9 +80,12 @@ class MenuBuilder:
             )
             self._menu.addItem_(NSMenuItem.separatorItem())
 
-        # Guide nudge — show until user clicks it
+        # Guide nudge — show until user clicks it or dismisses
         if not self._app._onboarding_service.is_tip_shown("guide_nudge"):
             self._menu.addItem_(make_menu_item("Getting Started →", self._app._open_guide, d))
+            dismiss = make_menu_item("Don't show again", self._app._dismiss_guide, d)
+            dismiss.setIndentationLevel_(1)
+            self._menu.addItem_(dismiss)
             self._menu.addItem_(NSMenuItem.separatorItem())
 
         # Show accessibility warning if needed
