@@ -4,21 +4,10 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 
 from claudewatch.backend.core.dto import ActivityEventDTO
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
-
-
-@dataclass
-class ActivityEntry:
-    """A single event in the session timeline."""
-
-    kind: str  # "user", "assistant", "tool", "thinking"
-    summary: str  # one-line description
-    detail: str  # longer context (tool input, full text)
-    timestamp: str  # ISO timestamp or empty
 
 
 class ActivityService(BaseService):
@@ -96,25 +85,6 @@ class ActivityService(BaseService):
         return list(reversed(entries[-max_entries:]))
 
 
-# ---------------------------------------------------------------------------
-# Backward-compatible module-level function
-# ---------------------------------------------------------------------------
-
-
-def parse_activity(cwd: str, max_entries: int = 100) -> list[ActivityEntry]:  # noqa: PLR0912
-    """Parse the most recent JSONL for a CWD into an activity timeline.
-
-    Returns newest-first list of ActivityEntry objects.
-
-    .. deprecated::
-        Use ``ActivityService.parse()`` instead. This wrapper exists for
-        backward compatibility with callers that have not migrated yet.
-    """
-    svc = ActivityService(SessionLogService())
-    dtos = svc.parse(cwd, max_entries=max_entries)
-    return [ActivityEntry(kind=d.kind, summary=d.summary, detail=d.detail, timestamp=d.timestamp) for d in dtos]
-
-
 def _build_tool_use_fields(block: dict, ts: str) -> tuple[str, str, str]:
     """Extract summary and detail from a tool_use block.
 
@@ -147,12 +117,6 @@ def _parse_tool_use_dto(block: dict, ts: str) -> ActivityEventDTO:
     """Parse a tool_use block into an ActivityEventDTO."""
     summary, detail, timestamp = _build_tool_use_fields(block, ts)
     return ActivityEventDTO(kind="tool", summary=summary, detail=detail, timestamp=timestamp)
-
-
-def _parse_tool_use(block: dict, ts: str) -> ActivityEntry:
-    """Parse a tool_use block into an ActivityEntry."""
-    summary, detail, timestamp = _build_tool_use_fields(block, ts)
-    return ActivityEntry(kind="tool", summary=summary, detail=detail, timestamp=timestamp)
 
 
 def _truncate(text: str, length: int) -> str:

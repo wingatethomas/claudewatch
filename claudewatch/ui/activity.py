@@ -26,7 +26,8 @@ from AppKit import (
 )
 from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
 
-from claudewatch.backend.activity.service import ActivityEntry, parse_activity
+from claudewatch.backend.activity.dependencies import get_activity_service
+from claudewatch.backend.core.dto import ActivityEventDTO
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.session_log.dependencies import get_session_log_service
 
@@ -85,7 +86,7 @@ class _ActivityDelegate(NSObject):
         newest = not _sort_state.get(self._cwd, True)
         _sort_state[self._cwd] = newest
         sender.setTitle_("↑ Oldest first" if newest else "↓ Newest first")
-        entries = parse_activity(self._cwd)
+        entries = get_activity_service().parse(self._cwd)
         if not newest:
             entries = list(reversed(entries))
         tv = _text_views.get(self._cwd)
@@ -118,7 +119,7 @@ def _append(attr_str: NSMutableAttributedString, text: str, font: NSFont, color:
     attr_str.appendAttributedString_(seg)
 
 
-def _render_timeline(entries: list[ActivityEntry]) -> NSMutableAttributedString:
+def _render_timeline(entries: list[ActivityEventDTO]) -> NSMutableAttributedString:
     """Render the full timeline as a rich attributed string."""
     result = NSMutableAttributedString.alloc().initWithString_("")
 
@@ -257,7 +258,7 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
     text_view.setTextContainerInset_(NSMakeSize(16, 16))
 
     _text_views[cwd] = text_view
-    entries = parse_activity(cwd)
+    entries = get_activity_service().parse(cwd)
     text_view.textStorage().setAttributedString_(_render_timeline(entries))
     text_view.scrollRangeToVisible_(NSRange(len(text_view.string()), 0))
 

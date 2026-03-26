@@ -8,9 +8,8 @@ import pytest
 
 from claudewatch.backend.activity.service import (
     ActivityService,
-    _parse_tool_use,
+    _parse_tool_use_dto,
     _truncate,
-    parse_activity,
 )
 from claudewatch.backend.core.dto import ActivityEventDTO
 from claudewatch.backend.core.session_log.service import SessionLogService
@@ -46,11 +45,11 @@ class TestTruncate:
 
 
 class TestParseToolUse:
-    """Tests for _parse_tool_use helper."""
+    """Tests for _parse_tool_use_dto helper."""
 
     def test_bash_command(self):
         block = {"name": "Bash", "input": {"command": "ls -la"}}
-        entry = _parse_tool_use(block, "2026-01-01T00:00:00Z")
+        entry = _parse_tool_use_dto(block, "2026-01-01T00:00:00Z")
         assert entry.kind == "tool"
         assert "Bash" in entry.summary
         assert "ls -la" in entry.summary
@@ -58,30 +57,30 @@ class TestParseToolUse:
 
     def test_file_path(self):
         block = {"name": "Read", "input": {"file_path": "/Users/dev/project/main.py"}}
-        entry = _parse_tool_use(block, "")
+        entry = _parse_tool_use_dto(block, "")
         assert "Read" in entry.summary
         assert "main.py" in entry.summary
         assert "/Users/dev/project/main.py" in entry.detail
 
     def test_pattern(self):
         block = {"name": "Grep", "input": {"pattern": "def.*test"}}
-        entry = _parse_tool_use(block, "")
+        entry = _parse_tool_use_dto(block, "")
         assert "Grep" in entry.summary
         assert "def.*test" in entry.summary
 
     def test_unknown_tool(self):
         block = {"name": "CustomTool", "input": {"foo": "bar"}}
-        entry = _parse_tool_use(block, "")
+        entry = _parse_tool_use_dto(block, "")
         assert entry.summary == "CustomTool"
 
     def test_missing_name(self):
         block = {"input": {"command": "ls"}}
-        entry = _parse_tool_use(block, "")
+        entry = _parse_tool_use_dto(block, "")
         assert entry.summary.startswith("Unknown")
 
     def test_non_dict_input(self):
         block = {"name": "Bash", "input": "string-input"}
-        entry = _parse_tool_use(block, "")
+        entry = _parse_tool_use_dto(block, "")
         assert entry.summary == "Bash"
 
 
@@ -90,14 +89,14 @@ class TestParseActivity:
 
     def test_empty_when_no_project_dir(self, tmp_path):
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert result == []
 
     def test_empty_when_no_jsonl_files(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
         proj_dir.mkdir(parents=True)
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert result == []
 
     def test_parses_user_message(self, tmp_path):
@@ -110,7 +109,7 @@ class TestParseActivity:
             ],
         )
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].kind == "user"
         assert result[0].summary == "hello world"
@@ -129,7 +128,7 @@ class TestParseActivity:
             ],
         )
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].kind == "assistant"
         assert "help" in result[0].summary
@@ -148,7 +147,7 @@ class TestParseActivity:
             ],
         )
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].kind == "tool"
         assert "pytest" in result[0].summary
@@ -169,7 +168,7 @@ class TestParseActivity:
             ],
         )
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].kind == "assistant"
 
@@ -185,7 +184,7 @@ class TestParseActivity:
             ],
         )
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert len(result) == 3
         assert result[0].detail == "third"
         assert result[2].detail == "first"
@@ -199,7 +198,7 @@ class TestParseActivity:
         ]
         _write_jsonl(proj_dir / "session.jsonl", entries)
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp", max_entries=3)
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp", max_entries=3)
         assert len(result) == 3
         # Should keep the last 3 (newest)
         assert result[0].detail == "msg-9"
@@ -212,7 +211,7 @@ class TestParseActivity:
             f.write("not valid json\n")
             f.write(json.dumps({"type": "user", "message": {"content": "valid"}, "timestamp": ""}) + "\n")
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].detail == "valid"
 
@@ -227,7 +226,7 @@ class TestParseActivity:
             ],
         )
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert result == []
 
     def test_skips_non_dict_message(self, tmp_path):
@@ -240,7 +239,7 @@ class TestParseActivity:
             ],
         )
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert result == []
 
     def test_symlink_traversal_blocked(self, tmp_path):
@@ -260,7 +259,7 @@ class TestParseActivity:
         symlink.symlink_to(real_jsonl)
 
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert result == []
 
     def test_uses_most_recent_jsonl(self, tmp_path):
@@ -285,7 +284,7 @@ class TestParseActivity:
         os.utime(new, (2000, 2000))
 
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert len(result) == 1
         assert result[0].detail == "new msg"
 
@@ -299,7 +298,7 @@ class TestParseActivity:
             ],
         )
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = parse_activity("/Users/dev/myapp")
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
         assert result == []
 
 

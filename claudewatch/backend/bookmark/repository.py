@@ -54,20 +54,19 @@ def _save(pins: list[dict]) -> None:
         log.warning("Failed to save pins to %s", _PATH)
 
 
-def pin_session(session_id: str, project: str, cwd: str, note: str) -> None:
-    """Pin a session with a note. Updates if already pinned."""
-    pins = _load()
+def add_bookmark(session_id: str, project: str, cwd: str, note: str) -> None:
+    """Bookmark a session with a note. Updates if already bookmarked."""
+    bookmarks = _load()
     ts = datetime.now(tz=UTC).isoformat()
-    # Match by CWD (session IDs change between runs)
-    for entry in pins:
+    for entry in bookmarks:
         if isinstance(entry, dict) and entry.get("cwd") == cwd:
             entry["session_id"] = session_id
             entry["note"] = note
             entry["timestamp"] = ts
-            _save(pins)
-            log.info("pin.updated project=%s", project)
+            _save(bookmarks)
+            log.info("bookmark.updated project=%s", project)
             return
-    pins.append(
+    bookmarks.append(
         {
             "session_id": session_id,
             "project": project,
@@ -76,25 +75,25 @@ def pin_session(session_id: str, project: str, cwd: str, note: str) -> None:
             "timestamp": ts,
         }
     )
-    _save(pins)
-    log.info("pin.created project=%s", project)
+    _save(bookmarks)
+    log.info("bookmark.created project=%s", project)
 
 
-def get_pins() -> list[dict]:
-    """Return all pinned sessions."""
+def get_bookmarks() -> list[dict]:
+    """Return all bookmarked sessions."""
     return _load()
 
 
-def get_pinned_cwds() -> set[str]:
-    """Return the set of CWDs that are pinned — for quick lookup."""
+def get_bookmarked_cwds() -> set[str]:
+    """Return the set of CWDs that are bookmarked."""
     return {p.get("cwd", "") for p in _load() if isinstance(p, dict)}
 
 
-def unpin_session(cwd: str) -> None:
-    """Unpin a session by CWD."""
-    pins = _load()
-    before = len(pins)
-    pins = [p for p in pins if not (isinstance(p, dict) and p.get("cwd") == cwd)]
-    if len(pins) < before:
-        log.info("pin.removed cwd=%s", cwd)
-    _save(pins)
+def remove_bookmark(cwd: str) -> None:
+    """Remove a bookmark by CWD."""
+    bookmarks = _load()
+    before = len(bookmarks)
+    bookmarks = [p for p in bookmarks if not (isinstance(p, dict) and p.get("cwd") == cwd)]
+    if len(bookmarks) < before:
+        log.info("bookmark.removed cwd=%s", cwd)
+    _save(bookmarks)

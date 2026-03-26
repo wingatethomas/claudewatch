@@ -281,11 +281,11 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             return
         sid, rest = data.split("|", 1)
         project, cwd = rest.split("|", 1) if "|" in rest else ("", rest)
-        get_bookmark_service().pin(sid, project, cwd, "")
+        get_bookmark_service().add(sid, project, cwd, "")
 
     def unbookmarkSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
         cwd = str(sender.representedObject())
-        get_bookmark_service().unpin(cwd)
+        get_bookmark_service().remove(cwd)
 
     # ── History card actions ──
 
@@ -386,7 +386,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         entry = _history_data[row]
         col_id = str(col.identifier())
         if col_id == "project":
-            pinned = entry.get("cwd", "") in get_bookmark_service().get_pinned_cwds()
+            pinned = entry.get("cwd", "") in get_bookmark_service().get_bookmarked_cwds()
             return f"{entry.get('project', 'unknown')}{'  \u2605' if pinned else ''}"
         if col_id == "date":
             return entry.get("ended_at", "")[:16].replace("T", " ")
@@ -734,7 +734,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     return view
 
 
-def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:  # noqa: PLR0912
+def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:  # noqa: PLR0912, PLR0915
     """Rebuild the history row list based on current filter state."""
     scroll = delegate._history_scroll
     if scroll is None:
@@ -746,7 +746,7 @@ def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:  # noqa: PLR0912
 
     # Filter
     entries = list(_history_data)
-    pinned_cwds = get_bookmark_service().get_pinned_cwds()
+    pinned_cwds = get_bookmark_service().get_bookmarked_cwds()
 
     if delegate._history_bookmarked_only:
         entries = [e for e in entries if e.get("cwd", "") in pinned_cwds]
@@ -789,6 +789,7 @@ def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:  # noqa: PLR0912
     inner_h = max(h, total_h)
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
 
+    pinned_cwds = get_bookmark_service().get_bookmarked_cwds()
     usage_svc = get_usage_service()
     summary_svc = get_summary_service()
 

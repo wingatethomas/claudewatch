@@ -18,7 +18,7 @@ class BaseDTO:
 
 
 @dataclass(frozen=True)
-class PinDTO(BaseDTO):
+class BookmarkDTO(BaseDTO):
     """Pinned session returned by BookmarkService."""
 
     session_id: str
