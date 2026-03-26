@@ -575,8 +575,9 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     _danger_gap = 16
 
     # Calculate total height needed
-    _header_h = 32
-    total_h = _PAD + _header_h
+    _top_pad = 12  # breathing room below title bar
+    _header_h = 28
+    total_h = _top_pad + _header_h
     for f in all_features:
         feat_toggle_h = 56 if _FEATURE_DETAILS.get(f.key) else 44
         total_h += feat_toggle_h + len(f.facets) * _facet_row_h + _card_gap
@@ -586,7 +587,7 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
     card_w = w - _PAD * 2
 
-    y = inner_h - _PAD
+    y = inner_h - _top_pad
     y = _add_pane_header(inner, "General", w, y)
     for feature in all_features:
         feat_toggle_h = 56 if _FEATURE_DETAILS.get(feature.key) else 44
@@ -668,10 +669,9 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    # Layout from top: 16px padding, header, 4px, toolbar, 4px, separator
-    header_y = h - _PAD
+    header_y = h - 12  # breathing room below title bar
     _add_pane_header(view, "History", w, header_y)
-    toolbar_y = header_y - 30
+    toolbar_y = header_y - 32
     search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 22))
     search.setPlaceholderString_("Search...")
     search.setFont_(NSFont.systemFontOfSize_(12.0))
@@ -778,14 +778,15 @@ def _rebuild_history_rows(delegate: _PrefsDelegate) -> None:  # noqa: PLR0912
         scroll.setDocumentView_(inner)
         return
 
-    total_h = _PAD + len(entries) * (_row_h + _sep_h) + _PAD
+    _list_pad = 8  # tight padding above first row and below last
+    total_h = _list_pad + len(entries) * (_row_h + _sep_h) + _list_pad
     inner_h = max(h, total_h)
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
 
     usage_svc = get_usage_service()
     summary_svc = get_summary_service()
 
-    y = inner_h - _PAD
+    y = inner_h - _list_pad
     for i, entry in enumerate(entries):
         y -= _row_h
         _add_history_row(inner, delegate, entry, 0, y, w, _row_h, pinned_cwds, usage_svc, summary_svc)
@@ -941,7 +942,7 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
     """Build the about pane with a grouped card."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    y = h - _PAD
+    y = h - 12
     y = _add_pane_header(view, "About", w, y)
 
     card_h = 100
