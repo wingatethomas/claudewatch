@@ -83,19 +83,19 @@ class _ActivityDelegate(NSObject):
             subprocess.run(["open", "-R", path], check=False)  # noqa: S603, S607
 
     def toggleSort_(self, sender: objc.objc_object) -> None:
-        newest = not _sort_state.get(self._cwd, True)
-        _sort_state[self._cwd] = newest
-        sender.setTitle_("↑ Oldest first" if newest else "↓ Newest first")
+        newest_first = not _sort_state.get(self._cwd, False)
+        _sort_state[self._cwd] = newest_first
+        sender.setTitle_("↓ Newest first" if newest_first else "↑ Oldest first")
         entries = get_activity_service().parse(self._cwd)
-        if not newest:
+        if newest_first:
             entries = list(reversed(entries))
         tv = _text_views.get(self._cwd)
         if tv is not None:
             tv.textStorage().setAttributedString_(_render_timeline(entries))
-            if newest:
-                tv.scrollRangeToVisible_(NSRange(len(tv.string()), 0))
-            else:
+            if newest_first:
                 tv.scrollRangeToVisible_(NSRange(0, 0))
+            else:
+                tv.scrollRangeToVisible_(NSRange(len(tv.string()), 0))
 
     def resumeSession_(self, sender: objc.objc_object) -> None:
         sid = _get_session_id(self._cwd)
@@ -206,6 +206,7 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
 
     sort_btn = NSButton.alloc().initWithFrame_(NSMakeRect(12, 8, 90, 24))
     sort_btn.setTitle_("↑ Oldest first")
+    sort_btn.setFont_(NSFont.systemFontOfSize_(11.0))
     sort_btn.setBezelStyle_(1)
     sort_btn.setTarget_(delegate)
     sort_btn.setAction_("toggleSort:")
