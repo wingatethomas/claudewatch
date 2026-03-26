@@ -80,6 +80,11 @@ class MenuBuilder:
             )
             self._menu.addItem_(NSMenuItem.separatorItem())
 
+        # Guide nudge — show until user clicks it
+        if not self._app._onboarding_service.is_tip_shown("guide_nudge"):
+            self._menu.addItem_(make_menu_item("Getting Started →", self._app._open_guide, d))
+            self._menu.addItem_(NSMenuItem.separatorItem())
+
         # Show accessibility warning if needed
         if self._app._accessibility_warning:
             self._menu.addItem_(
@@ -290,7 +295,7 @@ class MenuBuilder:
         legend.setAttributedTitle_(legend_text)
         help_submenu.addItem_(legend)
         help_submenu.addItem_(NSMenuItem.separatorItem())
-        help_submenu.addItem_(make_menu_item("Show Tips", self._app._replay_tips, d))
+        help_submenu.addItem_(make_menu_item("Guide", self._app._open_guide, d))
         help_submenu.addItem_(make_menu_item("GitHub", self._app._open_github, d))
         help_item.setSubmenu_(help_submenu)
         self._menu.addItem_(help_item)

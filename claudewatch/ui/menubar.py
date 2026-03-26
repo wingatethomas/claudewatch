@@ -26,10 +26,7 @@ from PyObjCTools import AppHelper
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
-from claudewatch.backend.core.models import (
-    ClaudeSession,
-    SessionStatus,
-)
+from claudewatch.backend.core.models import ClaudeSession
 from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
 from claudewatch.backend.core.settings import ensure_defaults_migrated, get_setting
 from claudewatch.backend.detection.dependencies import get_detection_service
@@ -189,26 +186,8 @@ class ClaudeWatchApp:
         self._prev_sessions = session_map
 
     def _check_onboarding_tips(self) -> None:
-        """Fire one-time onboarding tips based on current state."""
-        # Welcome — first successful poll
-        if not self._onboarding_service.is_tip_shown("welcome"):
-            self._onboarding_service.show_tip("welcome")
-            return  # one tip per cycle
-
-        # Attention — first time a session needs attention
-        if not self._onboarding_service.is_tip_shown("attention") and any(
-            s.status == SessionStatus.ATTENTION for s in self.sessions
-        ):
-            self._onboarding_service.show_tip("attention")
-            return
-
-        # Hover — after 5 cumulative unique sessions observed
-        _hover_threshold = 5
-        if (
-            not self._onboarding_service.is_tip_shown("hover")
-            and self._onboarding_service.get_session_count() >= _hover_threshold
-        ):
-            self._onboarding_service.show_tip("hover")
+        """Track session count for guide nudge (no notification tips)."""
+        pass
 
     def _check_accessibility(self) -> None:
         """Show a warning if Accessibility permissions are not granted."""
@@ -345,7 +324,6 @@ class ClaudeWatchApp:
                 if result == NSAlertFirstButtonReturn:
                     note = str(text_field.stringValue()).strip()
                     self._bookmark_service.add(sid, project, cwd, note)
-                    self._onboarding_service.show_tip("pin")
                     if note:
                         self._summary_service.cache(cwd, note)
 
@@ -496,8 +474,9 @@ class ClaudeWatchApp:
     def _open_preferences(self, _: NSMenuItem) -> None:
         show_preferences()
 
-    def _replay_tips(self, _: NSMenuItem) -> None:
-        threading.Thread(target=self._onboarding_service.replay_all_tips, daemon=True).start()
+    def _open_guide(self, _: NSMenuItem) -> None:
+        self._onboarding_service._mark_shown("guide_nudge")
+        show_preferences(pane="guide")
 
     def _open_github(self, _: NSMenuItem) -> None:
         webbrowser.open("https://github.com/wingatethomas/claudewatch")
