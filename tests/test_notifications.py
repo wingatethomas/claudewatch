@@ -53,7 +53,7 @@ class TestSend:
         mock_center = _mock_center()
         svc._center = mock_center
         with (
-            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
         ):
             svc.send("My Title", "My Subtitle", "My Message")
@@ -66,7 +66,7 @@ class TestSend:
         svc = NotificationService()
         mock_center = _mock_center()
         svc._center = mock_center
-        with patch(f"{_MOD}.get_setting", return_value=False):
+        with patch(f"{_MOD}.features.is_enabled", return_value=False):
             svc.send("Title", "Sub", "Msg")
         mock_center.deliverNotification_.assert_not_called()
 
@@ -77,7 +77,7 @@ class TestSend:
         svc._center = mock_center
         long_msg = "x" * 500
         with (
-            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
         ):
             svc.send("Title", "Sub", long_msg)
@@ -96,7 +96,7 @@ class TestNotifyIfNeeded:
         mock_center = _mock_center()
         svc._center = mock_center
         with (
-            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
             patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
@@ -112,7 +112,7 @@ class TestNotifyIfNeeded:
         mock_center = _mock_center()
         svc._center = mock_center
         with (
-            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
@@ -127,7 +127,7 @@ class TestNotifyIfNeeded:
         mock_center = _mock_center()
         svc._center = mock_center
         with (
-            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
             patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
@@ -142,7 +142,7 @@ class TestNotifyIfNeeded:
         mock_center = _mock_center()
         svc._center = mock_center
         with (
-            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
             s = _make_session(pid=100, status=SessionStatus.ATTENTION)
@@ -155,7 +155,7 @@ class TestNotifyIfNeeded:
         mock_center = _mock_center()
         svc._center = mock_center
         with (
-            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(
                 f"{_MOD}._get_frontmost_window",
                 return_value=("Terminal", "myproject — claude"),
@@ -176,7 +176,7 @@ class TestNotifyIfNeeded:
         mock_center = _mock_center()
         svc._center = mock_center
         with (
-            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
             patch(
                 f"{_MOD}._get_frontmost_window",
@@ -198,7 +198,7 @@ class TestNotifyIfNeeded:
         mock_center = _mock_center()
         svc._center = mock_center
         with (
-            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
             patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):
@@ -211,7 +211,7 @@ class TestNotifyIfNeeded:
         svc = NotificationService()
         mock_center = _mock_center()
         svc._center = mock_center
-        with patch(f"{_MOD}.get_setting", return_value=False):
+        with patch(f"{_MOD}.features.is_enabled", return_value=False):
             s = _make_session(status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
         mock_center.deliverNotification_.assert_not_called()
@@ -220,7 +220,7 @@ class TestNotifyIfNeeded:
     def test_no_attention_sessions_clears_dead_pids(self):
         svc = NotificationService()
         svc._notified_pids = {999}
-        with patch(f"{_MOD}.get_setting", return_value=True):
+        with patch(f"{_MOD}.features.is_enabled", return_value=True):
             s = _make_session(pid=100, status=SessionStatus.WORKING)
             svc.notify_if_needed([s])
         assert 999 not in svc._notified_pids
@@ -232,7 +232,7 @@ class TestNotifyIfNeeded:
         mock_center = _mock_center()
         svc._center = mock_center
         with (
-            patch(f"{_MOD}.get_setting", return_value=True),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
             patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
         ):

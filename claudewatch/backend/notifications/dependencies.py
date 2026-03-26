@@ -7,8 +7,8 @@ from claudewatch.backend.notifications.service import NotificationService
 register(
     Feature(
         "notifications",
-        "Attention notifications",
-        facets=(Facet("sound", "choice", "Glass", "Alert sound", options=get_available_sounds()),),
+        "Notifications",
+        facets=(Facet("sound", "choice", "Glass", "Sound", options=get_available_sounds()),),
     )
 )
 

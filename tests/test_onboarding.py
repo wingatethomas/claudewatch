@@ -66,16 +66,10 @@ class TestShowTip:
     def test_show_tip_sends_notification(self):
         svc = _make_service()
 
-        def _get(key):
-            if key == "onboarding_tips_shown":
-                return []
-            if key == "notifications_enabled":
-                return True
-            return None
-
         with (
-            patch(f"{_MOD}.get_setting", side_effect=_get),
+            patch(f"{_MOD}.get_setting", return_value=[]),
             patch(f"{_MOD}.set_setting"),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
         ):
             result = svc.show_tip("welcome")
         assert result is True
@@ -89,16 +83,10 @@ class TestShowTip:
         svc = _make_service()
         mock_set = MagicMock()
 
-        def _get(key):
-            if key == "onboarding_tips_shown":
-                return []
-            if key == "notifications_enabled":
-                return True
-            return None
-
         with (
-            patch(f"{_MOD}.get_setting", side_effect=_get),
+            patch(f"{_MOD}.get_setting", return_value=[]),
             patch(f"{_MOD}.set_setting", mock_set),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
         ):
             svc.show_tip("welcome")
         mock_set.assert_called_once_with("onboarding_tips_shown", ["welcome"])
@@ -113,14 +101,10 @@ class TestShowTip:
     def test_notifications_disabled_skips(self):
         svc = _make_service()
 
-        def _get_setting(key):
-            if key == "onboarding_tips_shown":
-                return []
-            if key == "notifications_enabled":
-                return False
-            return None
-
-        with patch(f"{_MOD}.get_setting", side_effect=_get_setting):
+        with (
+            patch(f"{_MOD}.get_setting", return_value=[]),
+            patch(f"{_MOD}.features.is_enabled", return_value=False),
+        ):
             result = svc.show_tip("welcome")
         assert result is False
         svc._notification_service.send.assert_not_called()
@@ -128,14 +112,10 @@ class TestShowTip:
     def test_unknown_tip_id_skips(self):
         svc = _make_service()
 
-        def _get(key):
-            if key == "onboarding_tips_shown":
-                return []
-            if key == "notifications_enabled":
-                return True
-            return None
-
-        with patch(f"{_MOD}.get_setting", side_effect=_get):
+        with (
+            patch(f"{_MOD}.get_setting", return_value=[]),
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
+        ):
             result = svc.show_tip("nonexistent")
         assert result is False
         svc._notification_service.send.assert_not_called()
