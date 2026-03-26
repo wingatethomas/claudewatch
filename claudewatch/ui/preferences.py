@@ -1191,15 +1191,13 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
 
     # Action buttons — y is currently above the top sessions card
     # Card was placed at (y - top_card_h), so bottom of card is at (y - top_card_h)
-    y = y - top_card_h - 24
-    btn_y = y
+    y = y - top_card_h - 30
     _btn_h = 24
-    _btn_font = NSFont.systemFontOfSize_(11.0)
 
-    claude_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, btn_y, 140, _btn_h))
+    claude_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, y, 130, _btn_h))
     claude_btn.setTitle_("Open in Claude")
     claude_btn.setBezelStyle_(1)
-    claude_btn.setFont_(_btn_font)
+    claude_btn.setFont_(NSFont.systemFontOfSize_(11.0))
     claude_btn.setTarget_(delegate)
     claude_btn.setAction_(objc.selector(delegate.openClaudeUsage_, signature=b"v@:@"))
     view.addSubview_(claude_btn)
