@@ -394,7 +394,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         col_id = str(col.identifier())
         if col_id == "project":
             pinned = entry.get("cwd", "") in get_bookmark_service().get_bookmarked_cwds()
-            return f"{entry.get('project', 'unknown')}{'  \u2605' if pinned else ''}"
+            return f"{entry.get('project', 'unknown')}{'  \u25b8' if pinned else ''}"
         if col_id == "date":
             return entry.get("ended_at", "")[:16].replace("T", " ")
         if col_id == "model":
@@ -716,7 +716,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     view.addSubview_(sort_seg)
 
     bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 50, 24))
-    bm_chip.setTitle_("\u2605 Only")
+    bm_chip.setTitle_("\u25b8 Only")
     bm_chip.setButtonType_(1)  # NSButtonTypeToggle
     bm_chip.setBezelStyle_(1)
     bm_chip.setFont_(NSFont.systemFontOfSize_(10.0))
@@ -852,15 +852,15 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     is_pinned = cwd in pinned_cwds
     _p = _PAD
 
-    # ── Line 1: [★]  project name                  ···
-    _star_col = _p  # star column (fixed width)
-    _name_col = _p + 18  # content starts after star column
+    # ── Line 1: [bookmark icon]  project name       ···
+    _bm_col = _p  # bookmark icon column (fixed width)
+    _name_col = _p + 18  # content starts after bookmark column
     ly1 = y + h - 20
 
     if is_pinned:
-        star = _make_label("\u2605", _star_col, ly1, 14, 12.0)
-        star.setTextColor_(NSColor.secondaryLabelColor())
-        view.addSubview_(star)
+        mark = _make_label("▸", _bm_col, ly1, 14, 12.0)
+        mark.setTextColor_(NSColor.secondaryLabelColor())
+        view.addSubview_(mark)
 
     name_label = _make_label(project, _name_col, ly1, w - _name_col - 30, 13.0, bold=True)
     view.addSubview_(name_label)
