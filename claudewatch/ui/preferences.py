@@ -53,7 +53,7 @@ _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
 # Layout
 _W = 660
-_H = 460
+_H = 580
 _SIDEBAR_W = 170
 _CONTENT_W = _W - _SIDEBAR_W
 _PAD = 24
