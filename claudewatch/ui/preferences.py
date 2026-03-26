@@ -207,6 +207,20 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
                 sender,
             )
 
+    # ── Bookmark actions ──
+
+    def bookmarkSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        data = str(sender.representedObject())
+        if "|" not in data:
+            return
+        sid, rest = data.split("|", 1)
+        project, cwd = rest.split("|", 1) if "|" in rest else ("", rest)
+        get_bookmark_service().pin(sid, project, cwd, "")
+
+    def unbookmarkSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        cwd = str(sender.representedObject())
+        get_bookmark_service().unpin(cwd)
+
     # ── History card actions ──
 
     def copyCwd_(self, sender: objc.objc_object) -> None:  # noqa: N802
@@ -611,7 +625,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     return scroll
 
 
-def _add_history_row(  # noqa: PLR0913, PLR0915
+def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     view: NSView,
     delegate: _PrefsDelegate,
     entry: dict,
@@ -633,19 +647,44 @@ def _add_history_row(  # noqa: PLR0913, PLR0915
     is_pinned = cwd in pinned_cwds
     _p = _PAD
 
-    # ── Line 1: project name              ★  ···
+    # ── Line 1: ★ project name                    ···
     ly1 = y + h - 20
+    name_x = _p
 
-    name_label = _make_label(project, _p, ly1, w - _p - 60, 13.0, bold=True)
+    if is_pinned:
+        star = _make_label("\u2605", _p, ly1, 14, 12.0)
+        star.setTextColor_(NSColor.secondaryLabelColor())
+        view.addSubview_(star)
+        name_x = _p + 16
+
+    name_label = _make_label(project, name_x, ly1, w - name_x - 30, 13.0, bold=True)
     view.addSubview_(name_label)
 
-    # Pin star
-    if is_pinned:
-        star = _make_secondary_label("\u2605", w - _p - 42, ly1 + 1, 14, 12.0)
-        view.addSubview_(star)
-
-    # ··· button — plain text button that pops a menu
+    # ··· menu
+    summary = summary_svc.get_cached(cwd) if cwd else None
     menu = NSMenu.alloc().init()
+
+    # Full summary at the top (if available)
+    if summary:
+        _wrap = 50
+        words = summary.split()
+        lines: list[str] = []
+        cur = ""
+        for word in words:
+            test = f"{cur} {word}".strip()
+            if len(test) > _wrap and cur:
+                lines.append(cur)
+                cur = word
+            else:
+                cur = test
+        if cur:
+            lines.append(cur)
+        for line in lines:
+            si = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(line, None, "")
+            si.setEnabled_(False)
+            menu.addItem_(si)
+        menu.addItem_(NSMenuItem.separatorItem())
+
     for title, action, obj in [
         ("Resume", delegate.resumeSession_, f"{session_id}|{cwd}"),
         ("Activity", delegate.viewActivity_, f"{project}|{cwd}"),
@@ -655,7 +694,22 @@ def _add_history_row(  # noqa: PLR0913, PLR0915
         mi.setTarget_(delegate)
         mi.setAction_(objc.selector(action, signature=b"v@:@"))
         menu.addItem_(mi)
+
     menu.addItem_(NSMenuItem.separatorItem())
+
+    # Bookmark / Unbookmark
+    if is_pinned:
+        bm_mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Remove Bookmark", None, "")
+        bm_mi.setRepresentedObject_(cwd)
+        bm_mi.setTarget_(delegate)
+        bm_mi.setAction_(objc.selector(delegate.unbookmarkSession_, signature=b"v@:@"))
+    else:
+        bm_mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Bookmark", None, "")
+        bm_mi.setRepresentedObject_(f"{session_id}|{project}|{cwd}")
+        bm_mi.setTarget_(delegate)
+        bm_mi.setAction_(objc.selector(delegate.bookmarkSession_, signature=b"v@:@"))
+    menu.addItem_(bm_mi)
+
     for title, action, obj in [
         ("Copy Path", delegate.copyCwd_, cwd),
         ("Open in Finder", delegate.revealInFinder_, cwd),
@@ -665,6 +719,7 @@ def _add_history_row(  # noqa: PLR0913, PLR0915
         mi.setTarget_(delegate)
         mi.setAction_(objc.selector(action, signature=b"v@:@"))
         menu.addItem_(mi)
+
     menu.addItem_(NSMenuItem.separatorItem())
     del_mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Delete", None, "")
     del_mi.setRepresentedObject_(cwd)
@@ -698,10 +753,9 @@ def _add_history_row(  # noqa: PLR0913, PLR0915
     meta_label = _make_secondary_label(meta, _p, ly2, w - _p * 2, 11.0)
     view.addSubview_(meta_label)
 
-    # ── Line 3: summary (if available)
+    # ── Line 3: short summary (full in ··· menu)
     ly3 = ly2 - 16
-    summary = summary_svc.get_cached(cwd) if cwd else None
-    _max_summary = 70
+    _max_summary = 50
     if summary:
         s_text = summary[:_max_summary] + "…" if len(summary) > _max_summary else summary
         s_label = _make_secondary_label(s_text, _p, ly3, w - _p * 2, 11.0)
