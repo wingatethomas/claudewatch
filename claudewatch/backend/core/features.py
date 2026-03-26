@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from enum import StrEnum
 
 from claudewatch.backend.core.settings import get_setting, set_setting
 
@@ -17,10 +18,17 @@ log = logging.getLogger("claudewatch")
 _registry: dict[str, Feature] = {}
 
 
+class FacetType(StrEnum):
+    BOOL = "bool"
+    INT = "int"
+    CHOICE = "choice"
+    STR = "str"
+
+
 @dataclass(frozen=True)
 class Facet:
     name: str
-    type: str  # "bool", "int", "choice", "str"
+    type: FacetType
     default: bool | int | str
     description: str = ""
     options: tuple[str, ...] = ()

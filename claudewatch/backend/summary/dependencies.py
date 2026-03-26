@@ -5,7 +5,12 @@ from claudewatch.backend.core.process.dependencies import get_process_service
 from claudewatch.backend.core.session_log.dependencies import get_session_log_service
 from claudewatch.backend.summary.service import SummaryService
 
-register(Feature("summaries", "Summaries"))
+register(
+    Feature(
+        key="background_summaries",
+        description="Background summaries",
+    )
+)
 
 
 @lru_cache(maxsize=1)

@@ -37,7 +37,7 @@ class TestExtractConversationText:
         svc, _ = _make_service(tmp_path)
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc._extract_conversation_text("/Users/dev/myapp")
-        assert "User: fix the login bug" in result
+        assert "USER: fix the login bug" in result
 
     def test_extracts_assistant_text(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
@@ -55,7 +55,7 @@ class TestExtractConversationText:
         svc, _ = _make_service(tmp_path)
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc._extract_conversation_text("/Users/dev/myapp")
-        assert "Assistant: I'll help you fix that" in result
+        assert "ASSISTANT: I'll help you fix that" in result
 
     def test_respects_max_context_chars(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
