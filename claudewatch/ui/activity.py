@@ -35,6 +35,7 @@ _W = 750
 _H = 500
 
 _windows: dict[str, NSWindow] = {}
+_delegates: dict[str, object] = {}  # prevent GC of delegate
 _text_views: dict[str, NSTextView] = {}
 _sort_state: dict[str, bool] = {}  # CWD → newest_first
 
@@ -63,6 +64,7 @@ class _ActivityDelegate(NSObject):
 
     def windowWillClose_(self, notification: objc.objc_object) -> None:
         _windows.pop(self._cwd, None)
+        _delegates.pop(self._cwd, None)
         _text_views.pop(self._cwd, None)
         _sort_state.pop(self._cwd, None)
 
@@ -268,6 +270,7 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
 
     window.setContentView_(root)
 
+    _delegates[cwd] = delegate
     _windows[cwd] = window
     window.center()
     window.makeKeyAndOrderFront_(None)
