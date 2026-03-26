@@ -516,6 +516,7 @@ class ClaudeWatchApp:
         os.execv(sys.executable, [sys.executable] + sys.argv)  # noqa: S606
 
     def _quit(self, _: NSMenuItem) -> None:
+        log.info("app.quit")
         AppHelper.stopEventLoop()
 
 
@@ -543,7 +544,11 @@ def main() -> None:
     )
     logger.addHandler(file_handler)
 
-    signal.signal(signal.SIGINT, lambda *_: AppHelper.stopEventLoop())
+    def _sigint_handler(*_args: object) -> None:
+        log.info("app.sigint")
+        os._exit(0)  # noqa: SLF001
+
+    signal.signal(signal.SIGINT, _sigint_handler)
 
     delegate = AppDelegate.alloc().init()
     app = ClaudeWatchApp(
