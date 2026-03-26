@@ -3,6 +3,7 @@
 import os
 import re
 import subprocess
+import time
 import webbrowser
 from datetime import UTC, datetime, timedelta
 
@@ -51,6 +52,7 @@ from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
 from claudewatch.ui.activity import show_activity
+from claudewatch.ui.icons import sf_icon
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
@@ -85,6 +87,7 @@ def _sidebar_items() -> list[dict]:
     return [
         {"type": "static", "key": "general", "label": "General"},
         {"type": "static", "key": "history", "label": "History"},
+        {"type": "static", "key": "usage", "label": "Usage"},
         {"type": "separator"},
         {"type": "static", "key": "about", "label": "About"},
     ]
@@ -156,6 +159,8 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     _history_scroll: AppKitScrollView | None
     _history_inner: NSView | None
     _history_sort_seg: NSSegmentedControl | None
+    _usage_range: str  # "24h", "7d", "30d", "90d", "all"
+    _usage_content: NSView | None
 
     def _show_pane(self, item: dict) -> None:
         if self._current_pane is not None:
@@ -167,6 +172,8 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             pane = _build_general_pane(self, _CONTENT_W, content_h)
         elif item["key"] == "history":
             pane = _build_history_pane(self, _CONTENT_W, content_h)
+        elif item["key"] == "usage":
+            pane = _build_usage_pane(self, _CONTENT_W, content_h)
         elif item["key"] == "about":
             pane = _build_about_pane(self, _CONTENT_W, content_h)
         else:
@@ -274,6 +281,21 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
                 sender,
             )
 
+    # ── Navigation ──
+
+    def jumpToSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        """Switch to History pane filtered to the given project name."""
+        project = str(sender.representedObject())
+        self._history_search = project.lower()
+        self._history_sort = getattr(self, "_history_sort", "date")
+        self._history_sort_asc = getattr(self, "_history_sort_asc", False)
+        self._history_bookmarked_only = False
+        # Find and select the History sidebar item
+        for i, item in enumerate(self._sidebar_items):
+            if item.get("key") == "history":
+                self._select_sidebar(i)
+                break
+
     # ── Bookmark actions ──
 
     def bookmarkSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
@@ -330,6 +352,28 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         features.set_facet(key, facet_name, value)
 
     # ── Static actions ──
+
+    def openClaudeUsage_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        """Open claude /usage in Terminal using a known trusted directory."""
+        # Find a trusted CWD from history
+        history = get_history_service().get_all()
+        cwd = ""
+        for entry in history:
+            if entry.cwd and os.path.isdir(entry.cwd):
+                cwd = entry.cwd
+                break
+        if not cwd:
+            cwd = os.path.expanduser("~")
+        safe_cwd = escape_applescript(cwd)
+        run_applescript(f'''
+            tell application "Terminal"
+                activate
+                do script "cd \\"{safe_cwd}\\" && claude /usage"
+            end tell
+        ''')
+
+    def openAnthropicConsole_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        webbrowser.open("https://console.anthropic.com/settings/usage")
 
     def viewAuditLog_(self, sender: objc.objc_object) -> None:  # noqa: N802
         if os.path.exists(LOG_PATH):
@@ -593,7 +637,7 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     _card_gap = 8
 
     _danger_row_h = 38
-    _danger_header_h = 30
+    _danger_header_h = 34
     _danger_rows = 2
     _danger_h = _danger_header_h + _danger_row_h * _danger_rows
     _danger_gap = 16
@@ -715,11 +759,11 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     sort_seg.setAction_(objc.selector(delegate.historySortChanged_, signature=b"v@:@"))
     view.addSubview_(sort_seg)
 
-    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 50, 24))
-    bm_chip.setTitle_("\u25b8 Only")
+    bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 310, toolbar_y - 1, 28, 24))
+    bm_chip.setTitle_("")
+    bm_chip.setImage_(sf_icon("bookmark.fill", size=12.0))
     bm_chip.setButtonType_(1)  # NSButtonTypeToggle
     bm_chip.setBezelStyle_(1)
-    bm_chip.setFont_(NSFont.systemFontOfSize_(10.0))
     bm_chip.setState_(NSControlStateValueOff)
     bm_chip.setTarget_(delegate)
     bm_chip.setAction_(objc.selector(delegate.historyBookmarkFilter_, signature=b"v@:@"))
@@ -978,35 +1022,281 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
         view.addSubview_(s_label)
 
 
-def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:
-    """Build the about pane with a grouped card."""
+_CHANGELOG = [
+    (
+        "v0.7.0",
+        [
+            "Sidebar preferences with feature toggles",
+            "Session history with search, sort, and bookmark filter",
+            "Smarter summaries: title + bulleted action list",
+            "Background summary refresh (toggleable)",
+            "Bookmarks submenu in menu bar",
+            "Danger zone: clear bookmarks or summaries",
+            "Settings stored in macOS preferences",
+        ],
+    ),
+    (
+        "v0.6.1",
+        [
+            "Native macOS notifications (no more terminal-notifier)",
+            "Compact model names in menu bar",
+        ],
+    ),
+    (
+        "v0.6.0",
+        [
+            "One-click self-update from GitHub Releases",
+            "Onboarding tips for new users",
+            "Per-session token usage breakdown",
+        ],
+    ),
+    (
+        "v0.5.0",
+        [
+            "Onboarding tips and audit logging",
+            "Session history recording",
+            "Activity feed with timeline view",
+        ],
+    ),
+    (
+        "v0.4.0",
+        [
+            "Token usage tracking per session",
+            "Auto-generated session summaries",
+            "Pinned sessions with resume",
+        ],
+    ),
+    (
+        "v0.3.0",
+        [
+            "Preferences window with notification sounds",
+            "Session history tab",
+            "IDE detection (VS Code, PyCharm)",
+        ],
+    ),
+]
+
+
+def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
+    """Build the Usage pane — total accumulated stats + top sessions."""
+    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
+    y = _add_pane_header(view, "Usage", w, h)
+
+    history = get_history_service().get_all()
+    usage_svc = get_usage_service()
+
+    # Gather per-session stats: (project, tokens, ended_at)
+    session_stats: list[tuple[str, dict[str, int], str]] = []
+    total: dict[str, int] = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
+    _month_seconds = 30 * 86400
+    now_ts = time.time()
+
+    for entry in history:
+        tokens = usage_svc.get_tokens(entry.cwd)
+        session_total = sum(tokens.values())
+        if session_total > 0:
+            session_stats.append((entry.project, tokens, entry.ended_at))
+            # Only count toward total if within past month
+            try:
+                ended = datetime.fromisoformat(entry.ended_at).timestamp()
+                if now_ts - ended < _month_seconds:
+                    for k in total:
+                        total[k] += tokens[k]
+            except (ValueError, TypeError, AttributeError):
+                for k in total:
+                    total[k] += tokens[k]
+
+    total_sum = sum(total.values())
+    card_w = w - _PAD * 2
+
+    if total_sum == 0:
+        no_data = _make_secondary_label("No usage data yet.", _PAD, y - 20, card_w, 13.0)
+        view.addSubview_(no_data)
+        return view
+
+    # ── Section: Total usage ──
+    y -= 14  # space below pane header
+    total_header = _make_secondary_label("LAST 30 DAYS", _PAD, y, 200, 10.0)
+    total_header.setTextColor_(NSColor.tertiaryLabelColor())
+    view.addSubview_(total_header)
+    y -= 6
+    _row_h = 22
+    total_lines = [
+        ("Input", total["input"]),
+        ("Output", total["output"]),
+        ("Cache", total["cache_create"] + total["cache_read"]),
+        ("Total", sum(total.values())),
+    ]
+    total_card_h = _CARD_PAD + len(total_lines) * _row_h + _CARD_PAD
+    total_card = _make_card(_PAD, y - total_card_h, card_w, total_card_h)
+    view.addSubview_(total_card)
+    tc = total_card.contentView()
+
+    ty = total_card_h - _CARD_PAD
+    for label_text, count in total_lines:
+        ty -= _row_h
+        lbl = _make_label(label_text, _CARD_PAD, ty, 80, 12.0)
+        lbl.setTextColor_(NSColor.secondaryLabelColor())
+        tc.addSubview_(lbl)
+        val = _make_label(_fmt_token_count(count), _CARD_PAD + 80, ty, card_w - _CARD_PAD * 2 - 80, 12.0, bold=True)
+        val.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(12.0, 0.0))
+        tc.addSubview_(val)
+
+    y -= total_card_h + 16
+
+    # ── Section: Top sessions by usage ──
+    y -= 12
+    top_header = _make_secondary_label("TOP SESSIONS BY USAGE", _PAD, y, 250, 10.0)
+    top_header.setTextColor_(NSColor.tertiaryLabelColor())
+    view.addSubview_(top_header)
+    y -= 6
+
+    session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
+    _top_n = 10
+    top_entries = session_stats[:_top_n]
+    _top_row_h = 22
+    top_card_h = _CARD_PAD + len(top_entries) * _top_row_h + _CARD_PAD + 4
+    top_card = _make_card(_PAD, y - top_card_h, card_w, top_card_h)
+    view.addSubview_(top_card)
+    tpc = top_card.contentView()
+
+    # Column positions (all labels, no buttons — consistent baseline)
+    _col_name = _CARD_PAD
+    _col_date = _CARD_PAD + 170
+    _col_tokens = _CARD_PAD + 250
+
+    tpy = top_card_h - _CARD_PAD
+    for project, tokens, ended_at in top_entries:
+        tpy -= _top_row_h
+        # Clickable name — use label-styled button at same y as labels
+        name_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_col_name, tpy, 164, 18))
+        name_btn.setTitle_(project)
+        name_btn.setBordered_(False)
+        name_btn.setFont_(NSFont.systemFontOfSize_(12.0))
+        name_btn.setAlignment_(0)
+        name_btn.setContentHuggingPriority_forOrientation_(750, 0)
+        name_btn.setRepresentedObject_(project)
+        name_btn.setTarget_(delegate)
+        name_btn.setAction_(objc.selector(delegate.jumpToSession_, signature=b"v@:@"))
+        tpc.addSubview_(name_btn)
+        date_str = _relative_time(ended_at)
+        date_label = _make_secondary_label(date_str, _col_date, tpy, 75, 11.0)
+        tpc.addSubview_(date_label)
+        total_tok = sum(tokens.values())
+        val = _make_secondary_label(
+            _fmt_token_count(total_tok), _col_tokens, tpy, card_w - _CARD_PAD - _col_tokens, 11.0
+        )
+        val.setFont_(NSFont.monospacedDigitSystemFontOfSize_weight_(11.0, 0.0))
+        tpc.addSubview_(val)
+
+    # Action buttons — y is currently above the top sessions card
+    # Card was placed at (y - top_card_h), so bottom of card is at (y - top_card_h)
+    y = y - top_card_h - 16
+    btn_y = y
+    _btn_h = 24
+    _btn_font = NSFont.systemFontOfSize_(11.0)
+
+    claude_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD, btn_y, 140, _btn_h))
+    claude_btn.setTitle_("Open in Claude")
+    claude_btn.setBezelStyle_(1)
+    claude_btn.setFont_(_btn_font)
+    claude_btn.setTarget_(delegate)
+    claude_btn.setAction_(objc.selector(delegate.openClaudeUsage_, signature=b"v@:@"))
+    view.addSubview_(claude_btn)
+
+    return view
+
+
+def _fmt_token_count(n: int) -> str:
+    """Format token count with suffix: 1.2M, 45K, 123."""
+    _m = 1_000_000
+    _k = 1000
+    if n >= _m:
+        return f"{n / _m:.1f}M tokens"
+    if n >= _k:
+        return f"{n / _k:.0f}K tokens"
+    return f"{n} tokens"
+
+
+def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
+    """Build the about pane with version, links, and changelog."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
     y = _add_pane_header(view, "About", w, h)
 
-    card_h = 100
+    # Version + buttons card
+    card_h = 80
     card_w = w - _PAD * 2
     card = _make_card(_PAD, y - card_h, card_w, card_h)
     view.addSubview_(card)
     content = card.contentView()
 
-    ver_label = _make_label(f"ClaudeWatch v{__version__}", _CARD_PAD, card_h - _CARD_PAD - 20, 300, 14.0, bold=True)
+    ver_label = _make_label(f"ClaudeWatch v{__version__}", _CARD_PAD, card_h - _CARD_PAD - 18, 300, 14.0, bold=True)
     content.addSubview_(ver_label)
 
     btn_y = _CARD_PAD
-    log_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, btn_y, 100, 28))
+    log_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, btn_y, 100, 24))
     log_btn.setTitle_("Audit Log")
     log_btn.setBezelStyle_(1)
+    log_btn.setFont_(NSFont.systemFontOfSize_(11.0))
     log_btn.setTarget_(delegate)
     log_btn.setAction_(objc.selector(delegate.viewAuditLog_, signature=b"v@:@"))
     content.addSubview_(log_btn)
 
-    repo_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD + 112, btn_y, 80, 28))
+    repo_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD + 108, btn_y, 80, 24))
     repo_btn.setTitle_("GitHub")
     repo_btn.setBezelStyle_(1)
+    repo_btn.setFont_(NSFont.systemFontOfSize_(11.0))
     repo_btn.setTarget_(delegate)
     repo_btn.setAction_(objc.selector(delegate.openRepo_, signature=b"v@:@"))
     content.addSubview_(repo_btn)
+
+    y -= card_h + 24
+
+    # Changelog in a scrollable card
+    y -= 12
+    changelog_label = _make_secondary_label("WHAT'S NEW", _PAD, y, 200, 10.0)
+    changelog_label.setTextColor_(NSColor.tertiaryLabelColor())
+    view.addSubview_(changelog_label)
+    y -= 6
+
+    _ver_h = 18
+    _bullet_h = 14
+    _ver_gap = 8
+    _cl_pad = 10  # inner padding for changelog
+    inner_content_h = _cl_pad
+    for _ver, items in _CHANGELOG:
+        inner_content_h += _ver_h + len(items) * _bullet_h + _ver_gap
+    inner_content_h += _cl_pad
+
+    changelog_card_h = min(y - 8, inner_content_h)  # 8px bottom margin
+    changelog_card = _make_card(_PAD, y - changelog_card_h, card_w, changelog_card_h)
+    changelog_card.setWantsLayer_(True)
+    changelog_card.layer().setMasksToBounds_(True)
+    view.addSubview_(changelog_card)
+
+    scroll = AppKitScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, changelog_card_h))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setAutohidesScrollers_(True)
+    scroll.setDrawsBackground_(False)
+
+    inner_h = max(changelog_card_h, inner_content_h)
+    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, inner_h))
+    cy = inner_h - _cl_pad
+
+    for version, items in _CHANGELOG:
+        cy -= _ver_h
+        ver = _make_label(version, _cl_pad, cy, 200, 11.0, bold=True)
+        inner.addSubview_(ver)
+        for item in items:
+            cy -= _bullet_h
+            bullet = _make_secondary_label(f"• {item}", _cl_pad + 8, cy, card_w - _cl_pad * 2 - 20, 10.0)
+            inner.addSubview_(bullet)
+        cy -= _ver_gap
+
+    scroll.setDocumentView_(inner)
+    inner.scrollPoint_((0, inner_h))
+    changelog_card.contentView().addSubview_(scroll)
 
     return view
 
