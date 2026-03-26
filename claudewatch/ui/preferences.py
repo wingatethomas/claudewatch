@@ -43,6 +43,7 @@ from Foundation import NSMakeRect, NSObject, NSRange
 from claudewatch import __version__
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.core import features
+from claudewatch.backend.core.features import FacetType
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.history.dependencies import get_history_service
@@ -545,7 +546,7 @@ def _add_feature_card(  # noqa: PLR0913, PLR0915
         label.setTextColor_(NSColor.secondaryLabelColor())
         content.addSubview_(label)
 
-        if facet.type == "choice":
+        if facet.type == FacetType.CHOICE:
             _popup_w = 160
             popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
                 NSMakeRect(card_w - _CARD_PAD - _popup_w, fy + 8, _popup_w, 24),
