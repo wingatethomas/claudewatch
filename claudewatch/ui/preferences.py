@@ -21,7 +21,6 @@ from AppKit import (
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
-    NSImageView,
     NSMenu,
     NSMenuItem,
     NSMutableAttributedString,
@@ -910,12 +909,21 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     _name_col = _p + 18  # content starts after bookmark column
     ly1 = y + h - 20
 
-    if is_pinned:
-        bm_icon = sf_icon("bookmark.fill", size=11.0)
-        if bm_icon:
-            mark = NSImageView.alloc().initWithFrame_(NSMakeRect(_bm_col, ly1 + 1, 14, 14))
-            mark.setImage_(bm_icon)
-            view.addSubview_(mark)
+    bm_icon_name = "bookmark.fill" if is_pinned else "bookmark"
+    bm_icon_img = sf_icon(bm_icon_name, size=11.0)
+    if bm_icon_img:
+        bm_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_bm_col, ly1 - 1, 18, 18))
+        bm_btn.setImage_(bm_icon_img)
+        bm_btn.setBordered_(False)
+        bm_btn.setTarget_(delegate)
+        if is_pinned:
+            bm_btn.setAction_(objc.selector(delegate.unbookmarkSession_, signature=b"v@:@"))
+            bm_btn.setRepresentedObject_(cwd)
+        else:
+            bm_btn.setAction_(objc.selector(delegate.bookmarkSession_, signature=b"v@:@"))
+            bm_btn.setRepresentedObject_(f"{session_id}|{project}|{cwd}")
+        bm_btn.setToolTip_("Remove bookmark" if is_pinned else "Bookmark this session")
+        view.addSubview_(bm_btn)
 
     name_label = _make_label(project, _name_col, ly1, w - _name_col - 30, 13.0, bold=True)
     view.addSubview_(name_label)
