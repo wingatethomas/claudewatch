@@ -16,7 +16,8 @@ from Foundation import NSMakeRect
 
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FacetType
-from claudewatch.ui.components.widgets.labels import label, pane_title, secondary_label
+from claudewatch.ui.components.widgets.labels import label, secondary_label
+from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
 
 _PAD = 24
 _CARD_PAD = 16
@@ -32,32 +33,28 @@ _FEATURE_DETAILS: dict[str, str] = {
 
 def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
     """Build the Settings pane with feature cards and danger zone."""
+    view, content_top = create_pane("Settings", w, h)
 
     all_features = features.get_all()
     delegate._feature_controls = {}
 
-    # Calculate total content height
-    content_h = _PAD + 32  # header
+    # Calculate scroll content height
+    content_h = 0
     for feature in all_features:
         detail = _FEATURE_DETAILS.get(feature.key, "")
         toggle_h = 56 if detail else 44
         card_h = toggle_h + len(feature.facets) * 40
         content_h += card_h + 8
     content_h += 24  # gap before danger zone
-    content_h += 30 + 2 * 38  # danger zone (header + 2 rows)
+    content_h += 30 + 2 * 38  # danger zone
     content_h += _PAD
 
-    # Build scrollable inner view
-    inner_h = max(h, content_h)
+    scroll_h = content_top
+    inner_h = max(scroll_h, content_h)
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
-    card_w = w - _PAD * 2
+    card_w = w - CONTENT_PADDING * 2
 
-    y = inner_h - 12  # match PANE_PADDING from common.py
-    # Header
-    title = pane_title("Settings")
-    title.setFrame_(NSMakeRect(_PAD, y - 24, w - _PAD * 2, 24))
-    inner.addSubview_(title)
-    y -= 32
+    y = inner_h
 
     # Feature cards
     for feature in all_features:
@@ -68,19 +65,21 @@ def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
     y -= 16
     _build_danger_zone(inner, delegate, _PAD, y, card_w)
 
-    if content_h <= h:
-        inner.setFrame_(NSMakeRect(0, 0, w, h))
-        return inner
+    if content_h <= scroll_h:
+        inner.setFrame_(NSMakeRect(0, 0, w, scroll_h))
+        view.addSubview_(inner)
+    else:
+        from AppKit import NSScrollView
 
-    from AppKit import NSScrollView
+        scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, scroll_h))
+        scroll.setHasVerticalScroller_(True)
+        scroll.setAutohidesScrollers_(True)
+        scroll.setDrawsBackground_(False)
+        scroll.setDocumentView_(inner)
+        inner.scrollPoint_((0, inner_h))  # scroll to top
+        view.addSubview_(scroll)
 
-    scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-    scroll.setHasVerticalScroller_(True)
-    scroll.setAutohidesScrollers_(True)
-    scroll.setDrawsBackground_(False)
-    scroll.setDocumentView_(inner)
-    inner.scrollPoint_((0, inner_h))  # scroll to top
-    return scroll
+    return view
 
 
 def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915

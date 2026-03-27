@@ -24,8 +24,9 @@ from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
-from claudewatch.ui.components.widgets.labels import label, pane_title, secondary_label
+from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.icons import sf_icon
+from claudewatch.ui.preferences.panes.common import create_pane
 
 _PAD = 24
 _CARD_PAD = 16
@@ -43,20 +44,10 @@ def _build_subtitle() -> str:
 
 def build_sessions_pane(delegate: object, w: float, h: float) -> NSView:
     """Build the Sessions pane with toolbar and scrollable rows."""
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-
-    below_header = _add_pane_header(view, "Sessions", w, h)
-
-    # Subtitle
-    from AppKit import NSColor
-
-    subtitle = secondary_label(_build_subtitle(), size=11.0)
-    subtitle.setTextColor_(NSColor.tertiaryLabelColor())
-    subtitle.setFrame_(NSMakeRect(_PAD, below_header - 14, w - _PAD * 2, 14))
-    view.addSubview_(subtitle)
+    view, content_top = create_pane("Sessions", w, h, subtitle=_build_subtitle())
 
     # Toolbar
-    toolbar_y = below_header - 14 - 8 - 30
+    toolbar_y = content_top - 30
     search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 24))
     search.setPlaceholderString_("Search...")
     search.setStringValue_(delegate._history_search or "")
@@ -309,17 +300,6 @@ def _build_row_menu(  # noqa: PLR0913, ARG001
     _add_action("Delete", delegate.deleteHistoryEntry_, cwd)
 
     return menu
-
-
-def _add_pane_header(view: NSView, title: str, w: float, h: float) -> float:
-    """Add title header, return y below it."""
-    _header_h = 24
-    _top = 12
-    y = h - _top - _header_h
-    lbl = pane_title(title)
-    lbl.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, _header_h))
-    view.addSubview_(lbl)
-    return y - 8
 
 
 def _relative_time(iso_str: str) -> str:  # noqa: PLR0911
