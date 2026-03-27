@@ -96,3 +96,56 @@ class Colors:
     @staticmethod
     def card_border() -> NSColor:
         return NSColor.separatorColor().colorWithAlphaComponent_(0.3)
+
+
+# ── Status Color Schemes ─────────────────────────────────────────────
+
+
+def _rgb(r: float, g: float, b: float) -> NSColor:
+    return NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, 1.0)
+
+
+class StatusScheme:
+    """A set of three colors for session status dots."""
+
+    def __init__(self, name: str, attention: NSColor, working: NSColor, idle: NSColor) -> None:
+        self.name = name
+        self.attention = attention
+        self.working = working
+        self.idle = idle
+
+
+STATUS_SCHEMES: dict[str, StatusScheme] = {
+    "default": StatusScheme(
+        "Default",
+        attention=_rgb(0.85, 0.30, 0.28),
+        working=_rgb(0.25, 0.65, 0.30),
+        idle=_rgb(0.85, 0.65, 0.15),
+    ),
+    "deuteranopia": StatusScheme(
+        "Deuteranopia (red-green)",
+        attention=_rgb(0.90, 0.40, 0.10),
+        working=_rgb(0.20, 0.50, 0.85),
+        idle=_rgb(0.70, 0.70, 0.70),
+    ),
+    "protanopia": StatusScheme(
+        "Protanopia (red-green)",
+        attention=_rgb(0.90, 0.60, 0.00),
+        working=_rgb(0.00, 0.45, 0.85),
+        idle=_rgb(0.60, 0.60, 0.60),
+    ),
+    "high_contrast": StatusScheme(
+        "High Contrast",
+        attention=_rgb(1.00, 0.20, 0.20),
+        working=_rgb(0.20, 0.80, 1.00),
+        idle=_rgb(1.00, 1.00, 0.30),
+    ),
+}
+
+
+def get_active_scheme() -> StatusScheme:
+    """Get the currently configured status color scheme."""
+    from claudewatch.backend.core import features  # noqa: PLC0415 — circular dep
+
+    scheme_name = features.get_facet("accessibility", "color_scheme") or "default"
+    return STATUS_SCHEMES.get(str(scheme_name), STATUS_SCHEMES["default"])

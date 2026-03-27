@@ -19,8 +19,8 @@ from claudewatch.backend.core.models import ClaudeSession, SessionStatus
 from claudewatch.backend.core.paths import is_homebrew_install
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_breakdown
 from claudewatch.ui.icons import (
-    STATUS_COLORS,
     get_app_icon,
+    get_status_colors,
     make_header_title,
     render_status_icon,
     sf_icon,
@@ -283,7 +283,7 @@ class MenuBuilder:
             dot_end = label.index("●") + 1
             seg.addAttribute_value_range_(
                 "NSColor",
-                STATUS_COLORS[status],
+                get_status_colors()[status],
                 NSRange(label.index("●"), 1),
             )
             seg.addAttribute_value_range_(

@@ -29,6 +29,7 @@ _FEATURE_DETAILS: dict[str, str] = {
     "background_summaries": "Periodically regenerate session summaries in the background.",
     "auto_updates": "Check GitHub for new releases periodically.",
     "launch_at_login": "Start ClaudeWatch automatically when you log in.",
+    "accessibility": "Color scheme for status dots in the menu bar.",
 }
 
 
