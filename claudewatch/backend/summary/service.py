@@ -259,7 +259,7 @@ class SummaryService(BaseService):
                 else:
                     with self._failures_lock:
                         prev = self._failures.get(cwd)
-                        prev_count = prev[0] if prev else 0
+                        prev_count = prev[0] if isinstance(prev, tuple) else (prev or 0)
                         mtime = self._get_jsonl_mtime(cwd)
                         self._failures[cwd] = (prev_count + 1, mtime)
                         count = prev_count + 1
