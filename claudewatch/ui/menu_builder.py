@@ -261,14 +261,8 @@ class MenuBuilder:
         help_item = make_menu_item("Help", None, d)
         help_item.setImage_(sf_icon("questionmark.circle"))
         help_submenu = NSMenu.alloc().init()
-        for tip in (
-            "Click → focus window",
-            "Hover → Activity · Bookmark · Quit",
-            "▸ = bookmarked (resume later)",
-        ):
-            help_submenu.addItem_(make_menu_item(f"  {tip}", None, d))
 
-        # Color legend with actual colored dots
+        # Color legend with colored dots
         legend = make_menu_item("  Status dots", None, d)
         legend_text = NSMutableAttributedString.alloc().initWithString_("")
         _legend_font = NSFont.menuFontOfSize_(13.0)

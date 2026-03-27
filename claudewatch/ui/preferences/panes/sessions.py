@@ -213,12 +213,13 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
 
     # Project name
     name_lbl = label(project, size=13.0, bold=True)
-    name_lbl.setFrame_(NSMakeRect(_name_col, ly1, w - _name_col - 30, 18))
+    _scrollbar_w = 15
+    name_lbl.setFrame_(NSMakeRect(_name_col, ly1, w - _name_col - 30 - _scrollbar_w, 18))
     view.addSubview_(name_lbl)
 
     # Context menu button (···)
     menu = _build_row_menu(delegate, entry, is_pinned, cwd, session_id, project, summary_svc)
-    dots = NSButton.alloc().initWithFrame_(NSMakeRect(w - 30, ly1, 22, 18))
+    dots = NSButton.alloc().initWithFrame_(NSMakeRect(w - 30 - _scrollbar_w, ly1, 22, 18))
     dots.setTitle_("\u00b7\u00b7\u00b7")
     dots.setBezelStyle_(0)
     dots.setBordered_(False)
