@@ -24,9 +24,9 @@ from claudewatch.ui.icons import (
     render_status_icon,
     sf_icon,
 )
+from claudewatch.ui.menu.session_submenu import SessionActions, build_session_submenu
 from claudewatch.ui.menu_helpers import (
     AppDelegate,
-    add_summary_lines,
     disabled_item,
     make_menu_item,
     noop,
@@ -182,42 +182,19 @@ class MenuBuilder:
                     short_note = pin.note[:_max_note] + "…" if len(pin.note) > _max_note else pin.note
                     label += f" — {short_note}"
                 item = make_menu_item(label, self._app._make_resume_handler(pin.session_id, pin.cwd), d)
-                sub = NSMenu.alloc().init()
-                # Summary submenu
-                bullets = self._app._summary_service.get_cached_summary(pin.cwd)
-                if bullets:
-                    summary_item = make_menu_item("Summary", None, d)
-                    summary_sub = NSMenu.alloc().init()
-                    add_summary_lines(summary_sub, bullets, d)
-                    summary_item.setSubmenu_(summary_sub)
-                    sub.addItem_(summary_item)
-                else:
-                    self._app._summary_service.track_session(pin.cwd)
-                # Usage submenu with token breakdown + Activity
                 token_data = self._app._usage_service.get_tokens(pin.cwd)
-                breakdown = format_tokens_breakdown(token_data)
-                usage_item = make_menu_item("Usage", None, d)
-                usage_sub = NSMenu.alloc().init()
-                if breakdown:
-                    for uline in breakdown:
-                        usage_sub.addItem_(make_menu_item(f"  {uline}", None, d))
-                    usage_sub.addItem_(NSMenuItem.separatorItem())
-                usage_sub.addItem_(
-                    make_menu_item(
-                        "View session activity log",
-                        self._app._make_history_activity_handler(pin.project, pin.cwd),
-                        d,
-                    )
+                actions = SessionActions(
+                    activity=self._app._make_history_activity_handler(pin.project, pin.cwd),
+                    resume=self._app._make_resume_handler(pin.session_id, pin.cwd),
+                    unbookmark=self._app._make_unbookmark_handler(pin.cwd),
+                    track_summary=lambda cwd=pin.cwd: self._app._summary_service.track_session(cwd),
+                    usage_lines=format_tokens_breakdown(token_data),
                 )
-                usage_item.setSubmenu_(usage_sub)
-                sub.addItem_(usage_item)
-                sub.addItem_(NSMenuItem.separatorItem())
-                resume_item = make_menu_item("Resume", self._app._make_resume_handler(pin.session_id, pin.cwd), d)
-                resume_item.setImage_(sf_icon("play.circle"))
-                sub.addItem_(resume_item)
-                remove_item = make_menu_item("Remove", self._app._make_unbookmark_handler(pin.cwd), d)
-                remove_item.setImage_(sf_icon("trash"))
-                sub.addItem_(remove_item)
+                sub = build_session_submenu(
+                    delegate=d,
+                    summary=self._app._summary_service.get_cached_summary(pin.cwd),
+                    actions=actions,
+                )
                 item.setSubmenu_(sub)
                 bm_submenu.addItem_(item)
             bm_menu_item.setSubmenu_(bm_submenu)
@@ -256,45 +233,19 @@ class MenuBuilder:
                     label += f"  ({' · '.join(detail_parts)})"
                 click_action = self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else noop
                 item = make_menu_item(label, click_action, d)
-                item_sub = NSMenu.alloc().init()
-                # Summary submenu
-                summary_text = self._app._summary_service.get_cached_summary(entry.cwd)
-                summary_item = make_menu_item("Summary", None, d)
-                summary_sub = NSMenu.alloc().init()
-                if summary_text:
-                    add_summary_lines(summary_sub, summary_text, d)
-                else:
-                    summary_sub.addItem_(make_menu_item("Generating…", None, d))
-                summary_item.setSubmenu_(summary_sub)
-                item_sub.addItem_(summary_item)
-                # Usage submenu with token breakdown + Activity
                 token_data = self._app._usage_service.get_tokens(entry.cwd)
-                breakdown = format_tokens_breakdown(token_data)
-                usage_item = make_menu_item("Usage", None, d)
-                usage_sub = NSMenu.alloc().init()
-                if breakdown:
-                    for uline in breakdown:
-                        usage_sub.addItem_(make_menu_item(f"  {uline}", None, d))
-                    usage_sub.addItem_(NSMenuItem.separatorItem())
-                usage_sub.addItem_(
-                    make_menu_item(
-                        "View session activity log",
-                        self._app._make_history_activity_handler(entry.project, entry.cwd),
-                        d,
-                    )
+                actions = SessionActions(
+                    activity=self._app._make_history_activity_handler(entry.project, entry.cwd),
+                    resume=self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else None,
+                    remove=self._app._make_remove_history_handler(entry.cwd),
+                    track_summary=lambda cwd=entry.cwd: self._app._summary_service.track_session(cwd),
+                    usage_lines=format_tokens_breakdown(token_data),
                 )
-                usage_item.setSubmenu_(usage_sub)
-                item_sub.addItem_(usage_item)
-                item_sub.addItem_(NSMenuItem.separatorItem())
-                if entry.session_id:
-                    resume_item = make_menu_item(
-                        "Resume", self._app._make_resume_handler(entry.session_id, entry.cwd), d
-                    )
-                    resume_item.setImage_(sf_icon("play.circle"))
-                    item_sub.addItem_(resume_item)
-                remove_item = make_menu_item("Remove", self._app._make_remove_history_handler(entry.cwd), d)
-                remove_item.setImage_(sf_icon("trash"))
-                item_sub.addItem_(remove_item)
+                item_sub = build_session_submenu(
+                    delegate=d,
+                    summary=self._app._summary_service.get_cached_summary(entry.cwd),
+                    actions=actions,
+                )
                 item.setSubmenu_(item_sub)
                 recent_submenu.addItem_(item)
                 self._app._summary_service.track_session(entry.cwd)  # background thread will generate summary
@@ -361,54 +312,26 @@ class MenuBuilder:
         icon = get_app_icon(s.host_app)
         if icon:
             item.setImage_(icon)
-        # Build submenu for this session
-        sub = NSMenu.alloc().init()
-        # Summary submenu — auto-generates in background
-        summary_item = make_menu_item("Summary", None, d)
-        summary_sub = NSMenu.alloc().init()
-        bullets = self._app._summary_service.get_cached_summary(s.cwd)
-        if bullets:
-            add_summary_lines(summary_sub, bullets, d)
-        elif self._app._summary_service.is_generating(s.cwd):
-            summary_sub.addItem_(make_menu_item("Generating…", None, d))
-        else:
-            summary_sub.addItem_(make_menu_item("Generating…", None, d))
-            self._app._summary_service.track_session(
-                s.cwd, urgent=s.status in (SessionStatus.ATTENTION, SessionStatus.WORKING)
-            )
-        summary_item.setSubmenu_(summary_sub)
-        sub.addItem_(summary_item)
-        # Usage submenu with token breakdown + Activity link
-        token_data = self._app._usage_service.get_tokens(s.cwd)
-        breakdown = format_tokens_breakdown(token_data)
-        usage_item = make_menu_item("Usage", None, d)
-        usage_sub = NSMenu.alloc().init()
-        if breakdown:
-            for line in breakdown:
-                usage_sub.addItem_(make_menu_item(f"  {line}", None, d))
-            usage_sub.addItem_(NSMenuItem.separatorItem())
-        usage_sub.addItem_(make_menu_item("View session activity log", self._app._make_activity_handler(s), d))
-        usage_item.setSubmenu_(usage_sub)
-        sub.addItem_(usage_item)
-        sub.addItem_(NSMenuItem.separatorItem())
-        # Track for background refresh (auto-generates summaries)
+        # Build submenu using shared session_submenu builder
         is_active = s.status in (SessionStatus.ATTENTION, SessionStatus.WORKING)
+        token_data = self._app._usage_service.get_tokens(s.cwd)
+        actions = SessionActions(
+            activity=self._app._make_activity_handler(s),
+            bookmark=self._app._make_bookmark_handler(s) if not pinned and s.session_id else None,
+            unbookmark=self._app._make_unbookmark_handler(s.cwd) if pinned else None,
+            quit=self._app._make_quit_handler(s),
+            track_summary=lambda cwd=s.cwd, urgent=is_active: self._app._summary_service.track_session(
+                cwd, urgent=urgent
+            ),
+            usage_lines=format_tokens_breakdown(token_data),
+        )
+        sub = build_session_submenu(
+            delegate=d,
+            summary=self._app._summary_service.get_cached_summary(s.cwd),
+            generating=self._app._summary_service.is_generating(s.cwd),
+            actions=actions,
+        )
         self._app._summary_service.track_session(s.cwd, urgent=is_active)
-        if pinned:
-            remove_item = make_menu_item("Remove", self._app._make_unbookmark_handler(s.cwd), d)
-            remove_item.setImage_(sf_icon("trash"))
-            sub.addItem_(remove_item)
-            quit_item = make_menu_item("Quit session", self._app._make_quit_handler(s), d)
-            quit_item.setImage_(sf_icon("xmark.circle"))
-            sub.addItem_(quit_item)
-        else:
-            if s.session_id:
-                bm_item = make_menu_item("Bookmark...", self._app._make_bookmark_handler(s), d)
-                bm_item.setImage_(sf_icon("bookmark"))
-                sub.addItem_(bm_item)
-            quit_item = make_menu_item("Quit session", self._app._make_quit_handler(s), d)
-            quit_item.setImage_(sf_icon("xmark.circle"))
-            sub.addItem_(quit_item)
         item.setSubmenu_(sub)
         self._menu.addItem_(item)
         # Detail line: model + summary (or status as fallback)
