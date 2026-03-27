@@ -71,8 +71,9 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
         view.addSubview_(empty)
         return view
 
-    # Build scroll content below fixed header (minimal top padding — header already spaced)
-    stack = VStack(width=w, padding=8, spacing=8)
+    # Build scroll content below fixed header
+    # padding=CONTENT_PADDING aligns cards with the header horizontally
+    stack = VStack(width=w, padding=CONTENT_PADDING, spacing=8)
     stack.add(_section_header("LAST 30 DAYS"), height=14)
 
     total_in = total["input"] + total["cache_create"] + total["cache_read"]
