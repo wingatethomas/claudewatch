@@ -92,10 +92,13 @@ def handle_open_claude_usage(delegate: object, sender: object) -> None:  # noqa:
     """Open claude /usage in Terminal using a trusted project directory."""
     history = get_history_service().get_all()
     cwd = ""
-    # Prefer real project dirs over worktrees/temp dirs
+    home = os.path.expanduser("~")
+    # Prefer real project dirs over worktrees/temp/home dirs
     skip_patterns = (".claude/worktrees", "/tmp/", "/var/folders/")  # noqa: S108
     for entry in history:
         if not entry.cwd or not os.path.isdir(entry.cwd):
+            continue
+        if entry.cwd == home:
             continue
         if any(p in entry.cwd for p in skip_patterns):
             continue
