@@ -11,7 +11,7 @@ from Foundation import NSMakeRect
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 
 
-def build(*, releases: list[tuple[str, list[str]]], width: float, height: float) -> NSView:
+def build_changelog(*, releases: list[tuple[str, list[str]]], width: float, height: float) -> NSView:
     """Build a scrollable changelog view from release data."""
     _ver_h = 18
     _bullet_h = 14

@@ -25,7 +25,7 @@ class DangerAction:
     on_click: Callable[[], None]
 
 
-def build(*, actions: list[DangerAction], width: float = 0) -> NSView:
+def build_danger_zone(*, actions: list[DangerAction], width: float = 0) -> NSView:
     """Build a danger zone card. Width is set by layout system if 0."""
     red = NSColor.systemRedColor()
     _pad = 16

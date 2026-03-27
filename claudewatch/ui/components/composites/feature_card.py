@@ -25,7 +25,7 @@ class FacetSpec:
     choices: tuple[str, ...] = ()
 
 
-def build(  # noqa: PLR0913
+def build_feature_card(  # noqa: PLR0913
     *,
     title: str,
     description: str,

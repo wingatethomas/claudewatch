@@ -31,7 +31,7 @@ class SessionActions:
     usage_lines: list[str] = field(default_factory=list)
 
 
-def build(
+def build_session_submenu(
     *,
     delegate: object,
     summary: str | None,

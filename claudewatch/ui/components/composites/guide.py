@@ -11,7 +11,7 @@ from Foundation import NSMakeRect
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 
 
-def build(*, sections: list[tuple[str, list[str]]], width: float, height: float) -> NSView:
+def build_guide(*, sections: list[tuple[str, list[str]]], width: float, height: float) -> NSView:
     """Build a scrollable guide view from section data."""
     _section_h = 18
     _bullet_h = 16
