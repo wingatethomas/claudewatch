@@ -2,6 +2,26 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
+# Raw outputs that shouldn't be shown to users as status text
+_GARBAGE_PATTERNS = (
+    "execution error",
+    "error:",
+    "traceback",
+    "exception",
+    "errno",
+    "permission denied",
+    "no such file",
+    "command not found",
+)
+
+
+def _is_user_friendly(text: str) -> bool:
+    """Check if text is suitable for display as a session status line."""
+    lower = text.lower().strip()
+    if not lower or len(lower) < 3:  # noqa: PLR2004
+        return False
+    return not any(pattern in lower for pattern in _GARBAGE_PATTERNS)
+
 
 class HostApp(Enum):
     TERMINAL = "Terminal"
@@ -89,7 +109,7 @@ class ClaudeSession:
         text = ""
         if self.status == SessionStatus.ATTENTION and self.prompt_text:
             text = self.prompt_text
-        elif self.last_output:
+        elif self.last_output and _is_user_friendly(self.last_output):
             text = self.last_output
         if text:
             if len(text) > _max_detail:
@@ -98,5 +118,5 @@ class ClaudeSession:
         if self.status == SessionStatus.WORKING:
             return "Working..."
         if self.status == SessionStatus.IDLE:
-            return "Waiting for input"
+            return "Idle"
         return ""

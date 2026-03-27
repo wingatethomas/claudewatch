@@ -33,7 +33,10 @@ ignore = [
 
 [lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S108", "ANN", "PLR2004", "ARG"]
-"claudewatch/ui/preferences.py" = ["N802", "ARG002"]  # ObjC selector names require camelCase
+"claudewatch/ui/preferences/delegate.py" = ["N802", "ARG", "ANN", "PLR2004", "PLC0415"]  # ObjC selectors, lazy handler imports (circular dep avoidance)
+"claudewatch/ui/preferences/panes/*.py" = ["N802", "ARG", "ANN", "PLR2004"]  # ObjC selectors
+"claudewatch/ui/preferences/handlers/*.py" = ["N802", "ARG", "ANN", "PLR2004", "PLC0415"]  # ObjC selectors, lazy imports (circular dep)
+"claudewatch/ui/preferences/window.py" = ["N802", "ARG", "ANN", "PLR2004"]  # ObjC selectors
 "claudewatch/ui/activity.py" = ["N802", "ARG002"]  # ObjC delegate methods
 
 [format]

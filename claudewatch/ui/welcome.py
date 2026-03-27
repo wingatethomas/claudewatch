@@ -22,7 +22,7 @@ from claudewatch.backend.core.settings import get_setting, set_setting
 from claudewatch.ui.safety import objc_callback
 
 _W = 500
-_H = 580
+_H = 460
 _PAD = 24
 _TEXT_W = _W - _PAD * 2
 
@@ -80,10 +80,7 @@ def show_welcome() -> None:  # noqa: PLR0915
 
     style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
     window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-        NSMakeRect(300, 200, _W, _H),
-        style,
-        2,
-        False,
+        NSMakeRect(300, 200, _W, _H), style, 2, False
     )
     window.setTitle_("Welcome to ClaudeWatch")
     window.setDelegate_(_delegate)
@@ -91,81 +88,120 @@ def show_welcome() -> None:  # noqa: PLR0915
     window.center()
 
     root = window.contentView()
-    y = _H - 40
+    _g = 8  # gap between elements
+    _s = 4  # gap around separators
+    y = _H - _PAD
 
-    # ── Title ────────────────────────────────────────────────────
-    _label(root, "Welcome to ClaudeWatch", y, size=18.0, bold=True, height=24)
-    y -= 30
-    _label(
+    # Title
+    y -= 26
+    _add_label(root, "Welcome to ClaudeWatch", y, height=26, size=18.0, bold=True)
+    y -= _g
+
+    # Subtitle (2 lines)
+    y -= 32
+    _add_label(
         root,
-        "ClaudeWatch monitors your Claude Code sessions from the menu bar.\n"
-        "Grant these two permissions to get started.",
-        y,
-        height=40,
+        "Monitor your Claude Code sessions from the menu bar.",
+        y + 16,
+        height=16,
         color=NSColor.secondaryLabelColor(),
     )
-    y -= 52
+    _add_label(root, "Grant these two permissions to get started.", y, height=16, color=NSColor.secondaryLabelColor())
+    y -= _g * 2
 
-    # ── Accessibility ────────────────────────────────────────────
-    _sep(root, y + 6)
-    y -= 8
-    _label(root, "Accessibility", y, bold=True, height=18)
-    y -= 22
-    _label(root, "Focus terminal windows when you click a session.", y, height=18, color=NSColor.secondaryLabelColor())
-    _action_btn(root, "Open Settings", y, _delegate, "openAccessibility_")
-    y -= 36
-
-    # ── Automation ───────────────────────────────────────────────
-    _sep(root, y + 6)
-    y -= 8
-    _label(root, "Automation (Terminal)", y, bold=True, height=18)
-    y -= 22
-    _label(
-        root, "List windows, resume sessions, close tabs on quit.", y, height=18, color=NSColor.secondaryLabelColor()
-    )
-    _action_btn(root, "Open Settings", y, _delegate, "openAutomation_")
-    y -= 36
-
-    # ── Privacy ──────────────────────────────────────────────────
-    _sep(root, y + 6)
-    y -= 8
-    _label(root, "Privacy", y, bold=True, height=18)
-    y -= 22
-    _label(
+    # Accessibility
+    _add_separator(root, y)
+    y -= _s + 18
+    _add_label(root, "Accessibility", y, height=18, bold=True)
+    y -= 18
+    _add_label(
         root,
-        "ClaudeWatch only reads ~/.claude/ and writes to\n"
-        "~/Library/Application Support/ClaudeWatch/.\n\n"
-        "It does not access Photos, Music, Documents, Downloads,\n"
-        "or any other personal files. Deny those prompts if they appear.",
+        "Focus terminal windows when you click a session.",
         y,
-        height=72,
+        height=18,
+        width=_TEXT_W - 130,
         color=NSColor.secondaryLabelColor(),
     )
-    y -= 84
+    _add_action_button(root, "Open Settings", y, _delegate, "openAccessibility_")
+    y -= _g
 
-    # ── What it runs ─────────────────────────────────────────────
-    _sep(root, y + 6)
-    y -= 8
-    _label(root, "What it runs", y, bold=True, height=18)
-    y -= 22
-    _label(
+    # Automation
+    _add_separator(root, y)
+    y -= _s + 18
+    _add_label(root, "Automation (Terminal)", y, height=18, bold=True)
+    y -= 18
+    _add_label(
         root,
-        "AppleScript (Terminal windows)  ·  claude -p (summaries)\nNative notifications  ·  GitHub API (update checks)",
+        "List Terminal.app windows, resume sessions, close tabs.",
         y,
-        height=36,
+        height=18,
+        width=_TEXT_W - 130,
         color=NSColor.secondaryLabelColor(),
     )
-    y -= 50
+    _add_action_button(root, "Open Settings", y, _delegate, "openAutomation_")
+    y -= _g
 
-    # ── Get Started ──────────────────────────────────────────────
-    btn = NSButton.alloc().initWithFrame_(NSMakeRect((_W - 140) // 2, max(y, 14), 140, 36))
-    btn.setTitle_("Get Started")
-    btn.setBezelStyle_(1)
-    btn.setKeyEquivalent_("\r")
-    btn.setFont_(NSFont.systemFontOfSize_(14.0))
-    btn.setTarget_(_delegate)
-    btn.setAction_(objc.selector(_delegate.dismiss_, signature=b"v@:@"))
-    root.addSubview_(btn)
+    # Privacy
+    _add_separator(root, y)
+    y -= _s + 18
+    _add_label(root, "Privacy", y, height=18, bold=True)
+    y -= 18
+    _add_label(
+        root,
+        "Only reads ~/.claude/ and writes to ~/Library/Application Support/ClaudeWatch/.",
+        y,
+        height=18,
+        color=NSColor.secondaryLabelColor(),
+    )
+    y -= 18
+    _add_label(
+        root,
+        "Does not access Photos, Music, Documents, or Downloads.",
+        y,
+        height=18,
+        color=NSColor.secondaryLabelColor(),
+    )
+    y -= 18
+    _add_label(
+        root,
+        "Deny any other permission prompts that appear on first launch.",
+        y,
+        height=18,
+        color=NSColor.secondaryLabelColor(),
+    )
+    y -= _g
+
+    # What it runs
+    _add_separator(root, y)
+    y -= _s + 18
+    _add_label(root, "What it runs", y, height=18, bold=True)
+    y -= 18
+    _add_label(
+        root,
+        "AppleScript (Terminal windows) · claude -p (summaries)",
+        y,
+        height=18,
+        color=NSColor.secondaryLabelColor(),
+    )
+    y -= 18
+    _add_label(
+        root,
+        "Native macOS notifications · GitHub API (update checks)",
+        y,
+        height=18,
+        color=NSColor.secondaryLabelColor(),
+    )
+    y -= 24
+
+    # Get Started button
+    get_started = NSButton.alloc().initWithFrame_(NSMakeRect((_W - 140) // 2, max(y - 36, 14), 140, 36))
+    get_started.setTitle_("Get Started")
+    get_started.setBezelStyle_(1)
+    get_started.setKeyEquivalent_("\r")
+    get_started.setFont_(NSFont.systemFontOfSize_(14.0))
+    get_started.setTarget_(_delegate)
+    get_started.setAction_(objc.selector(_delegate.dismiss_, signature=b"v@:@"))
+    root.addSubview_(get_started)
 
     window.makeKeyAndOrderFront_(None)
     _window = window
@@ -174,37 +210,38 @@ def show_welcome() -> None:  # noqa: PLR0915
 # ── Layout helpers ───────────────────────────────────────────────────
 
 
-def _label(  # noqa: PLR0913
+def _add_label(  # noqa: PLR0913
     view: object,
     text: str,
-    y: int,
+    y: float,
     *,
-    height: int = 16,
+    height: float = 16,
+    width: float = _TEXT_W,
     size: float = 12.0,
     bold: bool = False,
     color: object | None = None,
 ) -> None:
-    label = NSTextField.labelWithString_(text)
-    label.setFrame_(NSMakeRect(_PAD, y, _TEXT_W, height))
-    label.setFont_(NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size))
+    text_label = NSTextField.labelWithString_(text)
+    text_label.setFrame_(NSMakeRect(_PAD, y, width, height))
+    text_label.setFont_(NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size))
     if color:
-        label.setTextColor_(color)
-    label.setMaximumNumberOfLines_(0)
-    view.addSubview_(label)
+        text_label.setTextColor_(color)
+    text_label.setMaximumNumberOfLines_(0)
+    view.addSubview_(text_label)
 
 
-def _sep(view: object, y: int) -> None:
-    sep = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y, _TEXT_W, 1))
-    sep.setBoxType_(2)
-    view.addSubview_(sep)
+def _add_separator(view: object, y: float) -> None:
+    separator = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, y, _TEXT_W, 1))
+    separator.setBoxType_(2)
+    view.addSubview_(separator)
 
 
-def _action_btn(view: object, title: str, y: int, delegate: _WelcomeDelegate, action: str) -> None:
-    btn = NSButton.alloc().initWithFrame_(NSMakeRect(_W - _PAD - 120, y - 2, 110, 22))
-    btn.setTitle_(title)
-    btn.setBezelStyle_(1)
-    btn.setControlSize_(1)
-    btn.setFont_(NSFont.systemFontOfSize_(11.0))
-    btn.setTarget_(delegate)
-    btn.setAction_(objc.selector(getattr(delegate, action), signature=b"v@:@"))
-    view.addSubview_(btn)
+def _add_action_button(view: object, title: str, y: float, delegate: _WelcomeDelegate, action: str) -> None:
+    action_button = NSButton.alloc().initWithFrame_(NSMakeRect(_W - _PAD - 120, y - 2, 110, 22))
+    action_button.setTitle_(title)
+    action_button.setBezelStyle_(1)
+    action_button.setControlSize_(1)
+    action_button.setFont_(NSFont.systemFontOfSize_(11.0))
+    action_button.setTarget_(delegate)
+    action_button.setAction_(objc.selector(getattr(delegate, action), signature=b"v@:@"))
+    view.addSubview_(action_button)

@@ -24,3 +24,4 @@ Path-scoped rules in `.claude/rules/` — only loaded when touching relevant fil
 | `packaging.md` | `pyproject.toml`, icons, release workflow | Briefcase builds, Homebrew tap |
 | `dependencies.md` | `pyproject.toml`, `uv.lock` | Dependency policy, ARM compat, `uv` usage |
 | `ci.md` | `.github/**`, `pyproject.toml` | Actions pinning, release process |
+| `ui-design-system.md` | `ui/components/**`, `ui/preferences/**`, `ui/menu/**` | Layout rules, component architecture, delegate pattern |
