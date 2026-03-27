@@ -22,9 +22,9 @@ register(
             Facet(
                 name="color_scheme",
                 type=FacetType.CHOICE,
-                default="default",
+                default="Default",
                 description="Status colors",
-                options=("default", "deuteranopia", "protanopia", "high_contrast"),
+                options=("Default", "Deuteranopia", "Protanopia", "High Contrast"),
             ),
         ),
     )

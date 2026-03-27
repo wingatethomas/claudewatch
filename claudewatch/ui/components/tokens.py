@@ -116,25 +116,25 @@ class StatusScheme:
 
 
 STATUS_SCHEMES: dict[str, StatusScheme] = {
-    "default": StatusScheme(
+    "Default": StatusScheme(
         "Default",
         attention=_rgb(0.85, 0.30, 0.28),
         working=_rgb(0.25, 0.65, 0.30),
         idle=_rgb(0.85, 0.65, 0.15),
     ),
-    "deuteranopia": StatusScheme(
-        "Deuteranopia (red-green)",
+    "Deuteranopia": StatusScheme(
+        "Deuteranopia",
         attention=_rgb(0.90, 0.40, 0.10),
         working=_rgb(0.20, 0.50, 0.85),
         idle=_rgb(0.70, 0.70, 0.70),
     ),
-    "protanopia": StatusScheme(
-        "Protanopia (red-green)",
+    "Protanopia": StatusScheme(
+        "Protanopia",
         attention=_rgb(0.90, 0.60, 0.00),
         working=_rgb(0.00, 0.45, 0.85),
         idle=_rgb(0.60, 0.60, 0.60),
     ),
-    "high_contrast": StatusScheme(
+    "High Contrast": StatusScheme(
         "High Contrast",
         attention=_rgb(1.00, 0.20, 0.20),
         working=_rgb(0.20, 0.80, 1.00),
@@ -145,4 +145,4 @@ STATUS_SCHEMES: dict[str, StatusScheme] = {
 
 def get_scheme(name: str) -> StatusScheme:
     """Look up a scheme by name. Returns default if not found."""
-    return STATUS_SCHEMES.get(name, STATUS_SCHEMES["default"])
+    return STATUS_SCHEMES.get(name, STATUS_SCHEMES["Default"])
