@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 
 import objc
-from AppKit import NSButton, NSColor, NSFont, NSScrollView, NSView
+from AppKit import NSButton, NSFont, NSScrollView, NSView
 from Foundation import NSMakeRect
 
 from claudewatch import __version__
@@ -13,6 +13,7 @@ from claudewatch.backend.updates.dependencies import get_update_service
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
 from claudewatch.ui.safety import dispatch_to_main_thread
+from claudewatch.ui.theme import theme
 
 _PAD = 24
 
@@ -56,7 +57,7 @@ def build_about_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
 
     # Changelog header
     y -= 14
-    changelog_header = label("WHAT'S NEW", size=10.0, color=NSColor.tertiaryLabelColor())
+    changelog_header = label("WHAT'S NEW", size=10.0, color=theme.tertiary)
     changelog_header.setFrame_(NSMakeRect(CONTENT_PADDING, y, 200, 14))
     view.addSubview_(changelog_header)
     y -= 8

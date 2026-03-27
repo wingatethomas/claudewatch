@@ -8,7 +8,6 @@ import objc
 from AppKit import (
     NSBox,
     NSButton,
-    NSColor,
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
@@ -30,6 +29,7 @@ from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.icons import sf_icon
 from claudewatch.ui.preferences.panes.common import create_pane
+from claudewatch.ui.theme import theme
 
 _PAD = 24
 _CARD_PAD = 16
@@ -237,7 +237,7 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     cached_title = summary_svc.get_cached_title(cwd) if cwd else None
     if cached_title:
         title_text = cached_title[:50]
-        title_lbl = label(title_text, size=11.0, color=NSColor.tertiaryLabelColor())
+        title_lbl = label(title_text, size=11.0, color=theme.tertiary)
         title_lbl.setFrame_(NSMakeRect(_name_col, ly3, w - _name_col - 10, 14))
         view.addSubview_(title_lbl)
 

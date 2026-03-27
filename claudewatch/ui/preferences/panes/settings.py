@@ -17,11 +17,12 @@ from Foundation import NSMakeRect
 
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FacetType
-from claudewatch.ui.components.tokens import Colors, Font, Spacing
+from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.buttons import Size, button
 from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
+from claudewatch.ui.theme import theme
 
 _FEATURE_DETAILS: dict[str, str] = {
     "bookmarks": "Save sessions to resume later from the menu bar.",
@@ -113,7 +114,7 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
 
     if detail:
         detail_label = secondary_label(detail, size=Font.CAPTION)
-        detail_label.setTextColor_(Colors.tertiary())
+        detail_label.setTextColor_(theme.tertiary)
         detail_label.setFrame_(NSMakeRect(Spacing.LG, name_y - 16, card_w - Spacing.LG * 2 - 60, 14))
         content.addSubview_(detail_label)
 
@@ -137,7 +138,7 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
         content.addSubview_(separator)
 
         facet_text = facet.description or facet.name.replace("_", " ").title()
-        facet_label = label(facet_text, size=Font.SECONDARY, color=Colors.secondary())
+        facet_label = label(facet_text, size=Font.SECONDARY, color=theme.secondary)
         facet_label.setFrame_(NSMakeRect(Spacing.LG, facet_y + 11, 140, 18))
         content.addSubview_(facet_label)
 
@@ -173,7 +174,7 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
 
 def _build_danger_zone(view: NSView, delegate: object, x: float, y: float, card_w: float) -> None:
     """Build the danger zone card."""
-    danger_color = Colors.danger()
+    danger_color = theme.danger
     header_h = 36
     row_h = 38
     total_h = header_h + 2 * row_h

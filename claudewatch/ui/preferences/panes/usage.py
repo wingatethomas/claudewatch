@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import objc
-from AppKit import NSButton, NSColor, NSFont, NSScrollView, NSView
+from AppKit import NSButton, NSFont, NSScrollView, NSView
 from Foundation import NSMakeRect
 
 from claudewatch.backend.history.dependencies import get_history_service
@@ -15,6 +15,7 @@ from claudewatch.ui.components.widgets.buttons import Size, button
 from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
+from claudewatch.ui.theme import theme
 
 _PAD = 24
 _CARD_PAD = 16
@@ -135,7 +136,7 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
 
 def _section_header(text: str) -> NSView:
     """Section header label."""
-    return label(text, size=10.0, color=NSColor.tertiaryLabelColor())
+    return label(text, size=10.0, color=theme.tertiary)
 
 
 def _build_stats_card(card_w: float, rows: list[tuple[str, int]]) -> NSView:
@@ -147,7 +148,7 @@ def _build_stats_card(card_w: float, rows: list[tuple[str, int]]) -> NSView:
     row_y = card_h - _CARD_PAD
     for name, val in rows:
         row_y -= row_h
-        name_label = label(name, size=12.0, color=NSColor.secondaryLabelColor())
+        name_label = label(name, size=12.0, color=theme.secondary)
         name_label.setFrame_(NSMakeRect(_CARD_PAD, row_y, 100, 18))
         content.addSubview_(name_label)
         value_label = label(_fmt(val), size=12.0, bold=True)
@@ -180,12 +181,12 @@ def _build_top_sessions_card(delegate: object, card_w: float, top: list[tuple[st
         # Date
         date_text = ended_at[:10] if len(ended_at) >= 10 else ""
         if date_text:
-            date_label = label(date_text, size=10.0, color=NSColor.tertiaryLabelColor())
+            date_label = label(date_text, size=10.0, color=theme.tertiary)
             date_label.setFrame_(NSMakeRect(170, row_y + 1, 80, 16))
             content.addSubview_(date_label)
         # Tokens
         token_count = sum(tokens.values())
-        token_label = label(_fmt(token_count), size=11.0, color=NSColor.secondaryLabelColor())
+        token_label = label(_fmt(token_count), size=11.0, color=theme.secondary)
         token_label.setFrame_(NSMakeRect(card_w - _CARD_PAD - 120, row_y, 120, 18))
         content.addSubview_(token_label)
     return top_card

@@ -6,7 +6,6 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from AppKit import (
-    NSColor,
     NSFont,
     NSMenu,
     NSMenuItem,
@@ -32,6 +31,7 @@ from claudewatch.ui.menu_helpers import (
     make_menu_item,
     noop,
 )
+from claudewatch.ui.theme import theme
 
 if TYPE_CHECKING:
     from claudewatch.ui.menubar import ClaudeWatchApp
@@ -288,7 +288,7 @@ class MenuBuilder:
             )
             seg.addAttribute_value_range_(
                 "NSColor",
-                NSColor.secondaryLabelColor(),
+                theme.secondary,
                 NSRange(dot_end, len(label) - dot_end),
             )
             legend_text.appendAttributedString_(seg)

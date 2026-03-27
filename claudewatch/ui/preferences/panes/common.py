@@ -7,8 +7,9 @@ from AppKit import NSView
 from Foundation import NSMakeRect
 
 from claudewatch.ui.components.layout import VStack
-from claudewatch.ui.components.tokens import Colors, Font, Spacing
+from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.labels import pane_title, secondary_label
+from claudewatch.ui.theme import theme
 
 # Standard pane layout — derived from design tokens
 PANE_PADDING = Spacing.MD  # 12 — top/bottom padding inside pane
@@ -47,7 +48,7 @@ def create_pane(title: str, w: float, h: float, subtitle: str = "") -> tuple[NSV
         _sub_h = 14
         content_y -= _sub_h
         sub = secondary_label(subtitle, size=Font.SMALL)
-        sub.setTextColor_(Colors.tertiary())
+        sub.setTextColor_(theme.tertiary)
         sub.setFrame_(NSMakeRect(CONTENT_PADDING, content_y, w - CONTENT_PADDING * 2, _sub_h))
         view.addSubview_(sub)
         content_y -= PANE_SPACING
