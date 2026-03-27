@@ -9,6 +9,8 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 
+from claudewatch.backend.core.process.models import ProcessEntry, ProcessInfo
+
 # ---------------------------------------------------------------------------
 # libproc bindings
 # ---------------------------------------------------------------------------
@@ -135,16 +137,16 @@ def _dev_to_tty(dev: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_process_info(pids: list[int]) -> dict[int, dict]:
+def get_process_info(pids: list[int]) -> dict[int, ProcessInfo]:
     """Get tty, ppid, and full executable path for a list of PIDs.
 
-    Returns a dict mapping PID -> {"tty": str, "ppid": int, "comm": str}.
+    Returns a dict mapping PID -> ProcessInfo.
     Replacement for ``ps -o pid=,tty=,ppid=,comm= -p <pids>``.
     """
     if not pids:
         return {}
 
-    result: dict[int, dict] = {}
+    result: dict[int, ProcessInfo] = {}
     info_buf = ctypes.create_string_buffer(_TASKALLINFO_SIZE)
 
     for pid in pids:
@@ -165,11 +167,7 @@ def get_process_info(pids: list[int]) -> dict[int, dict]:
         tty = _dev_to_tty(tdev)
         comm = _proc_pidpath(pid)
 
-        result[pid] = {
-            "tty": tty,
-            "ppid": ppid,
-            "comm": comm,
-        }
+        result[pid] = ProcessInfo(tty=tty, ppid=ppid, comm=comm)
 
     return result
 
@@ -228,7 +226,7 @@ def get_ppid(pid: int) -> int:
     return int.from_bytes(raw[_PBSD_PPID_OFFSET : _PBSD_PPID_OFFSET + 4], "little")
 
 
-def get_single_process_info(pid: int) -> dict | None:
+def get_single_process_info(pid: int) -> ProcessInfo | None:
     """Get tty, ppid, and comm for a single PID.
 
     Replacement for ``ps -o ppid=,comm= -p <pid>``. Returns None on failure.
@@ -248,16 +246,16 @@ def get_single_process_info(pid: int) -> dict | None:
     tdev = int.from_bytes(raw[_PBSD_TDEV_OFFSET : _PBSD_TDEV_OFFSET + 4], "little")
     tty = _dev_to_tty(tdev)
     comm = _proc_pidpath(pid)
-    return {"tty": tty, "ppid": ppid, "comm": comm}
+    return ProcessInfo(tty=tty, ppid=ppid, comm=comm)
 
 
-def list_all_processes() -> list[dict]:
+def list_all_processes() -> list[ProcessEntry]:
     """Return pid, ppid, tty, comm for every process on the system.
 
     Replacement for ``ps -eo pid,ppid,tty,comm``.
     """
     all_pids = _list_all_pids()
-    result: list[dict] = []
+    result: list[ProcessEntry] = []
     info_buf = ctypes.create_string_buffer(_TASKALLINFO_SIZE)
 
     for pid in all_pids:
@@ -275,6 +273,6 @@ def list_all_processes() -> list[dict]:
         tdev = int.from_bytes(raw[_PBSD_TDEV_OFFSET : _PBSD_TDEV_OFFSET + 4], "little")
         tty = _dev_to_tty(tdev)
         comm = _proc_pidpath(pid)
-        result.append({"pid": pid, "ppid": ppid, "tty": tty, "comm": comm})
+        result.append(ProcessEntry(pid=pid, tty=tty, ppid=ppid, comm=comm))
 
     return result

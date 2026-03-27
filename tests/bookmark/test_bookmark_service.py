@@ -25,20 +25,20 @@ class TestBookmarkService:
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_get_all_returns_bookmark_dtos(self, mock_repo):
         mock_repo.get_bookmarks.return_value = [
-            {
-                "session_id": "s1",
-                "project": "proj",
-                "cwd": "/tmp/a",
-                "note": "n1",
-                "timestamp": "2025-01-01T00:00:00+00:00",
-            },
-            {
-                "session_id": "s2",
-                "project": "proj2",
-                "cwd": "/tmp/b",
-                "note": "n2",
-                "timestamp": "2025-01-02T00:00:00+00:00",
-            },
+            BookmarkDTO(
+                session_id="s1",
+                project="proj",
+                cwd="/tmp/a",
+                note="n1",
+                timestamp="2025-01-01T00:00:00+00:00",
+            ),
+            BookmarkDTO(
+                session_id="s2",
+                project="proj2",
+                cwd="/tmp/b",
+                note="n2",
+                timestamp="2025-01-02T00:00:00+00:00",
+            ),
         ]
         result = self.svc.get_all()
         assert len(result) == 2
@@ -53,8 +53,10 @@ class TestBookmarkService:
         assert self.svc.get_all() == []
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
-    def test_get_all_handles_missing_fields(self, mock_repo):
-        mock_repo.get_bookmarks.return_value = [{"session_id": "s1"}]
+    def test_get_all_handles_empty_fields(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = [
+            BookmarkDTO(session_id="s1", project="", cwd="", note="", timestamp=""),
+        ]
         result = self.svc.get_all()
         assert len(result) == 1
         assert result[0].session_id == "s1"
@@ -73,13 +75,13 @@ class TestBookmarkService:
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_get_all_returns_frozen_dtos(self, mock_repo):
         mock_repo.get_bookmarks.return_value = [
-            {
-                "session_id": "s1",
-                "project": "proj",
-                "cwd": "/tmp/a",
-                "note": "n1",
-                "timestamp": "2025-01-01T00:00:00+00:00",
-            },
+            BookmarkDTO(
+                session_id="s1",
+                project="proj",
+                cwd="/tmp/a",
+                note="n1",
+                timestamp="2025-01-01T00:00:00+00:00",
+            ),
         ]
         result = self.svc.get_all()
         bookmark = result[0]

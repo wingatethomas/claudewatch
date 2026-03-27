@@ -13,6 +13,7 @@ from claudewatch.backend.core import features
 from claudewatch.backend.core.helpers import run_applescript
 from claudewatch.backend.core.models import ClaudeSession
 from claudewatch.backend.core.service import BaseService
+from claudewatch.backend.notifications.models import FrontmostWindow
 
 log = logging.getLogger("claudewatch")
 
@@ -26,8 +27,8 @@ def set_focus_callback(callback: object) -> None:
     _focus_callback = callback
 
 
-def _get_frontmost_window() -> tuple[str, str]:
-    """Return (app_name, window_title) of the frontmost window."""
+def _get_frontmost_window() -> FrontmostWindow:
+    """Return the frontmost macOS window."""
     result = run_applescript("""
     tell application "System Events"
         set frontApp to first application process whose frontmost is true
@@ -41,8 +42,8 @@ def _get_frontmost_window() -> tuple[str, str]:
     """)
     if "|" in result:
         app, title = result.split("|", 1)
-        return app, title
-    return "", ""
+        return FrontmostWindow(app_name=app, window_title=title)
+    return FrontmostWindow(app_name="", window_title="")
 
 
 class _NotificationDelegate(NSObject):
@@ -121,8 +122,8 @@ class NotificationService(BaseService):
         if now - self.last_notification_time < self.cooldown:
             return
 
-        front_app, front_title = _get_frontmost_window()
-        new_attention = [s for s in new_attention if f" {s.project} " not in f" {front_title} "]
+        front = _get_frontmost_window()
+        new_attention = [s for s in new_attention if f" {s.project} " not in f" {front.window_title} "]
         if not new_attention:
             return
 

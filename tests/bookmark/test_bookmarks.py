@@ -17,11 +17,11 @@ class TestBookmarkSaveAndGetAll:
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 1
-        assert result[0]["session_id"] == "abc-123"
-        assert result[0]["project"] == "myproject"
-        assert result[0]["cwd"] == "/tmp/myproject"
-        assert result[0]["note"] == "working on auth"
-        assert "timestamp" in result[0]
+        assert result[0].session_id == "abc-123"
+        assert result[0].project == "myproject"
+        assert result[0].cwd == "/tmp/myproject"
+        assert result[0].note == "working on auth"
+        assert result[0].timestamp
 
     def test_save_multiple(self, tmp_path):
         fake_path = str(tmp_path / "sessions.json")
@@ -31,8 +31,8 @@ class TestBookmarkSaveAndGetAll:
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 2
-        assert result[0]["session_id"] == "id-1"
-        assert result[1]["session_id"] == "id-2"
+        assert result[0].session_id == "id-1"
+        assert result[1].session_id == "id-2"
 
     def test_save_persists_to_disk(self, tmp_path):
         fake_path = str(tmp_path / "sessions.json")
@@ -52,14 +52,14 @@ class TestBookmarkUpdateExisting:
         fake_path = str(tmp_path / "sessions.json")
         with patch.object(bookmarks, "_PATH", fake_path):
             bookmarks.add_bookmark("abc-123", "proj", "/cwd", "old note")
-            old_ts = bookmarks.get_bookmarks()[0]["timestamp"]
+            old_ts = bookmarks.get_bookmarks()[0].timestamp
 
             bookmarks.add_bookmark("abc-123", "proj", "/cwd", "new note")
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 1
-        assert result[0]["note"] == "new note"
-        assert result[0]["timestamp"] >= old_ts
+        assert result[0].note == "new note"
+        assert result[0].timestamp >= old_ts
 
     def test_update_does_not_duplicate(self, tmp_path):
         fake_path = str(tmp_path / "sessions.json")
@@ -70,7 +70,7 @@ class TestBookmarkUpdateExisting:
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 1
-        assert result[0]["note"] == "third"
+        assert result[0].note == "third"
 
 
 class TestBookmarkRemove:
@@ -85,7 +85,7 @@ class TestBookmarkRemove:
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 1
-        assert result[0]["session_id"] == "id-2"
+        assert result[0].session_id == "id-2"
 
     def test_remove_nonexistent_is_noop(self, tmp_path):
         fake_path = str(tmp_path / "sessions.json")
@@ -125,7 +125,7 @@ class TestBookmarkTTLPruning:
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 1
-        assert result[0]["session_id"] == "new"
+        assert result[0].session_id == "new"
 
     def test_pruning_persists_to_disk(self, tmp_path):
         fake_path = str(tmp_path / "sessions.json")
@@ -173,7 +173,7 @@ class TestBookmarkTTLPruning:
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 1
-        assert result[0]["session_id"] == "bad-ts"
+        assert result[0].session_id == "bad-ts"
 
     def test_entry_with_missing_timestamp_kept(self, tmp_path):
         """Entries with no timestamp field survive pruning."""
@@ -243,7 +243,7 @@ class TestBookmarkEmptyFileHandling:
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 1
-        assert result[0]["session_id"] == "good"
+        assert result[0].session_id == "good"
 
     def test_save_to_new_file_creates_it(self, tmp_path):
         fake_path = str(tmp_path / "brand-new.json")

@@ -47,9 +47,9 @@ class TestCheckJsonlForPendingTool:
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
         svc = _make_service(str(jsonl), jsonl.read_text())
-        pending, one_line, ctx = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert pending is True
-        assert "Bash" in one_line
+        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is True
+        assert "Bash" in result.one_line
 
     def test_user_message_means_not_pending(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
@@ -70,8 +70,8 @@ class TestCheckJsonlForPendingTool:
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
         svc = _make_service(str(jsonl), jsonl.read_text())
-        pending, _, _ = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert pending is False
+        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is False
 
     def test_assistant_without_tool_use_not_pending(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
@@ -91,8 +91,8 @@ class TestCheckJsonlForPendingTool:
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
         svc = _make_service(str(jsonl), jsonl.read_text())
-        pending, _, _ = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert pending is False
+        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is False
 
     def test_too_old_file_ignored(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
@@ -112,8 +112,8 @@ class TestCheckJsonlForPendingTool:
         os.utime(jsonl, (time.time() - 600, time.time() - 600))
 
         svc = _make_service(str(jsonl), jsonl.read_text())
-        pending, _, _ = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert pending is False
+        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is False
 
     def test_too_fresh_file_ignored(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
@@ -133,18 +133,18 @@ class TestCheckJsonlForPendingTool:
         os.utime(jsonl, (time.time(), time.time()))
 
         svc = _make_service(str(jsonl), jsonl.read_text())
-        pending, _, _ = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert pending is False
+        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is False
 
     def test_nonexistent_project_dir(self):
         svc = _make_service(None)
-        pending, _, _ = svc._check_jsonl_for_pending_tool("/Users/dev/nonexistent")
-        assert pending is False
+        result = svc._check_jsonl_for_pending_tool("/Users/dev/nonexistent")
+        assert result.has_pending is False
 
     def test_empty_project_dir(self):
         svc = _make_service(None)
-        pending, _, _ = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert pending is False
+        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is False
 
     def test_progress_message_with_tool_use(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
@@ -169,9 +169,9 @@ class TestCheckJsonlForPendingTool:
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
         svc = _make_service(str(jsonl), jsonl.read_text())
-        pending, one_line, _ = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert pending is True
-        assert "Edit" in one_line
+        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is True
+        assert "Edit" in result.one_line
 
     def test_skips_system_types(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
@@ -192,8 +192,8 @@ class TestCheckJsonlForPendingTool:
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
         svc = _make_service(str(jsonl), jsonl.read_text())
-        pending, _, _ = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert pending is True
+        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is True
 
     def test_malformed_json_skipped(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
@@ -215,5 +215,5 @@ class TestCheckJsonlForPendingTool:
         os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
         svc = _make_service(str(jsonl), jsonl.read_text())
-        pending, _, _ = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert pending is True
+        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is True

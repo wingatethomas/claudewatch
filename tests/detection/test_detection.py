@@ -44,20 +44,20 @@ class TestExtractPromptInfo:
 
     def test_finds_permission_prompt(self):
         buffer = "\u23fa Update(auth.py)\n  Do you want to proceed with this edit?\n  Yes, allow | No\n"
-        one_line, context = _extract_prompt_info(buffer)
-        assert "Update" in one_line or "auth" in one_line
-        assert "allow" in context.lower() or "Update" in context
+        result = _extract_prompt_info(buffer)
+        assert "Update" in result.one_line or "auth" in result.one_line
+        assert "allow" in result.context.lower() or "Update" in result.context
 
     def test_no_prompt_returns_empty(self):
         buffer = "\u23fa Working on something\nno prompts here\n"
-        one_line, context = _extract_prompt_info(buffer)
-        assert one_line == ""
-        assert context == ""
+        result = _extract_prompt_info(buffer)
+        assert result.one_line == ""
+        assert result.context == ""
 
     def test_truncates_long_one_line(self):
         buffer = "\u23fa " + "x" * 100 + "\n  yes, allow\n"
-        one_line, _ = _extract_prompt_info(buffer)
-        assert len(one_line) <= 80
+        result = _extract_prompt_info(buffer)
+        assert len(result.one_line) <= 80
 
 
 class TestFormatToolUse:
@@ -65,33 +65,33 @@ class TestFormatToolUse:
 
     def test_command_tool(self):
         tool = {"name": "Bash", "input": {"command": "ls -la /tmp"}}
-        one_line, context = _format_tool_use(tool)
-        assert "Bash" in one_line
-        assert "ls -la" in one_line
-        assert "Command:" in context
+        result = _format_tool_use(tool)
+        assert "Bash" in result.one_line
+        assert "ls -la" in result.one_line
+        assert "Command:" in result.context
 
     def test_file_tool(self):
         tool = {"name": "Edit", "input": {"file_path": "/tmp/auth.py"}}
-        one_line, context = _format_tool_use(tool)
-        assert "Edit" in one_line
-        assert "auth.py" in one_line
-        assert "File:" in context
+        result = _format_tool_use(tool)
+        assert "Edit" in result.one_line
+        assert "auth.py" in result.one_line
+        assert "File:" in result.context
 
     def test_pattern_tool(self):
         tool = {"name": "Grep", "input": {"pattern": "def login"}}
-        one_line, context = _format_tool_use(tool)
-        assert "Grep" in one_line
-        assert "def login" in one_line
+        result = _format_tool_use(tool)
+        assert "Grep" in result.one_line
+        assert "def login" in result.one_line
 
     def test_unknown_tool(self):
         tool = {"name": "CustomTool", "input": {}}
-        one_line, context = _format_tool_use(tool)
-        assert one_line == "CustomTool"
+        result = _format_tool_use(tool)
+        assert result.one_line == "CustomTool"
 
     def test_truncates_long_command(self):
         tool = {"name": "Bash", "input": {"command": "x" * 100}}
-        one_line, _ = _format_tool_use(tool)
-        assert len(one_line) <= 80
+        result = _format_tool_use(tool)
+        assert len(result.one_line) <= 80
 
 
 class TestDetermineStatus:
@@ -112,36 +112,36 @@ class TestMatchTerminalWindow:
 
     def test_direct_tty_match(self):
         windows = {"/dev/ttys001": ("myapp \u2014 \u2733 Done", 42)}
-        title, wid, app = _match_terminal_window("ttys001", "myapp", HostApp.TERMINAL, windows)
-        assert title == "myapp \u2014 \u2733 Done"
-        assert wid == 42
-        assert app == HostApp.TERMINAL
+        result = _match_terminal_window("ttys001", "myapp", HostApp.TERMINAL, windows)
+        assert result.window_title == "myapp \u2014 \u2733 Done"
+        assert result.window_id == 42
+        assert result.host_app == HostApp.TERMINAL
 
     def test_tty_with_dev_prefix(self):
         windows = {"/dev/ttys001": ("myapp", 42)}
-        title, wid, app = _match_terminal_window("/dev/ttys001", "myapp", HostApp.TERMINAL, windows)
-        assert wid == 42
+        result = _match_terminal_window("/dev/ttys001", "myapp", HostApp.TERMINAL, windows)
+        assert result.window_id == 42
 
     def test_upgrades_other_to_terminal(self):
         windows = {"/dev/ttys001": ("myapp", 42)}
-        _, _, app = _match_terminal_window("ttys001", "myapp", HostApp.OTHER, windows)
-        assert app == HostApp.TERMINAL
+        result = _match_terminal_window("ttys001", "myapp", HostApp.OTHER, windows)
+        assert result.host_app == HostApp.TERMINAL
 
     def test_tmux_fallback_by_project_name(self):
         windows = {"/dev/ttys099": ("tmux: myapp \u2014 session", 99)}
-        title, wid, app = _match_terminal_window("ttys001", "myapp", HostApp.TMUX, windows)
-        assert wid == 99
-        assert "myapp" in title
-        assert app == HostApp.TMUX
+        result = _match_terminal_window("ttys001", "myapp", HostApp.TMUX, windows)
+        assert result.window_id == 99
+        assert "myapp" in result.window_title
+        assert result.host_app == HostApp.TMUX
 
     def test_no_match_returns_host_app_value(self):
         windows = {"/dev/ttys099": ("other project", 99)}
-        title, wid, app = _match_terminal_window("ttys001", "myapp", HostApp.PYCHARM, windows)
-        assert title == "PyCharm"
-        assert wid is None
-        assert app == HostApp.PYCHARM
+        result = _match_terminal_window("ttys001", "myapp", HostApp.PYCHARM, windows)
+        assert result.window_title == "PyCharm"
+        assert result.window_id is None
+        assert result.host_app == HostApp.PYCHARM
 
     def test_empty_windows(self):
-        title, wid, app = _match_terminal_window("ttys001", "myapp", HostApp.TERMINAL, {})
-        assert title == "Terminal"
-        assert wid is None
+        result = _match_terminal_window("ttys001", "myapp", HostApp.TERMINAL, {})
+        assert result.window_title == "Terminal"
+        assert result.window_id is None

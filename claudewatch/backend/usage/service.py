@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 
+from claudewatch.backend.core.dto import TokenUsageDTO
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
 
@@ -19,12 +20,7 @@ MODEL_DISPLAY_NAMES: dict[str, str] = {
 
 _MAX_TOKEN_CACHE = 200
 
-_EMPTY_TOKENS: dict[str, int] = {
-    "input": 0,
-    "output": 0,
-    "cache_create": 0,
-    "cache_read": 0,
-}
+_EMPTY_TOKENS = TokenUsageDTO(input=0, output=0, cache_create=0, cache_read=0)
 
 _M = 1_000_000
 _K = 1000
@@ -39,11 +35,11 @@ def _fmt_tokens(n: int) -> str:
     return str(n)
 
 
-def format_tokens_compact(tokens: dict[str, int]) -> str:
+def format_tokens_compact(tokens: TokenUsageDTO) -> str:
     """Single-line compact summary for cards: '49K in · 591K out · 288M cache'."""
-    total_in = tokens["input"]
-    total_out = tokens["output"]
-    cache = tokens["cache_create"] + tokens["cache_read"]
+    total_in = tokens.input
+    total_out = tokens.output
+    cache = tokens.cache_create + tokens.cache_read
     if total_in + total_out + cache == 0:
         return ""
     total = total_in + total_out + cache
@@ -54,20 +50,20 @@ def format_tokens_compact(tokens: dict[str, int]) -> str:
     return " · ".join(parts)
 
 
-def format_tokens_breakdown(tokens: dict[str, int]) -> list[str]:
+def format_tokens_breakdown(tokens: TokenUsageDTO) -> list[str]:
     """Detailed breakdown lines for a submenu."""
-    total_in = tokens["input"] + tokens["cache_create"] + tokens["cache_read"]
-    total_out = tokens["output"]
+    total_in = tokens.input + tokens.cache_create + tokens.cache_read
+    total_out = tokens.output
     if total_in + total_out == 0:
         return []
     lines = [
-        f"Input: {_fmt_tokens(tokens['input'])} tokens",
+        f"Input: {_fmt_tokens(tokens.input)} tokens",
         f"Output: {_fmt_tokens(total_out)} tokens",
     ]
-    if tokens["cache_create"]:
-        lines.append(f"Cache write: {_fmt_tokens(tokens['cache_create'])} tokens")
-    if tokens["cache_read"]:
-        lines.append(f"Cache read: {_fmt_tokens(tokens['cache_read'])} tokens")
+    if tokens.cache_create:
+        lines.append(f"Cache write: {_fmt_tokens(tokens.cache_create)} tokens")
+    if tokens.cache_read:
+        lines.append(f"Cache read: {_fmt_tokens(tokens.cache_read)} tokens")
     lines.append(f"Total: {_fmt_tokens(total_in + total_out)} tokens")
     return lines
 
@@ -78,8 +74,8 @@ class UsageService(BaseService):
     def __init__(self, session_log_service: SessionLogService) -> None:
         super().__init__()
         self._session_log_service = session_log_service
-        # CWD -> (tokens_dict, jsonl_mtime)
-        self._token_cache: dict[str, tuple[dict[str, int], float]] = {}
+        # CWD -> (tokens_dto, jsonl_mtime)
+        self._token_cache: dict[str, tuple[TokenUsageDTO, float]] = {}
 
     def get_model(self, cwd: str) -> str:
         """Get the model name for the most recent session at a CWD.
@@ -109,20 +105,20 @@ class UsageService(BaseService):
 
         return MODEL_DISPLAY_NAMES.get(last_model, last_model)
 
-    def get_tokens(self, cwd: str) -> dict[str, int]:
+    def get_tokens(self, cwd: str) -> TokenUsageDTO:
         """Get token usage breakdown for the most recent session at a CWD.
 
-        Returns {input, output, cache_create, cache_read} summed across all messages.
+        Returns TokenUsageDTO(input, output, cache_create, cache_read) summed across all messages.
         Cached by JSONL mtime — only re-reads when the file changes.
         """
         path = self._session_log_service.find_most_recent(cwd)
         if not path:
-            return dict(_EMPTY_TOKENS)
+            return _EMPTY_TOKENS
 
         try:
             mtime = os.path.getmtime(path)
         except OSError:
-            return dict(_EMPTY_TOKENS)
+            return _EMPTY_TOKENS
 
         cached = self._token_cache.get(cwd)
         if cached and cached[1] >= mtime:
@@ -149,12 +145,12 @@ class UsageService(BaseService):
             total_cache_read += usage.get("cache_read_input_tokens", 0)
             total_out += usage.get("output_tokens", 0)
 
-        result = {
-            "input": total_in,
-            "output": total_out,
-            "cache_create": total_cache_create,
-            "cache_read": total_cache_read,
-        }
+        result = TokenUsageDTO(
+            input=total_in,
+            output=total_out,
+            cache_create=total_cache_create,
+            cache_read=total_cache_read,
+        )
         if len(self._token_cache) >= _MAX_TOKEN_CACHE:
             # Evict oldest entry by mtime
             oldest = min(self._token_cache, key=lambda k: self._token_cache[k][1])
