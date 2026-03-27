@@ -31,64 +31,64 @@ def build_about_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
     y -= 8
 
     # Version card
-    ver_card_h = 80
-    vc = card(card_w, ver_card_h)
-    vc.setFrame_(NSMakeRect(_PAD, y - ver_card_h, card_w, ver_card_h))
-    view.addSubview_(vc)
-    vcc = vc.contentView()
+    version_card_h = 80
+    version_card = card(card_w, version_card_h)
+    version_card.setFrame_(NSMakeRect(_PAD, y - version_card_h, card_w, version_card_h))
+    view.addSubview_(version_card)
+    version_content = version_card.contentView()
 
-    ver_lbl = label(f"ClaudeWatch v{__version__}", size=14.0, bold=True)
-    ver_lbl.setFrame_(NSMakeRect(_CARD_PAD, ver_card_h - _CARD_PAD - 18, 300, 18))
-    vcc.addSubview_(ver_lbl)
+    version_label = label(f"ClaudeWatch v{__version__}", size=14.0, bold=True)
+    version_label.setFrame_(NSMakeRect(_CARD_PAD, version_card_h - _CARD_PAD - 18, 300, 18))
+    version_content.addSubview_(version_label)
 
-    btn_y = _CARD_PAD
-    log_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, btn_y, 100, 24))
-    log_btn.setTitle_("Audit Log")
-    log_btn.setBezelStyle_(1)
-    log_btn.setFont_(NSFont.systemFontOfSize_(11.0))
-    log_btn.setTarget_(delegate)
-    log_btn.setAction_(objc.selector(delegate.viewAuditLog_, signature=b"v@:@"))
-    vcc.addSubview_(log_btn)
+    button_y = _CARD_PAD
+    audit_log_button = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, button_y, 100, 24))
+    audit_log_button.setTitle_("Audit Log")
+    audit_log_button.setBezelStyle_(1)
+    audit_log_button.setFont_(NSFont.systemFontOfSize_(11.0))
+    audit_log_button.setTarget_(delegate)
+    audit_log_button.setAction_(objc.selector(delegate.viewAuditLog_, signature=b"v@:@"))
+    version_content.addSubview_(audit_log_button)
 
-    repo_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD + 108, btn_y, 80, 24))
-    repo_btn.setTitle_("GitHub")
-    repo_btn.setBezelStyle_(1)
-    repo_btn.setFont_(NSFont.systemFontOfSize_(11.0))
-    repo_btn.setTarget_(delegate)
-    repo_btn.setAction_(objc.selector(delegate.openRepo_, signature=b"v@:@"))
-    vcc.addSubview_(repo_btn)
+    github_button = NSButton.alloc().initWithFrame_(NSMakeRect(_CARD_PAD + 108, button_y, 80, 24))
+    github_button.setTitle_("GitHub")
+    github_button.setBezelStyle_(1)
+    github_button.setFont_(NSFont.systemFontOfSize_(11.0))
+    github_button.setTarget_(delegate)
+    github_button.setAction_(objc.selector(delegate.openRepo_, signature=b"v@:@"))
+    version_content.addSubview_(github_button)
 
-    y -= ver_card_h + 24
+    y -= version_card_h + 24
 
     # Changelog
     y -= 12
-    cl_header = secondary_label("WHAT'S NEW", size=10.0)
     from AppKit import NSColor
 
-    cl_header.setTextColor_(NSColor.tertiaryLabelColor())
-    cl_header.setFrame_(NSMakeRect(_PAD, y, 200, 14))
-    view.addSubview_(cl_header)
+    changelog_header = secondary_label("WHAT'S NEW", size=10.0)
+    changelog_header.setTextColor_(NSColor.tertiaryLabelColor())
+    changelog_header.setFrame_(NSMakeRect(_PAD, y, 200, 14))
+    view.addSubview_(changelog_header)
     y -= 6
 
-    cl_card_h = y - 20
-    cl_card = card(card_w, cl_card_h)
-    cl_card.setFrame_(NSMakeRect(_PAD, y - cl_card_h, card_w, cl_card_h))
-    cl_card.setWantsLayer_(True)
-    cl_card.layer().setMasksToBounds_(True)
-    view.addSubview_(cl_card)
+    changelog_card_h = y - 20
+    changelog_card = card(card_w, changelog_card_h)
+    changelog_card.setFrame_(NSMakeRect(_PAD, y - changelog_card_h, card_w, changelog_card_h))
+    changelog_card.setWantsLayer_(True)
+    changelog_card.layer().setMasksToBounds_(True)
+    view.addSubview_(changelog_card)
 
-    scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, cl_card_h))
-    scroll.setHasVerticalScroller_(True)
-    scroll.setAutohidesScrollers_(True)
-    scroll.setDrawsBackground_(False)
+    changelog_scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, changelog_card_h))
+    changelog_scroll.setHasVerticalScroller_(True)
+    changelog_scroll.setAutohidesScrollers_(True)
+    changelog_scroll.setDrawsBackground_(False)
 
     # Loading placeholder
-    loading = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, cl_card_h))
-    loading_lbl = secondary_label("Loading changelog...", size=11.0)
-    loading_lbl.setFrame_(NSMakeRect(10, cl_card_h // 2, card_w - 20, 18))
-    loading.addSubview_(loading_lbl)
-    scroll.setDocumentView_(loading)
-    cl_card.contentView().addSubview_(scroll)
+    loading_view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, changelog_card_h))
+    loading_label = secondary_label("Loading changelog...", size=11.0)
+    loading_label.setFrame_(NSMakeRect(10, changelog_card_h // 2, card_w - 20, 18))
+    loading_view.addSubview_(loading_label)
+    changelog_scroll.setDocumentView_(loading_view)
+    changelog_card.contentView().addSubview_(changelog_scroll)
 
     # Fetch in background, build views on main thread
     def _fetch() -> None:
@@ -106,8 +106,8 @@ def build_about_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
         def _render() -> None:
             from claudewatch.ui.components.composites.changelog import build_changelog
 
-            inner = build_changelog(releases=changelog, width=card_w, height=cl_card_h)
-            scroll.setDocumentView_(inner)
+            inner = build_changelog(releases=changelog, width=card_w, height=changelog_card_h)
+            changelog_scroll.setDocumentView_(inner)
 
         dispatch_to_main_thread(_render)
 

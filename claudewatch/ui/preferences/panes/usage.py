@@ -107,46 +107,46 @@ def _build_stats_card(card_w: float, rows: list[tuple[str, int]]) -> NSView:
     """Build the stats card with label + value rows."""
     row_h = 22
     card_h = _CARD_PAD + len(rows) * row_h + _CARD_PAD
-    c = card(card_w, card_h)
-    cc = c.contentView()
-    ry = card_h - _CARD_PAD
+    stats_card = card(card_w, card_h)
+    content = stats_card.contentView()
+    row_y = card_h - _CARD_PAD
     for name, val in rows:
-        ry -= row_h
-        lbl = label(name, size=12.0, color=NSColor.secondaryLabelColor())
-        lbl.setFrame_(NSMakeRect(_CARD_PAD, ry, 100, 18))
-        cc.addSubview_(lbl)
-        vlbl = label(_fmt(val), size=12.0, bold=True)
-        vlbl.setFrame_(NSMakeRect(120, ry, card_w - 140, 18))
-        cc.addSubview_(vlbl)
-    return c
+        row_y -= row_h
+        name_label = label(name, size=12.0, color=NSColor.secondaryLabelColor())
+        name_label.setFrame_(NSMakeRect(_CARD_PAD, row_y, 100, 18))
+        content.addSubview_(name_label)
+        value_label = label(_fmt(val), size=12.0, bold=True)
+        value_label.setFrame_(NSMakeRect(120, row_y, card_w - 140, 18))
+        content.addSubview_(value_label)
+    return stats_card
 
 
 def _build_top_sessions_card(delegate: object, card_w: float, top: list[tuple[str, dict, str]]) -> NSView:
     """Build the top sessions card with clickable project names."""
     row_h = 24
     card_h = _CARD_PAD + len(top) * row_h + _CARD_PAD
-    c = card(card_w, card_h)
-    cc = c.contentView()
-    ty = card_h - _CARD_PAD
-    for proj, tokens, _ended in top:
-        ty -= row_h
-        name_btn = button(
-            proj,
+    top_card = card(card_w, card_h)
+    content = top_card.contentView()
+    row_y = card_h - _CARD_PAD
+    for project, tokens, _ended in top:
+        row_y -= row_h
+        project_btn = button(
+            project,
             target=delegate,
             action=objc.selector(delegate.jumpToSession_, signature=b"v@:@"),
             size=Size(200, 18),
             font_size=12.0,
         )
-        name_btn.setBordered_(False)
-        name_btn.setAlignment_(0)
-        name_btn.cell().setRepresentedObject_(proj)
-        name_btn.setFrame_(NSMakeRect(_CARD_PAD, ty, 200, 18))
-        cc.addSubview_(name_btn)
-        total_tokens = sum(tokens.values())
-        tvlbl = label(_fmt(total_tokens), size=11.0, color=NSColor.secondaryLabelColor())
-        tvlbl.setFrame_(NSMakeRect(card_w - _CARD_PAD - 120, ty, 120, 18))
-        cc.addSubview_(tvlbl)
-    return c
+        project_btn.setBordered_(False)
+        project_btn.setAlignment_(0)
+        project_btn.cell().setRepresentedObject_(project)
+        project_btn.setFrame_(NSMakeRect(_CARD_PAD, row_y, 200, 18))
+        content.addSubview_(project_btn)
+        token_count = sum(tokens.values())
+        token_label = label(_fmt(token_count), size=11.0, color=NSColor.secondaryLabelColor())
+        token_label.setFrame_(NSMakeRect(card_w - _CARD_PAD - 120, row_y, 120, 18))
+        content.addSubview_(token_label)
+    return top_card
 
 
 def _fmt(n: int) -> str:

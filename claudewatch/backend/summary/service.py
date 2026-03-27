@@ -216,7 +216,7 @@ class SummaryService(BaseService):
         with self._in_progress_lock:
             return cwd in self._in_progress
 
-    def generate_and_cache(self, cwd: str) -> str:
+    def generate_and_cache(self, cwd: str) -> str:  # noqa: PLR0912
         """Generate a summary via claude -p and persist it.
 
         Skips if already cached and fresh, if another generation is in progress,
@@ -229,9 +229,12 @@ class SummaryService(BaseService):
         with self._failures_lock:
             fail_entry = self._failures.get(cwd)
             if fail_entry is not None:
-                count, fail_mtime = fail_entry
-                if count >= _MAX_FAILURES:
-                    # Reset if JSONL has new activity since last failure
+                # Handle both old format (int) and new format (count, mtime)
+                if isinstance(fail_entry, tuple):
+                    fail_count, fail_mtime = fail_entry
+                else:
+                    fail_count, fail_mtime = fail_entry, 0.0
+                if fail_count >= _MAX_FAILURES:
                     current_mtime = self._get_jsonl_mtime(cwd)
                     if current_mtime and current_mtime > fail_mtime:
                         self._failures.pop(cwd, None)
