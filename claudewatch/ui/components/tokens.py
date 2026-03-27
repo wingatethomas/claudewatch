@@ -144,5 +144,12 @@ STATUS_SCHEMES: dict[str, StatusScheme] = {
 
 
 def get_scheme(name: str) -> StatusScheme:
-    """Look up a scheme by name. Returns default if not found."""
-    return STATUS_SCHEMES.get(name, STATUS_SCHEMES["Default"])
+    """Look up a scheme by name. Case-insensitive. Returns Default if not found."""
+    # Direct match first
+    if name in STATUS_SCHEMES:
+        return STATUS_SCHEMES[name]
+    # Case-insensitive fallback (handles old lowercase values)
+    for key, scheme in STATUS_SCHEMES.items():
+        if key.lower() == name.lower():
+            return scheme
+    return STATUS_SCHEMES["Default"]

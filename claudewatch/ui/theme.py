@@ -32,7 +32,7 @@ class Theme:
 
     @property
     def scheme(self) -> StatusScheme:
-        scheme_name = str(features.get_facet("accessibility", "color_scheme") or "default")
+        scheme_name = str(features.get_facet("accessibility", "color_scheme") or "Default")
         return get_scheme(scheme_name)
 
     def status_color(self, status: SessionStatus) -> NSColor:
