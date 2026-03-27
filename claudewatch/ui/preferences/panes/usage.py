@@ -61,16 +61,15 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:
             pass
 
     card_w = w - _PAD * 2
-    stack = VStack(width=w, padding=_PAD, spacing=12)
+    stack = VStack(width=w, padding=12, spacing=8)
     stack.add(pane_title("Usage"), height=24)
 
     if not session_stats:
-        stack.gap(8)
+        stack.gap(4)
         stack.add(secondary_label("No usage data yet.", size=13.0), height=18)
         return stack.to_scroll_view(max_height=h)
 
     # Last 30 days section
-    stack.gap(4)
     stack.add(_section_header("LAST 30 DAYS"), height=14)
 
     total_in = total["input"] + total["cache_create"] + total["cache_read"]
@@ -87,7 +86,6 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:
     stack.add(stats_card, height=stats_card.frame().size.height)
 
     # Top sessions section
-    stack.gap(4)
     stack.add(_section_header("TOP SESSIONS BY USAGE"), height=14)
 
     session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
