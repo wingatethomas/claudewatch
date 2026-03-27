@@ -22,7 +22,7 @@ from claudewatch.backend.core.settings import get_setting, set_setting
 from claudewatch.ui.safety import objc_callback
 
 _W = 500
-_H = 420
+_H = 460
 _PAD = 24
 _TEXT_W = _W - _PAD * 2
 
@@ -115,7 +115,11 @@ def show_welcome() -> None:  # noqa: PLR0915
     _add_label(root, "Accessibility", y, height=18, bold=True)
     y -= 18
     _add_label(
-        root, "Focus terminal windows when you click a session.", y, height=18, color=NSColor.secondaryLabelColor()
+        root,
+        "Required to focus terminal windows when you click a session.",
+        y,
+        height=18,
+        color=NSColor.secondaryLabelColor(),
     )
     _add_action_button(root, "Open Settings", y, _delegate, "openAccessibility_")
     y -= _g
@@ -125,7 +129,13 @@ def show_welcome() -> None:  # noqa: PLR0915
     y -= _s + 18
     _add_label(root, "Automation (Terminal)", y, height=18, bold=True)
     y -= 18
-    _add_label(root, "List windows, resume sessions, close tabs.", y, height=18, color=NSColor.secondaryLabelColor())
+    _add_label(
+        root,
+        "Required to list Terminal.app windows, resume sessions, and close tabs.",
+        y,
+        height=18,
+        color=NSColor.secondaryLabelColor(),
+    )
     _add_action_button(root, "Open Settings", y, _delegate, "openAutomation_")
     y -= _g
 
@@ -136,7 +146,7 @@ def show_welcome() -> None:  # noqa: PLR0915
     y -= 18
     _add_label(
         root,
-        "Reads ~/.claude/ and ~/Library/Application Support/ClaudeWatch/ only.",
+        "Only reads ~/.claude/ and writes to ~/Library/Application Support/ClaudeWatch/.",
         y,
         height=18,
         color=NSColor.secondaryLabelColor(),
@@ -144,7 +154,15 @@ def show_welcome() -> None:  # noqa: PLR0915
     y -= 18
     _add_label(
         root,
-        "Deny all other permission prompts (Photos, Music, etc).",
+        "Does not access Photos, Music, Documents, or Downloads.",
+        y,
+        height=18,
+        color=NSColor.secondaryLabelColor(),
+    )
+    y -= 18
+    _add_label(
+        root,
+        "Deny any other permission prompts that appear on first launch.",
         y,
         height=18,
         color=NSColor.secondaryLabelColor(),
@@ -157,7 +175,19 @@ def show_welcome() -> None:  # noqa: PLR0915
     _add_label(root, "What it runs", y, height=18, bold=True)
     y -= 18
     _add_label(
-        root, "AppleScript · claude -p · Notifications · GitHub API", y, height=18, color=NSColor.secondaryLabelColor()
+        root,
+        "AppleScript (Terminal windows) · claude -p (summaries)",
+        y,
+        height=18,
+        color=NSColor.secondaryLabelColor(),
+    )
+    y -= 18
+    _add_label(
+        root,
+        "Native macOS notifications · GitHub API (update checks)",
+        y,
+        height=18,
+        color=NSColor.secondaryLabelColor(),
     )
     y -= 24
 
