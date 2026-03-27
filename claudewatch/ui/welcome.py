@@ -19,6 +19,7 @@ from AppKit import (
 from Foundation import NSMakeRect
 
 from claudewatch.backend.core.settings import get_setting, set_setting
+from claudewatch.ui.safety import objc_callback
 
 _W = 500
 _H = 580
@@ -30,23 +31,27 @@ _delegate: "_WelcomeDelegate | None" = None
 
 
 class _WelcomeDelegate(NSObject):
+    @objc_callback
     def windowWillClose_(self, notification: object) -> None:  # noqa: N802, ARG002
         global _window, _delegate  # noqa: PLW0603
         _window = None
         _delegate = None
 
+    @objc_callback
     def openAccessibility_(self, sender: object) -> None:  # noqa: N802, ARG002
         subprocess.run(  # noqa: S603, S607
             ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"],
             check=False,
         )
 
+    @objc_callback
     def openAutomation_(self, sender: object) -> None:  # noqa: N802, ARG002
         subprocess.run(  # noqa: S603, S607
             ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"],
             check=False,
         )
 
+    @objc_callback
     def dismiss_(self, sender: object) -> None:  # noqa: N802, ARG002
         if _window:
             _window.close()

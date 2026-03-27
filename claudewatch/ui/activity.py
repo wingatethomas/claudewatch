@@ -32,6 +32,7 @@ from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.session_log.dependencies import get_session_log_service
 from claudewatch.backend.detection.dependencies import get_detection_service
 from claudewatch.ui.focus import focus_session
+from claudewatch.ui.safety import objc_callback
 
 _W = 750
 _H = 500
@@ -64,16 +65,19 @@ class _ActivityDelegate(NSObject):
 
     _cwd: str = ""
 
+    @objc_callback
     def windowWillClose_(self, notification: objc.objc_object) -> None:
         _windows.pop(self._cwd, None)
         _delegates.pop(self._cwd, None)
         _text_views.pop(self._cwd, None)
         _sort_state.pop(self._cwd, None)
 
+    @objc_callback
     def openInFinder_(self, sender: objc.objc_object) -> None:
         if self._cwd and os.path.isdir(self._cwd):
             subprocess.run(["open", self._cwd], check=False)  # noqa: S603, S607
 
+    @objc_callback
     def copyToClipboard_(self, sender: objc.objc_object) -> None:
         tv = _text_views.get(self._cwd)
         if tv:
@@ -81,11 +85,13 @@ class _ActivityDelegate(NSObject):
             pb.clearContents()
             pb.setString_forType_(tv.string(), NSPasteboardTypeString)
 
+    @objc_callback
     def openJsonlInFinder_(self, sender: objc.objc_object) -> None:
         path = get_session_log_service().find_most_recent(self._cwd)
         if path:
             subprocess.run(["open", "-R", path], check=False)  # noqa: S603, S607
 
+    @objc_callback
     def toggleSort_(self, sender: objc.objc_object) -> None:
         newest_first = not _sort_state.get(self._cwd, False)
         _sort_state[self._cwd] = newest_first
@@ -101,12 +107,14 @@ class _ActivityDelegate(NSObject):
             else:
                 tv.scrollRangeToVisible_(NSRange(len(tv.string()), 0))
 
+    @objc_callback
     def focusSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
         for s in get_detection_service().detect():
             if s.cwd == self._cwd:
                 focus_session(s)
                 return
 
+    @objc_callback
     def resumeSession_(self, sender: objc.objc_object) -> None:
         sid = _get_session_id(self._cwd)
         if not sid or not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", sid):

@@ -56,6 +56,12 @@ from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.icons import sf_icon
+from claudewatch.ui.safety import (
+    dispatch_to_main_thread,
+    get_represented_object,
+    objc_callback,
+    objc_callback_with_default,
+)
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
 
@@ -215,10 +221,12 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     # ── History filter actions ──
 
+    @objc_callback
     def historySearchChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
         self._history_search = str(sender.stringValue()).strip().lower()
         _rebuild_history_rows(self)
 
+    @objc_callback
     def historySortChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
         idx = sender.selectedSegment()
         new_sort = "name" if idx == 1 else "date"
@@ -239,12 +247,14 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
                 sender.setLabel_forSegment_(base, i)
         _rebuild_history_rows(self)
 
+    @objc_callback
     def historyBookmarkFilter_(self, sender: objc.objc_object) -> None:  # noqa: N802
         self._history_bookmarked_only = sender.state() == NSControlStateValueOn
         _rebuild_history_rows(self)
 
     # ── Sidebar click ──
 
+    @objc_callback
     def sidebarClicked_(self, sender: objc.objc_object) -> None:  # noqa: N802
         tag = sender.tag()
         if tag < 0 or tag >= len(self._sidebar_items):
@@ -255,10 +265,9 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     # ── Feature actions ──
 
+    @objc_callback
     def featureToggled_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        key = str(sender.representedObject() or "")
-        if not key:
-            key = str(sender.cell().representedObject())
+        key = get_represented_object(sender)
         enabled = sender.state() == NSControlStateValueOn
         features.set_enabled(key, enabled)
         for ctrl in self._feature_controls.get(key, []):
@@ -266,8 +275,9 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         if key == "launch_at_login":
             sync_login_item(enabled)
 
+    @objc_callback
     def facetChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        info = str(sender.cell().representedObject())
+        info = get_represented_object(sender)
         key, facet_name = info.split("|", 1)
         if hasattr(sender, "titleOfSelectedItem"):
             value: object = sender.titleOfSelectedItem()
@@ -281,6 +291,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     # ── Row menu ──
 
+    @objc_callback
     def showRowMenu_(self, sender: objc.objc_object) -> None:  # noqa: N802
         menu = sender.menu()
         if menu:
@@ -292,9 +303,10 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     # ── Navigation ──
 
+    @objc_callback
     def jumpToSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
         """Switch to History pane filtered to the given project name."""
-        project = str(sender.representedObject())
+        project = get_represented_object(sender)
         self._history_search = project.lower()
         self._history_sort = getattr(self, "_history_sort", "date")
         self._history_sort_asc = getattr(self, "_history_sort_asc", False)
@@ -307,8 +319,9 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
 
     # ── Bookmark actions ──
 
+    @objc_callback
     def bookmarkSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        data = str(sender.representedObject() or sender.cell().representedObject() or "")
+        data = get_represented_object(sender)
         if "|" not in data:
             return
         sid, rest = data.split("|", 1)
@@ -316,26 +329,30 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         get_bookmark_service().add(sid, project, cwd, "")
         _rebuild_history_rows(self)
 
+    @objc_callback
     def unbookmarkSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        cwd = str(sender.representedObject() or sender.cell().representedObject() or "")
+        cwd = get_represented_object(sender)
         get_bookmark_service().remove(cwd)
         _rebuild_history_rows(self)
 
     # ── History card actions ──
 
+    @objc_callback
     def copyCwd_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        cwd = str(sender.representedObject())
+        cwd = get_represented_object(sender)
         pb = NSPasteboard.generalPasteboard()
         pb.clearContents()
         pb.setString_forType_(cwd, NSPasteboardTypeString)
 
+    @objc_callback
     def revealInFinder_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        cwd = str(sender.representedObject())
+        cwd = get_represented_object(sender)
         if os.path.isdir(cwd):
             subprocess.run(["open", cwd], check=False)  # noqa: S603, S607
 
     # ── Danger zone ──
 
+    @objc_callback
     def clearBookmarks_(self, sender: objc.objc_object) -> None:  # noqa: N802
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         alert = NSAlert.alloc().init()
@@ -346,6 +363,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         if alert.runModal() == NSAlertFirstButtonReturn:
             get_bookmark_service().clear_all()
 
+    @objc_callback
     def clearSummaries_(self, sender: objc.objc_object) -> None:  # noqa: N802
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         alert = NSAlert.alloc().init()
@@ -356,14 +374,16 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         if alert.runModal() == NSAlertFirstButtonReturn:
             get_summary_service().clear_all()
 
+    @objc_callback
     def facetBoolChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        info = str(sender.representedObject())
+        info = get_represented_object(sender)
         key, facet_name = info.split("|", 1)
         value = sender.state() == NSControlStateValueOn
         features.set_facet(key, facet_name, value)
 
     # ── Static actions ──
 
+    @objc_callback
     def openClaudeUsage_(self, sender: objc.objc_object) -> None:  # noqa: N802
         """Open claude /usage in Terminal using a known trusted directory."""
         # Find a trusted CWD from history
@@ -383,13 +403,16 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             end tell
         ''')
 
+    @objc_callback
     def openAnthropicConsole_(self, sender: objc.objc_object) -> None:  # noqa: N802
         webbrowser.open("https://console.anthropic.com/settings/usage")
 
+    @objc_callback
     def viewAuditLog_(self, sender: objc.objc_object) -> None:  # noqa: N802
         if os.path.exists(LOG_PATH):
             subprocess.run(["open", "-a", "Console", LOG_PATH], check=False)  # noqa: S603, S607
 
+    @objc_callback
     def openRepo_(self, sender: objc.objc_object) -> None:  # noqa: N802
         webbrowser.open(_REPO_URL)
 
@@ -398,8 +421,9 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     _history_table: NSTableView | None = None
     _actions_popup: NSPopUpButton | None = None
 
+    @objc_callback
     def deleteHistoryEntry_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        cwd = str(sender.representedObject())
+        cwd = get_represented_object(sender)
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         alert = NSAlert.alloc().init()
         alert.setMessageText_("Delete this session from history?")
@@ -411,8 +435,9 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             _reload_history_data()
             self._history_table.reloadData()
 
+    @objc_callback
     def resumeSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        data = str(sender.representedObject())
+        data = get_represented_object(sender)
         if "|" not in data:
             return
         sid, cwd = data.split("|", 1)
@@ -427,16 +452,19 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             end tell
         ''')
 
+    @objc_callback
     def viewActivity_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        data = str(sender.representedObject())
+        data = get_represented_object(sender)
         if "|" not in data:
             return
         project, cwd = data.split("|", 1)
         show_activity(project, cwd)
 
+    @objc_callback_with_default(0)
     def numberOfRowsInTableView_(self, table: objc.objc_object) -> int:  # noqa: N802
         return len(_history_data)
 
+    @objc_callback_with_default("")
     def tableView_objectValueForTableColumn_row_(  # noqa: N802
         self,
         table: objc.objc_object,
@@ -456,6 +484,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             return MODEL_DISPLAY_NAMES.get(raw, raw)
         return ""
 
+    @objc_callback
     def tableView_sortDescriptorsDidChange_(  # noqa: N802
         self,
         table: objc.objc_object,
@@ -472,6 +501,7 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         _history_data.sort(key=lambda e: e.get(sort_key, ""), reverse=not ascending)
         table.reloadData()
 
+    @objc_callback
     def tableViewSelectionDidChange_(self, notification: objc.objc_object) -> None:  # noqa: N802
         table = notification.object()
         popup = self._actions_popup
@@ -493,24 +523,28 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
             return None
         return _history_data[row]
 
+    @objc_callback
     def resumeSelected_(self, sender: objc.objc_object) -> None:  # noqa: N802
         entry = self._selected_entry()
         if entry:
             sender.setRepresentedObject_(f"{entry.get('session_id', '')}|{entry.get('cwd', '')}")
             self.resumeSession_(sender)
 
+    @objc_callback
     def activitySelected_(self, sender: objc.objc_object) -> None:  # noqa: N802
         entry = self._selected_entry()
         if entry:
             sender.setRepresentedObject_(f"{entry.get('project', '')}|{entry.get('cwd', '')}")
             self.viewActivity_(sender)
 
+    @objc_callback
     def deleteSelected_(self, sender: objc.objc_object) -> None:  # noqa: N802
         entry = self._selected_entry()
         if entry:
             sender.setRepresentedObject_(entry.get("cwd", ""))
             self.deleteHistoryEntry_(sender)
 
+    @objc_callback
     def windowWillClose_(self, notification: objc.objc_object) -> None:  # noqa: N802
         global _window  # noqa: PLW0603
         _window = None
@@ -1363,6 +1397,7 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     # Fetch in background and populate
 
     def _fetch_and_render() -> None:
+        # Phase 1: Background — fetch and parse (no AppKit objects)
         releases = get_update_service().fetch_changelog()
         changelog: list[tuple[str, list[str]]] = []
         for tag, body in releases:
@@ -1374,41 +1409,35 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
             else:
                 changelog.append((tag, ["No release notes"]))
 
-        _ver_h = 18
-        _bullet_h = 14
-        _ver_gap = 8
-        _cl_pad = 10
-        content_h = _cl_pad
-        for _tag, items in changelog:
-            content_h += _ver_h + len(items) * _bullet_h + _ver_gap
-        content_h += _cl_pad
+        # Phase 2: Build views on main thread (NSView is not thread-safe)
+        def _build_views() -> None:
+            _ver_h = 18
+            _bullet_h = 14
+            _ver_gap = 8
+            _cl_pad = 10
+            content_h = _cl_pad
+            for _tag, items in changelog:
+                content_h += _ver_h + len(items) * _bullet_h + _ver_gap
+            content_h += _cl_pad
 
-        inner_h = max(changelog_card_h, content_h)
-        inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, inner_h))
-        cy = inner_h - _cl_pad
+            inner_h = max(changelog_card_h, content_h)
+            inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, inner_h))
+            cy = inner_h - _cl_pad
 
-        for tag, items in changelog:
-            cy -= _ver_h
-            ver = _make_label(tag, _cl_pad, cy, 200, 11.0, bold=True)
-            inner.addSubview_(ver)
-            for item in items:
-                cy -= _bullet_h
-                bullet = _make_secondary_label(f"• {item}", _cl_pad + 8, cy, card_w - _cl_pad * 2 - 20, 10.0)
-                inner.addSubview_(bullet)
-            cy -= _ver_gap
+            for tag, items in changelog:
+                cy -= _ver_h
+                ver = _make_label(tag, _cl_pad, cy, 200, 11.0, bold=True)
+                inner.addSubview_(ver)
+                for item in items:
+                    cy -= _bullet_h
+                    bullet = _make_secondary_label(f"• {item}", _cl_pad + 8, cy, card_w - _cl_pad * 2 - 20, 10.0)
+                    inner.addSubview_(bullet)
+                cy -= _ver_gap
 
-        # UI updates must happen on main thread
-        def _apply(_arg: object) -> None:
             scroll.setDocumentView_(inner)
             inner.scrollPoint_((0, inner_h))
 
-        scroll.performSelectorOnMainThread_withObject_waitUntilDone_("setNeedsDisplay:", None, False)
-        NSApplication.sharedApplication().performSelectorOnMainThread_withObject_waitUntilDone_(
-            "activateIgnoringOtherApps:", False, False
-        )
-        # NSView creation happened on background thread but is safe before addSubview.
-        # setDocumentView on main thread:
-        scroll.performSelectorOnMainThread_withObject_waitUntilDone_("setDocumentView:", inner, False)
+        dispatch_to_main_thread(_build_views)
 
     threading.Thread(target=_fetch_and_render, daemon=True).start()
 
