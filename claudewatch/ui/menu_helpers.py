@@ -16,6 +16,8 @@ from AppKit import (
 )
 from Foundation import NSRange
 
+from claudewatch.ui.safety import objc_callback
+
 if TYPE_CHECKING:
     from claudewatch.ui.menubar import ClaudeWatchApp
 
@@ -38,11 +40,13 @@ class AppDelegate(NSObject):
             self._app = None
         return self
 
+    @objc_callback
     def menuItemClicked_(self, sender: NSMenuItem) -> None:  # noqa: N802
         cb = self._callbacks.get(sender.tag())
         if cb:
             cb(sender)
 
+    @objc_callback
     def pollTick_(self, timer: object) -> None:  # noqa: N802, ARG002
         if self._app:
             self._app.poll()
