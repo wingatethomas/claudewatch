@@ -29,6 +29,10 @@ def build_about_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
     y -= 18
     version_label.setFrame_(NSMakeRect(CONTENT_PADDING, y, card_w, 18))
     view.addSubview_(version_label)
+    y -= 18
+    contact_label = secondary_label("Contact: claudewatch@protonmail.com", size=11.0)
+    contact_label.setFrame_(NSMakeRect(CONTENT_PADDING, y, card_w, 14))
+    view.addSubview_(contact_label)
     y -= 8
 
     # Buttons
