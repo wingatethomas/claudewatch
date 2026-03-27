@@ -308,16 +308,18 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     # ── Bookmark actions ──
 
     def bookmarkSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        data = str(sender.representedObject())
+        data = str(sender.representedObject() or sender.cell().representedObject() or "")
         if "|" not in data:
             return
         sid, rest = data.split("|", 1)
         project, cwd = rest.split("|", 1) if "|" in rest else ("", rest)
         get_bookmark_service().add(sid, project, cwd, "")
+        _rebuild_history_rows(self)
 
     def unbookmarkSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        cwd = str(sender.representedObject())
+        cwd = str(sender.representedObject() or sender.cell().representedObject() or "")
         get_bookmark_service().remove(cwd)
+        _rebuild_history_rows(self)
 
     # ── History card actions ──
 
@@ -918,10 +920,10 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
         bm_btn.setTarget_(delegate)
         if is_pinned:
             bm_btn.setAction_(objc.selector(delegate.unbookmarkSession_, signature=b"v@:@"))
-            bm_btn.setRepresentedObject_(cwd)
+            bm_btn.cell().setRepresentedObject_(cwd)
         else:
             bm_btn.setAction_(objc.selector(delegate.bookmarkSession_, signature=b"v@:@"))
-            bm_btn.setRepresentedObject_(f"{session_id}|{project}|{cwd}")
+            bm_btn.cell().setRepresentedObject_(f"{session_id}|{project}|{cwd}")
         bm_btn.setToolTip_("Remove bookmark" if is_pinned else "Bookmark this session")
         view.addSubview_(bm_btn)
 
