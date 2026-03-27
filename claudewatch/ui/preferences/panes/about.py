@@ -79,7 +79,8 @@ def build_about_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
     def _fetch() -> None:
         releases = get_update_service().fetch_changelog()
         changelog: list[tuple[str, list[str]]] = []
-        for tag, body in releases:
+        for entry in releases:
+            tag, body = entry.tag, entry.body
             items = _parse_notes(body)
             if items:
                 changelog.append((tag, items))
