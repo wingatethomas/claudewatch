@@ -97,15 +97,27 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
     top_card = _build_top_sessions_card(delegate, card_w, top)
     stack.add(top_card, height=top_card.frame().size.height)
 
-    # Open in Claude button
+    # Action buttons
     stack.gap(4)
-    claude_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 140, 24))
+    button_row = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, 24))
+
+    claude_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 130, 24))
     claude_btn.setTitle_("Open in Claude")
     claude_btn.setBezelStyle_(1)
     claude_btn.setFont_(NSFont.systemFontOfSize_(11.0))
     claude_btn.setTarget_(delegate)
     claude_btn.setAction_(objc.selector(delegate.openClaudeUsage_, signature=b"v@:@"))
-    stack.add(claude_btn, height=24)
+    button_row.addSubview_(claude_btn)
+
+    web_btn = NSButton.alloc().initWithFrame_(NSMakeRect(138, 0, 140, 24))
+    web_btn.setTitle_("View on Claude.ai")
+    web_btn.setBezelStyle_(1)
+    web_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+    web_btn.setTarget_(delegate)
+    web_btn.setAction_(objc.selector(delegate.openClaudeAiUsage_, signature=b"v@:@"))
+    button_row.addSubview_(web_btn)
+
+    stack.add(button_row, height=24)
 
     # Place stack content below fixed header, offset to align with header
     scroll_h = content_top

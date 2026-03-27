@@ -209,6 +209,12 @@ class PrefsDelegate(NSObject):
         webbrowser.open("https://console.anthropic.com/settings/usage")
 
     @objc_callback
+    def openClaudeAiUsage_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        import webbrowser
+
+        webbrowser.open("https://claude.ai/settings/usage")
+
+    @objc_callback
     def viewAuditLog_(self, sender: objc.objc_object) -> None:  # noqa: N802
         from claudewatch.ui.preferences.handlers.actions import handle_view_audit_log
 
