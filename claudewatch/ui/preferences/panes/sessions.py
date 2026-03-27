@@ -41,7 +41,7 @@ def build_sessions_pane(delegate: object, w: float, h: float) -> NSView:
     # Subtitle
     from AppKit import NSColor
 
-    subtitle = secondary_label("All sessions recorded by ClaudeWatch", size=11.0)
+    subtitle = secondary_label("Last 50 sessions recorded by ClaudeWatch", size=11.0)
     subtitle.setTextColor_(NSColor.tertiaryLabelColor())
     subtitle.setFrame_(NSMakeRect(_PAD, below_header - 14, w - _PAD * 2, 14))
     view.addSubview_(subtitle)
@@ -148,6 +148,7 @@ def rebuild_rows(delegate: object) -> None:
         _add_row(inner, delegate, entry, 0, y, w, _ROW_H, pinned_cwds, usage_svc, summary_svc)
 
     scroll.setDocumentView_(inner)
+    inner.scrollPoint_((0, total_h))  # scroll to top (newest first)
     delegate._history_inner = inner
 
 
