@@ -3,7 +3,7 @@
 All panes MUST use these values for consistent layout.
 """
 
-from AppKit import NSView
+from AppKit import NSColor, NSView
 from Foundation import NSMakeRect
 
 from claudewatch.ui.components.layout import VStack
@@ -45,8 +45,6 @@ def create_pane(title: str, w: float, h: float, subtitle: str = "") -> tuple[NSV
     if subtitle:
         content_y -= 14
         sub = secondary_label(subtitle, size=11.0)
-        from AppKit import NSColor
-
         sub.setTextColor_(NSColor.tertiaryLabelColor())
         sub.setFrame_(NSMakeRect(CONTENT_PADDING, content_y, w - CONTENT_PADDING * 2, 14))
         view.addSubview_(sub)

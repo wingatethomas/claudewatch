@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import objc
 from AppKit import (
     NSBox,
     NSButton,
+    NSColor,
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
@@ -234,8 +237,6 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     cached_title = summary_svc.get_cached_title(cwd) if cwd else None
     if cached_title:
         title_text = cached_title[:50]
-        from AppKit import NSColor
-
         title_lbl = label(title_text, size=11.0, color=NSColor.tertiaryLabelColor())
         title_lbl.setFrame_(NSMakeRect(_name_col, ly3, w - _name_col - 10, 14))
         view.addSubview_(title_lbl)
@@ -304,8 +305,6 @@ def _build_row_menu(  # noqa: PLR0913, ARG001
 
 def _relative_time(iso_str: str) -> str:  # noqa: PLR0911
     """Format a timestamp as relative time."""
-    from datetime import UTC, datetime, timedelta
-
     try:
         dt = datetime.fromisoformat(iso_str)
         if dt.tzinfo is None:

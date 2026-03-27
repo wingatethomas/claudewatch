@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import objc
-from AppKit import NSColor, NSView
+from AppKit import NSColor, NSScrollView, NSView
 from Foundation import NSMakeRect
 
 from claudewatch.backend.history.dependencies import get_history_service
@@ -23,7 +25,6 @@ _K = 1_000
 
 def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: PLR0915
     """Build the Usage pane with aggregated stats."""
-    from datetime import UTC, datetime, timedelta
 
     history = get_history_service().get_all()
     usage_svc = get_usage_service()
@@ -61,7 +62,7 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
         except (ValueError, TypeError):
             pass
 
-    view, content_top = create_pane("Usage", w, h)
+    view, content_top = create_pane("Usage", w, h, subtitle="Token usage across all sessions")
     card_w = w - CONTENT_PADDING * 2
 
     if not session_stats:
@@ -96,8 +97,6 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
     stack.add(top_card, height=top_card.frame().size.height)
 
     # Place stack content below fixed header
-    from AppKit import NSScrollView
-
     scroll_h = content_top
     if stack.content_height <= scroll_h:
         content_view = stack.to_view(min_height=scroll_h)

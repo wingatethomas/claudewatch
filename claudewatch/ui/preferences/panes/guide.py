@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from AppKit import NSView
+from Foundation import NSMakeRect
 
 from claudewatch.ui.components.composites.guide import build_guide
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
@@ -59,8 +60,6 @@ def build_guide_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: A
     view, content_top = create_pane("Guide", w, h)
 
     guide_view = build_guide(sections=_SECTIONS, width=w - CONTENT_PADDING * 2, height=content_top)
-    from Foundation import NSMakeRect
-
     guide_view.setFrame_(NSMakeRect(CONTENT_PADDING, 0, w - CONTENT_PADDING * 2, content_top))
     view.addSubview_(guide_view)
 

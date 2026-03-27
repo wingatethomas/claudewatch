@@ -5,10 +5,12 @@ from __future__ import annotations
 import objc
 from AppKit import (
     NSBox,
+    NSColor,
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
     NSPopUpButton,
+    NSScrollView,
     NSSwitch,
     NSView,
 )
@@ -16,6 +18,8 @@ from Foundation import NSMakeRect
 
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FacetType
+from claudewatch.ui.components.widgets.buttons import Size, button
+from claudewatch.ui.components.widgets.cards import card as make_card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
 
@@ -33,7 +37,7 @@ _FEATURE_DETAILS: dict[str, str] = {
 
 def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
     """Build the Settings pane with feature cards and danger zone."""
-    view, content_top = create_pane("Settings", w, h)
+    view, content_top = create_pane("Settings", w, h, subtitle="Feature toggles and preferences")
 
     all_features = features.get_all()
     delegate._feature_controls = {}
@@ -69,8 +73,6 @@ def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
         inner.setFrame_(NSMakeRect(0, 0, w, scroll_h))
         view.addSubview_(inner)
     else:
-        from AppKit import NSScrollView
-
         scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, scroll_h))
         scroll.setHasVerticalScroller_(True)
         scroll.setAutohidesScrollers_(True)
@@ -91,8 +93,6 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
     card_w: float,
 ) -> float:
     """Build a feature card. Returns card height."""
-    from claudewatch.ui.components.widgets.cards import card as make_card
-
     key = feature.key
     enabled = features.is_enabled(key)
     detail = _FEATURE_DETAILS.get(key, "")
@@ -114,8 +114,6 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
     content.addSubview_(name_lbl)
 
     if detail:
-        from AppKit import NSColor
-
         detail_lbl = secondary_label(detail, size=10.0)
         detail_lbl.setTextColor_(NSColor.tertiaryLabelColor())
         detail_lbl.setFrame_(NSMakeRect(_CARD_PAD, name_y - 16, card_w - _CARD_PAD * 2 - 60, 14))
@@ -137,8 +135,6 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
         content.addSubview_(sep)
 
         facet_label_text = facet.description or facet.name.replace("_", " ").title()
-        from AppKit import NSColor
-
         flbl = label(facet_label_text, size=12.0, color=NSColor.secondaryLabelColor())
         flbl.setFrame_(NSMakeRect(_CARD_PAD, fy + 11, 140, 18))
         content.addSubview_(flbl)
@@ -175,11 +171,6 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
 
 def _build_danger_zone(view: NSView, delegate: object, x: float, y: float, card_w: float) -> None:
     """Build the danger zone card."""
-    from AppKit import NSColor
-
-    from claudewatch.ui.components.widgets.buttons import Size, button
-    from claudewatch.ui.components.widgets.cards import card as make_card
-
     red = NSColor.systemRedColor()
     header_h = 30
     row_h = 38

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import objc
 from AppKit import NSColor, NSView
-from Foundation import NSObject
+from Foundation import NSMakeRect, NSObject
 
 from claudewatch.ui.safety import get_represented_object, objc_callback
 
@@ -41,8 +41,6 @@ class PrefsDelegate(NSObject):
         builder = self._pane_builders.get(item["key"])
         if not builder:
             return
-
-        from Foundation import NSMakeRect
 
         pane = builder(self, self._content_w, self._content_h)
         pane.setFrame_(NSMakeRect(0, 0, self._content_w, self._content_h))

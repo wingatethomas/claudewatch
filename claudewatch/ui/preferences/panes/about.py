@@ -85,7 +85,7 @@ def build_about_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
                 changelog.append((tag, ["No release notes"]))
 
         def _render() -> None:
-            from claudewatch.ui.components.composites.changelog import build_changelog
+            from claudewatch.ui.components.composites.changelog import build_changelog  # noqa: PLC0415
 
             inner = build_changelog(releases=changelog, width=card_w, height=changelog_h)
             changelog_scroll.setDocumentView_(inner)

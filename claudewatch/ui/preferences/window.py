@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import objc
 from AppKit import (
     NSApplication,
     NSApplicationActivationPolicyAccessory,
@@ -114,8 +115,6 @@ def _select_pane_by_key(delegate: PrefsDelegate, key: str) -> None:
 
 def _build_sidebar(delegate: PrefsDelegate) -> NSView:
     """Build the sidebar navigation."""
-    import objc
-
     sidebar = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _SIDEBAR_W, _H))
     sidebar.setWantsLayer_(True)
     sidebar.layer().setBackgroundColor_(
