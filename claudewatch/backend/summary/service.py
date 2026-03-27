@@ -105,8 +105,8 @@ class SummaryService(BaseService):
         self._in_progress: set[str] = set()
         self._in_progress_lock = threading.Lock()
 
-        # Failure tracking
-        self._failures: dict[str, int] = {}
+        # Failure tracking: {cwd: (count, jsonl_mtime_at_failure)}
+        self._failures: dict[str, tuple[int, float]] = {}
         self._failures_lock = threading.Lock()
 
         # Background thread
@@ -227,8 +227,16 @@ class SummaryService(BaseService):
             return cached
 
         with self._failures_lock:
-            if self._failures.get(cwd, 0) >= _MAX_FAILURES:
-                return ""
+            fail_entry = self._failures.get(cwd)
+            if fail_entry is not None:
+                count, fail_mtime = fail_entry
+                if count >= _MAX_FAILURES:
+                    # Reset if JSONL has new activity since last failure
+                    current_mtime = self._get_jsonl_mtime(cwd)
+                    if current_mtime and current_mtime > fail_mtime:
+                        self._failures.pop(cwd, None)
+                    else:
+                        return ""
 
         with self._in_progress_lock:
             if cwd in self._in_progress:
@@ -247,8 +255,11 @@ class SummaryService(BaseService):
                         self._failures.pop(cwd, None)
                 else:
                     with self._failures_lock:
-                        self._failures[cwd] = self._failures.get(cwd, 0) + 1
-                        count = self._failures[cwd]
+                        prev = self._failures.get(cwd)
+                        prev_count = prev[0] if prev else 0
+                        mtime = self._get_jsonl_mtime(cwd)
+                        self._failures[cwd] = (prev_count + 1, mtime)
+                        count = prev_count + 1
                     if count >= _MAX_FAILURES:
                         log.warning(
                             "summarize: giving up on %s after %d failures",
