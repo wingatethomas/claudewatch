@@ -19,7 +19,7 @@ from Foundation import NSMakeRect
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FacetType
 from claudewatch.ui.components.widgets.buttons import Size, button
-from claudewatch.ui.components.widgets.cards import card as make_card
+from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
 
@@ -101,7 +101,7 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
     facet_h = 40
     card_h = toggle_h + len(feature.facets) * facet_h
 
-    c = make_card(card_w, card_h)
+    c = card(card_w, card_h)
     c.setFrame_(NSMakeRect(x, y - card_h, card_w, card_h))
     view.addSubview_(c)
     content = c.contentView()
@@ -176,7 +176,7 @@ def _build_danger_zone(view: NSView, delegate: object, x: float, y: float, card_
     row_h = 38
     total_h = header_h + 2 * row_h
 
-    c = make_card(card_w, total_h, border_color=red.colorWithAlphaComponent_(0.3))
+    c = card(card_w, total_h, border_color=red.colorWithAlphaComponent_(0.3))
     c.setFrame_(NSMakeRect(x, y - total_h, card_w, total_h))
     view.addSubview_(c)
     content = c.contentView()

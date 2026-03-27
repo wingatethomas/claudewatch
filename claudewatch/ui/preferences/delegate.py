@@ -236,6 +236,6 @@ class PrefsDelegate(NSObject):
 
     @objc_callback
     def windowWillClose_(self, notification: objc.objc_object) -> None:  # noqa: N802, ARG002
-        from claudewatch.ui.preferences import window as _win_mod
+        from claudewatch.ui.preferences import window
 
-        _win_mod._window = None
+        window._window = None

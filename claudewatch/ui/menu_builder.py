@@ -14,6 +14,7 @@ from AppKit import (
 )
 from Foundation import NSRange
 
+from claudewatch.backend.core import features
 from claudewatch.backend.core.models import ClaudeSession, SessionStatus
 from claudewatch.backend.core.paths import is_homebrew_install
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_breakdown
@@ -167,8 +168,8 @@ class MenuBuilder:
                     is_pinned = s.cwd in pinned_cwds
                     self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
-        # Bookmarked sessions that are NOT currently active
-        pins = self._app._bookmark_service.get_all()
+        # Bookmarked sessions that are NOT currently active (respects feature toggle)
+        pins = self._app._bookmark_service.get_all() if features.is_enabled("bookmarks") else []
         inactive_pins = [p for p in pins if p.cwd not in active_cwds]
         if inactive_pins:
             self._menu.addItem_(NSMenuItem.separatorItem())
@@ -262,7 +263,7 @@ class MenuBuilder:
         help_submenu = NSMenu.alloc().init()
         for tip in (
             "Click → focus window",
-            "Hover → Activity · Pin · Quit",
+            "Hover → Activity · Bookmark · Quit",
             "▸ = bookmarked (resume later)",
         ):
             help_submenu.addItem_(make_menu_item(f"  {tip}", None, d))
