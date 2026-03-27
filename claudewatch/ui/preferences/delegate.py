@@ -15,7 +15,7 @@ class PrefsDelegate(NSObject):
     # Instance vars (set by window.py)
     _sidebar_items: list[dict]
     _sidebar_btns: list
-    _pane_builders: dict
+    _pane_classes: dict
     _content_w: float
     _content_h: float
     _content_area: NSView | None
@@ -38,14 +38,15 @@ class PrefsDelegate(NSObject):
             self._current_pane.removeFromSuperview()
             self._current_pane = None
 
-        builder = self._pane_builders.get(item["key"])
-        if not builder:
+        pane_class = self._pane_classes.get(item["key"])
+        if not pane_class:
             return
 
-        pane = builder(self, self._content_w, self._content_h)
-        pane.setFrame_(NSMakeRect(0, 0, self._content_w, self._content_h))
-        self._content_area.addSubview_(pane)
-        self._current_pane = pane
+        pane = pane_class(self, self._content_w, self._content_h)
+        view = pane.build()
+        view.setFrame_(NSMakeRect(0, 0, self._content_w, self._content_h))
+        self._content_area.addSubview_(view)
+        self._current_pane = view
 
     def select_sidebar(self, idx: int) -> None:
         """Update sidebar highlight and show corresponding pane."""

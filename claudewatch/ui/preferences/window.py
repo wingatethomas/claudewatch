@@ -36,12 +36,12 @@ _SIDEBAR_ITEMS = [
     {"type": "static", "key": "about", "label": "About"},
 ]
 
-_PANE_BUILDERS = {
-    "general": settings.build_settings_pane,
-    "history": sessions.build_sessions_pane,
-    "usage": usage.build_usage_pane,
-    "guide": guide.build_guide_pane,
-    "about": about.build_about_pane,
+_PANE_CLASSES = {
+    "general": settings.SettingsPane,
+    "history": sessions.SessionsPane,
+    "usage": usage.UsagePane,
+    "guide": guide.GuidePane,
+    "about": about.AboutPane,
 }
 
 _window: NSWindow | None = None
@@ -63,7 +63,7 @@ def show_preferences(pane: str | None = None) -> None:
 
     _delegate = PrefsDelegate.alloc().init()
     _delegate._sidebar_items = list(_SIDEBAR_ITEMS)
-    _delegate._pane_builders = _PANE_BUILDERS
+    _delegate._pane_classes = _PANE_CLASSES
     _delegate._content_w = _CONTENT_W
     _delegate._content_h = _H
     _delegate._feature_controls = {}

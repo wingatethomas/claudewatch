@@ -14,7 +14,7 @@ from claudewatch.ui.components.layout import VStack
 from claudewatch.ui.components.widgets.buttons import Size, button
 from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
-from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
+from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, BasePane
 from claudewatch.ui.theme import theme
 
 _PAD = 24
@@ -24,114 +24,124 @@ _M = 1_000_000
 _K = 1_000
 
 
-def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: PLR0915
-    """Build the Usage pane with aggregated stats."""
+class UsagePane(BasePane):
+    """Usage pane with aggregated token stats."""
 
-    history = get_history_service().get_all()
-    usage_svc = get_usage_service()
+    @property
+    def title(self) -> str:
+        return "Usage"
 
-    # Gather stats
-    session_stats: list[tuple[str, dict, str]] = []
-    total = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
-    cutoff = datetime.now(tz=UTC) - timedelta(days=30)
+    @property
+    def subtitle(self) -> str:
+        return "Token usage across all sessions"
 
-    for entry in history:
-        tokens = usage_svc.get_tokens(entry.cwd)
-        t_in = tokens.input + tokens.cache_create + tokens.cache_read
-        t_out = tokens.output
-        if t_in + t_out == 0:
-            continue
-        token_dict = {
-            "input": tokens.input,
-            "output": t_out,
-            "cache_create": tokens.cache_create,
-            "cache_read": tokens.cache_read,
-        }
-        session_stats.append((entry.project, token_dict, entry.ended_at or ""))
-        try:
-            dt = datetime.fromisoformat(entry.ended_at) if entry.ended_at else None
-            if dt and dt.tzinfo is None:
-                dt = dt.replace(tzinfo=UTC)
-            if dt and dt >= cutoff:
-                for k in total:
-                    total[k] += token_dict.get(k, 0)
-        except (ValueError, TypeError):
-            pass
+    def build_content(self, view: NSView, content_top: float) -> None:  # noqa: PLR0915
+        history = get_history_service().get_all()
+        usage_svc = get_usage_service()
 
-    view, content_top = create_pane("Usage", w, h, subtitle="Token usage across all sessions")
-    card_w = w - CONTENT_PADDING * 2
+        # Gather stats
+        session_stats: list[tuple[str, dict, str]] = []
+        total = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
+        cutoff = datetime.now(tz=UTC) - timedelta(days=30)
 
-    if not session_stats:
-        empty = secondary_label("No usage data yet.", size=13.0)
-        empty.setFrame_(NSMakeRect(CONTENT_PADDING, content_top - 24, card_w, 18))
-        view.addSubview_(empty)
-        return view
+        for entry in history:
+            tokens = usage_svc.get_tokens(entry.cwd)
+            t_in = tokens.input + tokens.cache_create + tokens.cache_read
+            t_out = tokens.output
+            if t_in + t_out == 0:
+                continue
+            token_dict = {
+                "input": tokens.input,
+                "output": t_out,
+                "cache_create": tokens.cache_create,
+                "cache_read": tokens.cache_read,
+            }
+            session_stats.append((entry.project, token_dict, entry.ended_at or ""))
+            try:
+                dt = datetime.fromisoformat(entry.ended_at) if entry.ended_at else None
+                if dt and dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                if dt and dt >= cutoff:
+                    for k in total:
+                        total[k] += token_dict.get(k, 0)
+            except (ValueError, TypeError):
+                pass
 
-    # Build scroll content below fixed header
-    # padding matches CONTENT_PADDING horizontally, minimal top padding
-    stack = VStack(width=w - CONTENT_PADDING * 2, padding=0, spacing=8)
-    stack.add(_section_header("LAST 30 DAYS"), height=14)
+        if not session_stats:
+            empty = secondary_label("No usage data yet.", size=13.0)
+            empty.setFrame_(NSMakeRect(CONTENT_PADDING, content_top - 24, self.card_width, 18))
+            view.addSubview_(empty)
+            return
 
-    total_in = total["input"] + total["cache_create"] + total["cache_read"]
-    total_out = total["output"]
-    stats_card = _build_stats_card(
-        card_w,
-        [
-            ("Input", total["input"]),
-            ("Output", total_out),
-            ("Cache", total["cache_create"] + total["cache_read"]),
-            ("Total", total_in + total_out),
-        ],
-    )
-    stack.add(stats_card, height=stats_card.frame().size.height)
+        # Build scroll content below fixed header
+        # padding matches CONTENT_PADDING horizontally, minimal top padding
+        stack = VStack(width=self.card_width, padding=0, spacing=8)
+        stack.add(_section_header("LAST 30 DAYS"), height=14)
 
-    # Top sessions section
-    stack.add(_section_header("TOP SESSIONS BY USAGE"), height=14)
+        total_in = total["input"] + total["cache_create"] + total["cache_read"]
+        total_out = total["output"]
+        stats_card = _build_stats_card(
+            self.card_width,
+            [
+                ("Input", total["input"]),
+                ("Output", total_out),
+                ("Cache", total["cache_create"] + total["cache_read"]),
+                ("Total", total_in + total_out),
+            ],
+        )
+        stack.add(stats_card, height=stats_card.frame().size.height)
 
-    session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
-    top = session_stats[:10]
-    top_card = _build_top_sessions_card(delegate, card_w, top)
-    stack.add(top_card, height=top_card.frame().size.height)
+        # Top sessions section
+        stack.add(_section_header("TOP SESSIONS BY USAGE"), height=14)
 
-    # Action buttons
-    stack.gap(4)
-    button_row = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, 24))
+        session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
+        top = session_stats[:10]
+        top_card = _build_top_sessions_card(self.delegate, self.card_width, top)
+        stack.add(top_card, height=top_card.frame().size.height)
 
-    claude_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 130, 24))
-    claude_btn.setTitle_("Open in Claude")
-    claude_btn.setBezelStyle_(1)
-    claude_btn.setFont_(NSFont.systemFontOfSize_(11.0))
-    claude_btn.setTarget_(delegate)
-    claude_btn.setAction_(objc.selector(delegate.openClaudeUsage_, signature=b"v@:@"))
-    button_row.addSubview_(claude_btn)
+        # Action buttons
+        stack.gap(4)
+        button_row = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, self.card_width, 24))
 
-    web_btn = NSButton.alloc().initWithFrame_(NSMakeRect(138, 0, 140, 24))
-    web_btn.setTitle_("View on Claude.ai")
-    web_btn.setBezelStyle_(1)
-    web_btn.setFont_(NSFont.systemFontOfSize_(11.0))
-    web_btn.setTarget_(delegate)
-    web_btn.setAction_(objc.selector(delegate.openClaudeAiUsage_, signature=b"v@:@"))
-    button_row.addSubview_(web_btn)
+        claude_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 130, 24))
+        claude_btn.setTitle_("Open in Claude")
+        claude_btn.setBezelStyle_(1)
+        claude_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+        claude_btn.setTarget_(self.delegate)
+        claude_btn.setAction_(objc.selector(self.delegate.openClaudeUsage_, signature=b"v@:@"))
+        button_row.addSubview_(claude_btn)
 
-    stack.add(button_row, height=24)
+        web_btn = NSButton.alloc().initWithFrame_(NSMakeRect(138, 0, 140, 24))
+        web_btn.setTitle_("View on Claude.ai")
+        web_btn.setBezelStyle_(1)
+        web_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+        web_btn.setTarget_(self.delegate)
+        web_btn.setAction_(objc.selector(self.delegate.openClaudeAiUsage_, signature=b"v@:@"))
+        button_row.addSubview_(web_btn)
 
-    # Place stack content below fixed header, offset to align with header
-    scroll_h = content_top
-    if stack.content_height <= scroll_h:
-        content_view = stack.to_view(min_height=scroll_h)
-        content_view.setFrame_(NSMakeRect(CONTENT_PADDING, 0, card_w, scroll_h))
-        view.addSubview_(content_view)
-    else:
-        inner = stack.to_view()
-        scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING, 0, card_w, scroll_h))
-        scroll.setHasVerticalScroller_(True)
-        scroll.setAutohidesScrollers_(True)
-        scroll.setDrawsBackground_(False)
-        scroll.setDocumentView_(inner)
-        inner.scrollPoint_((0, inner.frame().size.height))
-        view.addSubview_(scroll)
+        stack.add(button_row, height=24)
 
-    return view
+        # Place stack content below fixed header, offset to align with header
+        scroll_h = content_top
+        if stack.content_height <= scroll_h:
+            content_view = stack.to_view(min_height=scroll_h)
+            content_view.setFrame_(NSMakeRect(CONTENT_PADDING, 0, self.card_width, scroll_h))
+            view.addSubview_(content_view)
+        else:
+            inner = stack.to_view()
+            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING, 0, self.card_width, scroll_h))
+            scroll.setHasVerticalScroller_(True)
+            scroll.setAutohidesScrollers_(True)
+            scroll.setDrawsBackground_(False)
+            scroll.setDocumentView_(inner)
+            inner.scrollPoint_((0, inner.frame().size.height))
+            view.addSubview_(scroll)
+
+
+# Legacy function interface for window.py
+def build_usage_pane(delegate: object, w: float, h: float) -> NSView:
+    """Build the Usage pane."""
+    return UsagePane(delegate, w, h).build()
 
 
 def _section_header(text: str) -> NSView:

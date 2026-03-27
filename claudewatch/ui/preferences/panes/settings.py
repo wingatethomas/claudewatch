@@ -21,7 +21,7 @@ from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.buttons import Size, button
 from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
-from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
+from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, BasePane
 from claudewatch.ui.theme import theme
 
 _FEATURE_DETAILS: dict[str, str] = {
@@ -34,53 +34,64 @@ _FEATURE_DETAILS: dict[str, str] = {
 }
 
 
-def build_settings_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: PLR0915
-    """Build the Settings pane with feature cards, test actions, and danger zone."""
-    view, content_top = create_pane("Settings", w, h, subtitle="Feature toggles and preferences")
+class SettingsPane(BasePane):
+    """Settings pane with feature cards, test actions, and danger zone."""
 
-    all_features = features.get_all()
-    delegate._feature_controls = {}
+    @property
+    def title(self) -> str:
+        return "Settings"
 
-    # Calculate scroll content height
-    content_h = 0
-    for feature in all_features:
-        detail = _FEATURE_DETAILS.get(feature.key, "")
-        toggle_row_h = 56 if detail else 44
-        feature_card_h = toggle_row_h + len(feature.facets) * 40
-        content_h += feature_card_h + Spacing.SM
-    content_h += Spacing.XL  # gap before danger zone
-    content_h += 36 + 2 * 38  # danger zone
-    content_h += Spacing.XL
+    @property
+    def subtitle(self) -> str:
+        return "Feature toggles and preferences"
 
-    scroll_h = content_top
-    inner_h = max(scroll_h, content_h)
-    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
-    card_w = w - CONTENT_PADDING * 2
+    def build_content(self, view: NSView, content_top: float) -> None:  # noqa: PLR0915
+        all_features = features.get_all()
+        self.delegate._feature_controls = {}
 
-    y = inner_h
+        # Calculate scroll content height
+        content_h = 0
+        for feature in all_features:
+            detail = _FEATURE_DETAILS.get(feature.key, "")
+            toggle_row_h = 56 if detail else 44
+            feature_card_h = toggle_row_h + len(feature.facets) * 40
+            content_h += feature_card_h + Spacing.SM
+        content_h += Spacing.XL  # gap before danger zone
+        content_h += 36 + 2 * 38  # danger zone
+        content_h += Spacing.XL
 
-    # Feature cards
-    for feature in all_features:
-        feature_card_h = _build_feature_card(inner, delegate, feature, CONTENT_PADDING, y, card_w)
-        y -= feature_card_h + Spacing.SM
+        scroll_h = content_top
+        inner_h = max(scroll_h, content_h)
+        inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, self.width, inner_h))
 
-    # Danger zone
-    y -= Spacing.LG
-    _build_danger_zone(inner, delegate, CONTENT_PADDING, y, card_w)
+        y = inner_h
 
-    if content_h <= scroll_h:
-        inner.setFrame_(NSMakeRect(0, 0, w, scroll_h))
-        view.addSubview_(inner)
-    else:
-        scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, scroll_h))
-        scroll.setHasVerticalScroller_(True)
-        scroll.setAutohidesScrollers_(True)
-        scroll.setDrawsBackground_(False)
-        scroll.setDocumentView_(inner)
-        inner.scrollPoint_((0, inner_h))
-        view.addSubview_(scroll)
+        # Feature cards
+        for feature in all_features:
+            feature_card_h = _build_feature_card(inner, self.delegate, feature, CONTENT_PADDING, y, self.card_width)
+            y -= feature_card_h + Spacing.SM
 
-    return view
+        # Danger zone
+        y -= Spacing.LG
+        _build_danger_zone(inner, self.delegate, CONTENT_PADDING, y, self.card_width)
+
+        if content_h <= scroll_h:
+            inner.setFrame_(NSMakeRect(0, 0, self.width, scroll_h))
+            view.addSubview_(inner)
+        else:
+            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, self.width, scroll_h))
+            scroll.setHasVerticalScroller_(True)
+            scroll.setAutohidesScrollers_(True)
+            scroll.setDrawsBackground_(False)
+            scroll.setDocumentView_(inner)
+            inner.scrollPoint_((0, inner_h))
+            view.addSubview_(scroll)
+
+
+# Legacy function interface for window.py
+def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
+    """Build the Settings pane."""
+    return SettingsPane(delegate, w, h).build()
 
 
 def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
