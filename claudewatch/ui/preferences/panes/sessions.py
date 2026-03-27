@@ -38,8 +38,16 @@ def build_sessions_pane(delegate: object, w: float, h: float) -> NSView:
 
     below_header = _add_pane_header(view, "Sessions", w, h)
 
+    # Subtitle
+    from AppKit import NSColor
+
+    subtitle = secondary_label("All sessions recorded by ClaudeWatch", size=11.0)
+    subtitle.setTextColor_(NSColor.tertiaryLabelColor())
+    subtitle.setFrame_(NSMakeRect(_PAD, below_header - 14, w - _PAD * 2, 14))
+    view.addSubview_(subtitle)
+
     # Toolbar
-    toolbar_y = below_header - 30
+    toolbar_y = below_header - 14 - 8 - 30
     search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 24))
     search.setPlaceholderString_("Search...")
     search.setStringValue_(delegate._history_search or "")
