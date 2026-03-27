@@ -36,29 +36,24 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
 
     for entry in history:
         tokens = usage_svc.get_tokens(entry.cwd)
-        t_in = tokens.get("input", 0) + tokens.get("cache_create", 0) + tokens.get("cache_read", 0)
-        t_out = tokens.get("output", 0)
+        t_in = tokens.input + tokens.cache_create + tokens.cache_read
+        t_out = tokens.output
         if t_in + t_out == 0:
             continue
-        session_stats.append(
-            (
-                entry.project,
-                {
-                    "input": tokens.get("input", 0),
-                    "output": t_out,
-                    "cache_create": tokens.get("cache_create", 0),
-                    "cache_read": tokens.get("cache_read", 0),
-                },
-                entry.ended_at or "",
-            )
-        )
+        token_dict = {
+            "input": tokens.input,
+            "output": t_out,
+            "cache_create": tokens.cache_create,
+            "cache_read": tokens.cache_read,
+        }
+        session_stats.append((entry.project, token_dict, entry.ended_at or ""))
         try:
             dt = datetime.fromisoformat(entry.ended_at) if entry.ended_at else None
             if dt and dt.tzinfo is None:
                 dt = dt.replace(tzinfo=UTC)
             if dt and dt >= cutoff:
                 for k in total:
-                    total[k] += tokens.get(k, 0)
+                    total[k] += token_dict.get(k, 0)
         except (ValueError, TypeError):
             pass
 
