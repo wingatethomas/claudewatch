@@ -220,6 +220,12 @@ class PrefsDelegate(NSObject):
 
         webbrowser.open("https://github.com/wingatethomas/claudewatch")
 
+    @objc_callback
+    def showWelcome_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.ui.welcome import show_welcome
+
+        show_welcome()
+
     # -- Window --
 
     @objc_callback

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from AppKit import NSView
+import objc
+from AppKit import NSButton, NSFont, NSView
 from Foundation import NSMakeRect
 
 from claudewatch.ui.components.composites.guide import build_guide
@@ -54,13 +55,26 @@ _SECTIONS = [
     ),
 ]
 
+_BUTTON_H = 32
 
-def build_guide_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: ARG001
-    """Build the Guide pane with fixed header + scrollable guide content."""
+
+def build_guide_pane(delegate: object, w: float, h: float) -> NSView:
+    """Build the Guide pane with fixed header + scrollable guide content + welcome button."""
     view, content_top = create_pane("Guide", w, h)
 
-    guide_view = build_guide(sections=_SECTIONS, width=w - CONTENT_PADDING * 2, height=content_top)
-    guide_view.setFrame_(NSMakeRect(CONTENT_PADDING, 0, w - CONTENT_PADDING * 2, content_top))
+    # Welcome button at the bottom
+    welcome_button = NSButton.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING, 8, 160, 24))
+    welcome_button.setTitle_("Show Welcome Screen")
+    welcome_button.setBezelStyle_(1)
+    welcome_button.setFont_(NSFont.systemFontOfSize_(11.0))
+    welcome_button.setTarget_(delegate)
+    welcome_button.setAction_(objc.selector(delegate.showWelcome_, signature=b"v@:@"))
+    view.addSubview_(welcome_button)
+
+    # Guide content fills space between header and button
+    guide_h = content_top - _BUTTON_H
+    guide_view = build_guide(sections=_SECTIONS, width=w - CONTENT_PADDING * 2, height=guide_h)
+    guide_view.setFrame_(NSMakeRect(CONTENT_PADDING, _BUTTON_H, w - CONTENT_PADDING * 2, guide_h))
     view.addSubview_(guide_view)
 
     return view
