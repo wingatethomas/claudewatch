@@ -26,10 +26,9 @@ from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
-from claudewatch.ui.components.widgets.labels import label, secondary_label
+from claudewatch.ui.components.composites.session_row import build_session_row
 from claudewatch.ui.icons import sf_icon
 from claudewatch.ui.preferences.panes.common import BasePane
-from claudewatch.ui.theme import theme
 
 _PAD = 24
 _CARD_PAD = 16
@@ -180,7 +179,8 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     usage_svc: object,
     summary_svc: object,
 ) -> None:
-    """Build a single history row."""
+    """Build a single history row using the SessionRow composite."""
+
     project = entry.get("project", "unknown")
     cwd = entry.get("cwd", "")
     session_id = entry.get("session_id", "")
@@ -188,72 +188,41 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     model = MODEL_DISPLAY_NAMES.get(model_raw, model_raw)
     ended_at = entry.get("ended_at", "")
     is_pinned = cwd in pinned_cwds
-    _p = _PAD
 
-    _bm_col = _p
-    _name_col = _p + 18
-    ly1 = y + h - 20
+    # Build context menu
+    row_menu = _build_row_menu(delegate, entry, is_pinned, cwd, session_id, project, summary_svc)
 
-    # Bookmark toggle button
-    bm_icon_name = "bookmark.fill" if is_pinned else "bookmark"
-    bm_icon_img = sf_icon(bm_icon_name, size=11.0)
-    if bm_icon_img:
-        bm_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_bm_col, ly1 - 1, 18, 18))
-        bm_btn.setImage_(bm_icon_img)
-        bm_btn.setBordered_(False)
-        bm_btn.setTarget_(delegate)
-        if is_pinned:
-            bm_btn.setAction_(objc.selector(delegate.unbookmarkSession_, signature=b"v@:@"))
-            bm_btn.cell().setRepresentedObject_(cwd)
-        else:
-            bm_btn.setAction_(objc.selector(delegate.bookmarkSession_, signature=b"v@:@"))
-            bm_btn.cell().setRepresentedObject_(f"{session_id}|{project}|{cwd}")
-        bm_btn.setToolTip_("Remove bookmark" if is_pinned else "Bookmark this session")
-        view.addSubview_(bm_btn)
-
-    # Project name
-    name_lbl = label(project, size=13.0, bold=True)
-    _scrollbar_w = 15
-    name_lbl.setFrame_(NSMakeRect(_name_col, ly1, w - _name_col - 30 - _scrollbar_w, 18))
-    view.addSubview_(name_lbl)
-
-    # Context menu button (···)
-    menu = _build_row_menu(delegate, entry, is_pinned, cwd, session_id, project, summary_svc)
-    dots = NSButton.alloc().initWithFrame_(NSMakeRect(w - 30 - _scrollbar_w, ly1, 22, 18))
-    dots.setTitle_("\u00b7\u00b7\u00b7")
-    dots.setBezelStyle_(0)
-    dots.setBordered_(False)
-    dots.setFont_(NSFont.boldSystemFontOfSize_(11.0))
-    dots.setMenu_(menu)
-    dots.setTarget_(delegate)
-    dots.setAction_(objc.selector(delegate.showRowMenu_, signature=b"v@:@"))
-    view.addSubview_(dots)
-
-    # Meta line: time · model · tokens
-    ly2 = ly1 - 17
-    meta_parts = []
-    if ended_at:
-        meta_parts.append(_relative_time(ended_at))
-    if model:
-        meta_parts.append(model)
+    # Gather display data
     token_data = usage_svc.get_tokens(cwd)
-    compact = format_tokens_compact(token_data)
-    if compact:
-        meta_parts.append(compact)
-    meta_text = " \u00b7 ".join(meta_parts) if meta_parts else ""
-    if meta_text:
-        meta = secondary_label(meta_text, size=11.0)
-        meta.setFrame_(NSMakeRect(_name_col, ly2, w - _name_col - 10, 14))
-        view.addSubview_(meta)
+    token_compact = format_tokens_compact(token_data)
+    cached_title = summary_svc.get_cached_title(cwd) if cwd else ""
 
-    # Summary one-liner
-    ly3 = ly2 - 16
-    cached_title = summary_svc.get_cached_title(cwd) if cwd else None
-    if cached_title:
-        title_text = cached_title[:50]
-        title_lbl = label(title_text, size=11.0, color=theme.tertiary)
-        title_lbl.setFrame_(NSMakeRect(_name_col, ly3, w - _name_col - 10, 14))
-        view.addSubview_(title_lbl)
+    # Bookmark callback wiring
+    if is_pinned:
+        bookmark_action = objc.selector(delegate.unbookmarkSession_, signature=b"v@:@")
+        bookmark_rep = cwd
+    else:
+        bookmark_action = objc.selector(delegate.bookmarkSession_, signature=b"v@:@")
+        bookmark_rep = f"{session_id}|{project}|{cwd}"
+
+    row = build_session_row(
+        project=project,
+        cwd=cwd,
+        model=model,
+        ended_at=_relative_time(ended_at),
+        bookmarked=is_pinned,
+        width=w,
+        height=h,
+        summary_title=cached_title or "",
+        token_compact=token_compact,
+        on_bookmark_toggle=bookmark_action,
+        on_menu_click=objc.selector(delegate.showRowMenu_, signature=b"v@:@"),
+        bookmark_represented_object=bookmark_rep,
+        menu=row_menu,
+        delegate=delegate,
+    )
+    row.setFrame_(NSMakeRect(x, y, w, h))
+    view.addSubview_(row)
 
 
 def _build_row_menu(  # noqa: PLR0913, ARG001

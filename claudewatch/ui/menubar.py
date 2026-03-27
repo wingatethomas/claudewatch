@@ -52,6 +52,7 @@ from claudewatch.ui.menu.core import AppDelegate, MenuCallback, make_menu_item
 from claudewatch.ui.menu_builder import MenuBuilder
 from claudewatch.ui.preferences import show_preferences
 from claudewatch.ui.session_actions import clean_exit_session, is_accessibility_trusted, notify_paused
+from claudewatch.ui.theme import theme
 from claudewatch.ui.welcome import should_show_welcome, show_welcome
 
 log = logging.getLogger("claudewatch")
@@ -245,7 +246,7 @@ class ClaudeWatchApp:
         self._future = _executor.submit(self._detection_service.detect)
 
     def _menu_key(self) -> str:
-        parts = []
+        parts = [f"scheme:{theme.scheme.name}"]
         for s in self.sessions:
             cached = self._summary_service.get_cached(s.cwd) or ""
             parts.append(f"{s.pid}:{s.status.value}:{s.project}:{s.task_summary}:{s.last_output}:{cached}")
