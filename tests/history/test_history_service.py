@@ -20,22 +20,22 @@ class TestHistoryService:
     @patch("claudewatch.backend.history.service.history_repo")
     def test_get_all_returns_history_entry_dtos(self, mock_repo):
         mock_repo.get_history.return_value = [
-            {
-                "session_id": "s1",
-                "project": "proj",
-                "cwd": "/tmp/a",
-                "model": "opus-4",
-                "host_app": "Terminal",
-                "ended_at": "2025-01-01T00:00:00+00:00",
-            },
-            {
-                "session_id": "s2",
-                "project": "proj2",
-                "cwd": "/tmp/b",
-                "model": "sonnet-4",
-                "host_app": "VSCode",
-                "ended_at": "2025-01-02T00:00:00+00:00",
-            },
+            HistoryEntryDTO(
+                session_id="s1",
+                project="proj",
+                cwd="/tmp/a",
+                model="opus-4",
+                host_app="Terminal",
+                ended_at="2025-01-01T00:00:00+00:00",
+            ),
+            HistoryEntryDTO(
+                session_id="s2",
+                project="proj2",
+                cwd="/tmp/b",
+                model="sonnet-4",
+                host_app="VSCode",
+                ended_at="2025-01-02T00:00:00+00:00",
+            ),
         ]
         result = self.svc.get_all()
         assert len(result) == 2
@@ -50,8 +50,10 @@ class TestHistoryService:
         assert self.svc.get_all() == []
 
     @patch("claudewatch.backend.history.service.history_repo")
-    def test_get_all_handles_missing_fields(self, mock_repo):
-        mock_repo.get_history.return_value = [{"session_id": "s1"}]
+    def test_get_all_handles_empty_fields(self, mock_repo):
+        mock_repo.get_history.return_value = [
+            HistoryEntryDTO(session_id="s1", project="", cwd="", model="", host_app="", ended_at=""),
+        ]
         result = self.svc.get_all()
         assert len(result) == 1
         assert result[0].session_id == "s1"
@@ -69,14 +71,14 @@ class TestHistoryService:
     @patch("claudewatch.backend.history.service.history_repo")
     def test_get_all_returns_frozen_dtos(self, mock_repo):
         mock_repo.get_history.return_value = [
-            {
-                "session_id": "s1",
-                "project": "proj",
-                "cwd": "/tmp/a",
-                "model": "opus-4",
-                "host_app": "Terminal",
-                "ended_at": "2025-01-01T00:00:00+00:00",
-            },
+            HistoryEntryDTO(
+                session_id="s1",
+                project="proj",
+                cwd="/tmp/a",
+                model="opus-4",
+                host_app="Terminal",
+                ended_at="2025-01-01T00:00:00+00:00",
+            ),
         ]
         result = self.svc.get_all()
         entry = result[0]

@@ -15,7 +15,7 @@ from collections.abc import Callable
 
 from claudewatch import __version__
 from claudewatch.backend.core import features
-from claudewatch.backend.core.dto import UpdateInfoDTO
+from claudewatch.backend.core.dto import ChangelogEntryDTO, UpdateInfoDTO
 from claudewatch.backend.core.service import BaseService
 
 log = logging.getLogger("claudewatch")
@@ -176,8 +176,8 @@ class UpdateService(BaseService):
         with self._cache_lock:
             return self._cached_update
 
-    def fetch_changelog(self, limit: int = 10) -> list[tuple[str, str]]:
-        """Fetch recent release notes from GitHub. Returns [(tag, body), ...]."""
+    def fetch_changelog(self, limit: int = 10) -> list[ChangelogEntryDTO]:
+        """Fetch recent release notes from GitHub. Returns list of ChangelogEntryDTO."""
         try:
             result = subprocess.run(  # noqa: S603, S607
                 [
@@ -195,7 +195,7 @@ class UpdateService(BaseService):
             if result.returncode == 0:
                 releases = json.loads(result.stdout)
                 return [
-                    (r.get("tag_name", ""), r.get("body", "").strip())
+                    ChangelogEntryDTO(tag=r.get("tag_name", ""), body=r.get("body", "").strip())
                     for r in releases
                     if r.get("tag_name") and not r.get("prerelease")
                 ]

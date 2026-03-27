@@ -10,10 +10,12 @@ from claudewatch.backend.core.models import (
     HostApp,
     SessionStatus,
 )
+from claudewatch.backend.core.process.models import ProcessInfo
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.detection.constants import HOST_PROCESS_NAMES, IDLE_INDICATOR, PROMPT_KEYWORDS
+from claudewatch.backend.detection.models import PendingToolResult, PromptInfo, TerminalMatch, ToolUseInfo
 
 log = logging.getLogger("claudewatch")
 
@@ -51,7 +53,7 @@ class DetectionService(BaseService):
 
     # -- Process info helpers -----------------------------------------------
 
-    def _batch_ps_info(self, pids: list[int]) -> dict[int, dict]:
+    def _batch_ps_info(self, pids: list[int]) -> dict[int, ProcessInfo]:
         """Get tty + ppid + comm for all PIDs via native libproc calls."""
         return self._process_service.get_info(pids)
 
@@ -99,7 +101,7 @@ class DetectionService(BaseService):
 
     # -- Host app detection -------------------------------------------------
 
-    def _detect_host_app(self, pid: int, all_ps: dict[int, dict]) -> HostApp:
+    def _detect_host_app(self, pid: int, all_ps: dict[int, ProcessInfo]) -> HostApp:
         """Walk PPID chain to find the host app. Results are cached by PID."""
         if pid in self._host_app_cache:
             return self._host_app_cache[pid]
@@ -107,7 +109,7 @@ class DetectionService(BaseService):
         current = pid
         for _ in range(20):
             info = all_ps.get(current)
-            ppid = info["ppid"] if info else 0
+            ppid = info.ppid if info else 0
 
             if not ppid:
                 ppid = self._process_service.get_ppid(current)
@@ -116,17 +118,17 @@ class DetectionService(BaseService):
                 break
 
             if ppid in all_ps:
-                comm = os.path.basename(all_ps[ppid]["comm"])
+                comm = os.path.basename(all_ps[ppid].comm)
             else:
                 pinfo = self._process_service.get_single_info(ppid)
                 if pinfo:
-                    parent_ppid = pinfo["ppid"]
-                    raw_comm = pinfo["comm"]
+                    parent_ppid = pinfo.ppid
+                    raw_comm = pinfo.comm
                 else:
                     parent_ppid = 0
                     raw_comm = ""
                 comm = os.path.basename(raw_comm)
-                all_ps[ppid] = {"tty": "", "ppid": parent_ppid, "comm": raw_comm}
+                all_ps[ppid] = ProcessInfo(tty="", ppid=parent_ppid, comm=raw_comm)
 
             comm_lower = comm.lower()
             if comm_lower.startswith("tmux"):
@@ -143,7 +145,7 @@ class DetectionService(BaseService):
 
     # -- IDE tab indices ----------------------------------------------------
 
-    def _get_ide_tab_indices(self, sessions: list[ClaudeSession], all_ps: dict[int, dict]) -> None:  # noqa: PLR0912
+    def _get_ide_tab_indices(self, sessions: list[ClaudeSession], all_ps: dict[int, ProcessInfo]) -> None:  # noqa: PLR0912
         """Map IDE terminal sessions to their tab indices using the process tree."""
         ide_sessions = [s for s in sessions if s.host_app in (HostApp.PYCHARM, HostApp.VSCODE)]
         if not ide_sessions:
@@ -154,14 +156,14 @@ class DetectionService(BaseService):
             current = s.pid
             for _ in range(20):
                 info = all_ps.get(current)
-                ppid = info["ppid"] if info else 0
+                ppid = info.ppid if info else 0
                 if ppid <= 1:
                     break
                 if ppid in all_ps:
-                    comm = os.path.basename(all_ps[ppid]["comm"]).lower()
+                    comm = os.path.basename(all_ps[ppid].comm).lower()
                 else:
                     pinfo = self._process_service.get_single_info(ppid)
-                    comm = os.path.basename(pinfo["comm"]).lower() if pinfo else ""
+                    comm = os.path.basename(pinfo.comm).lower() if pinfo else ""
                 if "pycharm" in comm or "idea" in comm or comm == "code" or "electron" in comm:
                     ide_pids.add(ppid)
                     break
@@ -174,11 +176,11 @@ class DetectionService(BaseService):
         shell_names = {"sh", "bash", "zsh", "fish", "dash", "tcsh", "ksh"}
         ide_shells: list[tuple[int, str]] = []
         for proc in all_procs:
-            child_ppid = proc["ppid"]
-            child_tty = proc["tty"]
-            child_comm = os.path.basename(proc["comm"])
+            child_ppid = proc.ppid
+            child_tty = proc.tty
+            child_comm = os.path.basename(proc.comm)
             if child_ppid in ide_pids and child_tty != "??" and child_comm in shell_names:
-                ide_shells.append((proc["pid"], child_tty))
+                ide_shells.append((proc.pid, child_tty))
 
         ide_shells.sort(key=lambda x: x[0])
         tty_to_index = {tty: i for i, (_, tty) in enumerate(ide_shells)}
@@ -225,22 +227,23 @@ class DetectionService(BaseService):
         path = self._session_log_service.find_most_recent(cwd)
         return self._session_log_service.get_session_id(path) if path else ""
 
-    def _check_jsonl_for_pending_tool(self, cwd: str) -> tuple[bool, str, str]:  # noqa: PLR0911, PLR0912
+    def _check_jsonl_for_pending_tool(self, cwd: str) -> PendingToolResult:  # noqa: PLR0911, PLR0912
         """Check if the most recent JSONL for this CWD has a pending tool_use."""
+        _empty = PendingToolResult(has_pending=False, one_line="", context="")
         path = self._session_log_service.find_most_recent(cwd)
         if not path:
-            return False, "", ""
+            return _empty
 
         try:
             age = time.time() - os.path.getmtime(path)
             if age > _JSONL_MAX_AGE or age < _JSONL_MIN_AGE:
-                return False, "", ""
+                return _empty
         except OSError:
-            return False, "", ""
+            return _empty
 
         tail = self._session_log_service.read_tail(path)
         if not tail:
-            return False, "", ""
+            return _empty
 
         lines = tail.strip().splitlines()
         for line in reversed(lines[-20:]):
@@ -252,31 +255,31 @@ class DetectionService(BaseService):
                     continue
 
                 if dtype == "user":
-                    return False, "", ""
+                    return _empty
 
                 if dtype == "assistant":
                     content = d.get("message", {}).get("content", [])
                     tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
                     if tool_uses:
-                        one_line, ctx = _format_tool_use(tool_uses[-1])
-                        return True, one_line, ctx
-                    return False, "", ""
+                        info = _format_tool_use(tool_uses[-1])
+                        return PendingToolResult(has_pending=True, one_line=info.one_line, context=info.context)
+                    return _empty
 
                 if dtype == "progress":
                     msg = d["data"]["message"]
                     if msg.get("type") == "user":
-                        return False, "", ""
+                        return _empty
                     if msg.get("type") == "assistant":
                         content = msg.get("message", {}).get("content", [])
                         tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
                         if tool_uses:
-                            one_line, ctx = _format_tool_use(tool_uses[-1])
-                            return True, one_line, ctx
-                        return False, "", ""
+                            info = _format_tool_use(tool_uses[-1])
+                            return PendingToolResult(has_pending=True, one_line=info.one_line, context=info.context)
+                        return _empty
 
             except (json.JSONDecodeError, KeyError, TypeError):
                 continue
-        return False, "", ""
+        return _empty
 
     # -- Main detection entry point -----------------------------------------
 
@@ -316,19 +319,19 @@ class DetectionService(BaseService):
             info = all_ps.get(pid)
             if not info:
                 continue
-            tty = info["tty"]
+            tty = info.tty
             if tty == "??":
-                walk_pid = info["ppid"]
+                walk_pid = info.ppid
                 for _ in range(5):
                     if walk_pid <= 1:
                         break
                     parent = self._process_service.get_single_info(walk_pid)
                     if not parent:
                         break
-                    if parent["tty"] != "??":
-                        tty = parent["tty"]
+                    if parent.tty != "??":
+                        tty = parent.tty
                         break
-                    walk_pid = parent["ppid"]
+                    walk_pid = parent.ppid
             cwd = cwds.get(pid, "")
             project = os.path.basename(cwd) if cwd else ""
             if not project:
@@ -344,12 +347,15 @@ class DetectionService(BaseService):
             if host_app in (HostApp.TERMINAL, HostApp.TMUX, HostApp.OTHER):
                 if terminal_windows is None:
                     terminal_windows = self._get_terminal_windows()
-                window_title, window_id, host_app = _match_terminal_window(
+                match = _match_terminal_window(
                     tty,
                     project,
                     host_app,
                     terminal_windows,
                 )
+                window_title = match.window_title
+                window_id = match.window_id
+                host_app = match.host_app
 
             status = _determine_status(window_title)
 
@@ -372,11 +378,11 @@ class DetectionService(BaseService):
         checked_cwds: set[str] = set()
         for s in sessions:
             if s.cwd and s.cwd not in checked_cwds:
-                pending, one_line, context = self._check_jsonl_for_pending_tool(s.cwd)
-                if pending:
+                tool_result = self._check_jsonl_for_pending_tool(s.cwd)
+                if tool_result.has_pending:
                     s.status = SessionStatus.ATTENTION
-                    s.prompt_text = one_line
-                    s.prompt_context = context
+                    s.prompt_text = tool_result.one_line
+                    s.prompt_context = tool_result.context
                 elif s.status != SessionStatus.IDLE:
                     s.status = self._check_jsonl_for_idle(s.cwd)
                 checked_cwds.add(s.cwd)
@@ -404,9 +410,9 @@ def _extract_last_output(buffer: str) -> str:
     return ""
 
 
-def _extract_prompt_info(buffer: str) -> tuple[str, str]:
+def _extract_prompt_info(buffer: str) -> PromptInfo:
     """Extract permission prompt context from the terminal buffer.
-    Returns (one_line_summary, full_context) for menu and alert respectively."""
+    Returns PromptInfo with one_line summary and full context."""
     lines = buffer.splitlines()
     prompt_line_idx = None
 
@@ -417,7 +423,7 @@ def _extract_prompt_info(buffer: str) -> tuple[str, str]:
             break
 
     if prompt_line_idx is None:
-        return "", ""
+        return PromptInfo(one_line="", context="")
 
     block_start = prompt_line_idx
     one_line = ""
@@ -442,11 +448,11 @@ def _extract_prompt_info(buffer: str) -> tuple[str, str]:
     if one_line and len(one_line) > _TEXT_MAX_LEN:
         one_line = one_line[:77] + "..."
 
-    return one_line, full_context
+    return PromptInfo(one_line=one_line, context=full_context)
 
 
-def _format_tool_use(tool: dict) -> tuple[str, str]:
-    """Format a tool_use block into (one_line, full_context)."""
+def _format_tool_use(tool: dict) -> ToolUseInfo:
+    """Format a tool_use block into ToolUseInfo with one_line and context."""
     name = tool.get("name", "Unknown")
     inp = tool.get("input", {})
     one_line = name
@@ -463,7 +469,7 @@ def _format_tool_use(tool: dict) -> tuple[str, str]:
             context_parts.append(f"Pattern: {inp['pattern']}")
     if len(one_line) > _TEXT_MAX_LEN:
         one_line = one_line[:77] + "..."
-    return one_line, "\n".join(context_parts)
+    return ToolUseInfo(one_line=one_line, context="\n".join(context_parts))
 
 
 def _determine_status(window_title: str) -> SessionStatus:
@@ -478,20 +484,20 @@ def _match_terminal_window(
     project: str,
     host_app: HostApp,
     terminal_windows: dict[str, tuple[str, int]],
-) -> tuple[str, int | None, HostApp]:
+) -> TerminalMatch:
     """Try to match a session to a Terminal.app window by TTY or project name.
-    Returns (window_title, window_id, possibly-updated host_app)."""
+    Returns TerminalMatch with window_title, window_id, and possibly-updated host_app."""
     full_tty = tty if tty.startswith("/dev/") else f"/dev/{tty}"
 
     if full_tty in terminal_windows:
         title, wid = terminal_windows[full_tty]
         if host_app == HostApp.OTHER:
             host_app = HostApp.TERMINAL
-        return title, wid, host_app
+        return TerminalMatch(window_title=title, window_id=wid, host_app=host_app)
 
     if host_app == HostApp.TMUX:
         for _, (tw_title, tw_wid) in terminal_windows.items():
             if project in tw_title:
-                return tw_title, tw_wid, host_app
+                return TerminalMatch(window_title=tw_title, window_id=tw_wid, host_app=host_app)
 
-    return host_app.value, None, host_app
+    return TerminalMatch(window_title=host_app.value, window_id=None, host_app=host_app)

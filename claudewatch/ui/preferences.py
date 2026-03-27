@@ -7,6 +7,7 @@ import threading
 import time
 import webbrowser
 from datetime import UTC, datetime, timedelta
+from typing import NamedTuple
 
 import objc
 from AppKit import (
@@ -45,6 +46,7 @@ from Foundation import NSMakeRect, NSObject, NSRange
 from claudewatch import __version__
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.core import features
+from claudewatch.backend.core.dto import TokenUsageDTO
 from claudewatch.backend.core.features import FacetType
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.login_item import sync_login_item
@@ -64,6 +66,13 @@ from claudewatch.ui.safety import (
 )
 
 _REPO_URL = "https://github.com/wingatethomas/claudewatch"
+
+
+class _SessionStat(NamedTuple):
+    project: str
+    tokens: TokenUsageDTO
+    ended_at: str
+
 
 # Layout
 _W = 660
@@ -1056,7 +1065,7 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     # ── Line 2: time · model · tokens (total)
     ly2 = ly1 - 17
     time_str = _relative_time(ended_at)
-    tokens = usage_svc.get_tokens(cwd) if cwd else {}
+    tokens = usage_svc.get_tokens(cwd) if cwd else None
     token_str = format_tokens_compact(tokens) if tokens else ""
     parts = [time_str]
     if model:
@@ -1106,28 +1115,32 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     history = get_history_service().get_all()
     usage_svc = get_usage_service()
 
-    # Gather per-session stats: (project, tokens, ended_at)
-    session_stats: list[tuple[str, dict[str, int], str]] = []
-    total: dict[str, int] = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
+    # Gather per-session stats
+    session_stats: list[_SessionStat] = []
+    total_in = total_out = total_cc = total_cr = 0
     _month_seconds = 30 * 86400
     now_ts = time.time()
 
     for entry in history:
         tokens = usage_svc.get_tokens(entry.cwd)
-        session_total = sum(tokens.values())
-        if session_total > 0:
-            session_stats.append((entry.project, tokens, entry.ended_at))
+        if tokens.total > 0:
+            session_stats.append(_SessionStat(entry.project, tokens, entry.ended_at))
             # Only count toward total if within past month
             try:
                 ended = datetime.fromisoformat(entry.ended_at).timestamp()
                 if now_ts - ended < _month_seconds:
-                    for k in total:
-                        total[k] += tokens[k]
+                    total_in += tokens.input
+                    total_out += tokens.output
+                    total_cc += tokens.cache_create
+                    total_cr += tokens.cache_read
             except (ValueError, TypeError, AttributeError):
-                for k in total:
-                    total[k] += tokens[k]
+                total_in += tokens.input
+                total_out += tokens.output
+                total_cc += tokens.cache_create
+                total_cr += tokens.cache_read
 
-    total_sum = sum(total.values())
+    total = TokenUsageDTO(input=total_in, output=total_out, cache_create=total_cc, cache_read=total_cr)
+    total_sum = total.total
     card_w = w - _PAD * 2
 
     if total_sum == 0:
@@ -1143,10 +1156,10 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     y -= 6
     _row_h = 22
     total_lines = [
-        ("Input", total["input"]),
-        ("Output", total["output"]),
-        ("Cache", total["cache_create"] + total["cache_read"]),
-        ("Total", sum(total.values())),
+        ("Input", total.input),
+        ("Output", total.output),
+        ("Cache", total.cache_create + total.cache_read),
+        ("Total", total.total),
     ]
     total_card_h = _CARD_PAD + len(total_lines) * _row_h + _CARD_PAD
     total_card = _make_card(_PAD, y - total_card_h, card_w, total_card_h)
@@ -1172,7 +1185,7 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     view.addSubview_(top_header)
     y -= 6
 
-    session_stats.sort(key=lambda s: sum(s[1].values()), reverse=True)
+    session_stats.sort(key=lambda s: s.tokens.total, reverse=True)
     _top_n = 10
     top_entries = session_stats[:_top_n]
     _top_row_h = 22
@@ -1203,7 +1216,7 @@ def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
         date_str = _relative_time(ended_at)
         date_label = _make_secondary_label(date_str, _col_date, tpy, 75, 11.0)
         tpc.addSubview_(date_label)
-        total_tok = sum(tokens.values())
+        total_tok = tokens.total
         val = _make_secondary_label(
             _fmt_token_count(total_tok), _col_tokens, tpy, card_w - _CARD_PAD - _col_tokens, 11.0
         )
@@ -1400,14 +1413,14 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
         # Phase 1: Background — fetch and parse (no AppKit objects)
         releases = get_update_service().fetch_changelog()
         changelog: list[tuple[str, list[str]]] = []
-        for tag, body in releases:
-            items = _parse_release_notes(body)
+        for entry in releases:
+            items = _parse_release_notes(entry.body)
             if items:
-                changelog.append((tag, items))
-            elif body:
-                changelog.append((tag, [body[:100]]))
+                changelog.append((entry.tag, items))
+            elif entry.body:
+                changelog.append((entry.tag, [entry.body[:100]]))
             else:
-                changelog.append((tag, ["No release notes"]))
+                changelog.append((entry.tag, ["No release notes"]))
 
         # Phase 2: Build views on main thread (NSView is not thread-safe)
         def _build_views() -> None:

@@ -56,3 +56,25 @@ class ActivityEventDTO(BaseDTO):
     summary: str
     detail: str
     timestamp: str
+
+
+@dataclass(frozen=True)
+class TokenUsageDTO(BaseDTO):
+    """Token usage breakdown for a session."""
+
+    input: int
+    output: int
+    cache_create: int
+    cache_read: int
+
+    @property
+    def total(self) -> int:
+        return self.input + self.output + self.cache_create + self.cache_read
+
+
+@dataclass(frozen=True)
+class ChangelogEntryDTO(BaseDTO):
+    """A single release changelog entry."""
+
+    tag: str
+    body: str

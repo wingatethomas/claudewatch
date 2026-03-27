@@ -129,21 +129,21 @@ class TestDetermineStatus:
 class TestExtractPromptInfo:
     def test_extracts_prompt_context(self):
         buf = "some output\n⏺ Bash: ls -la\n  Allow once  \n  Allow always  "
-        one_line, context = _extract_prompt_info(buf)
-        assert "Bash" in one_line or "ls" in context
+        result = _extract_prompt_info(buf)
+        assert "Bash" in result.one_line or "ls" in result.context
 
     def test_no_prompt_returns_empty(self):
         buf = "just regular output\nno prompts here"
-        one_line, context = _extract_prompt_info(buf)
-        assert one_line == ""
-        assert context == ""
+        result = _extract_prompt_info(buf)
+        assert result.one_line == ""
+        assert result.context == ""
 
     def test_truncates_long_one_liner(self):
         long_cmd = "x" * 200
         buf = f"⏺ {long_cmd}\n  Allow once  "
-        one_line, _ = _extract_prompt_info(buf)
-        assert len(one_line) <= 80
-        assert one_line.endswith("...")
+        result = _extract_prompt_info(buf)
+        assert len(result.one_line) <= 80
+        assert result.one_line.endswith("...")
 
 
 class TestGetSessionId:

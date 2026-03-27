@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 
 from claudewatch.backend.core.process import procinfo
+from claudewatch.backend.core.process.models import ProcessEntry, ProcessInfo
 from claudewatch.backend.core.service import BaseService
 
 
@@ -25,11 +26,11 @@ class ProcessService(BaseService):
     # Process inspection (delegates to procinfo)
     # ------------------------------------------------------------------
 
-    def list_all(self) -> list[dict]:
+    def list_all(self) -> list[ProcessEntry]:
         """Return pid, ppid, tty, comm for every process on the system."""
         return procinfo.list_all_processes()
 
-    def get_info(self, pids: list[int]) -> dict[int, dict]:
+    def get_info(self, pids: list[int]) -> dict[int, ProcessInfo]:
         """Get tty, ppid, and full executable path for a list of PIDs."""
         return procinfo.get_process_info(pids)
 
@@ -41,7 +42,7 @@ class ProcessService(BaseService):
         """Get the parent PID for a single process. Returns 0 on failure."""
         return procinfo.get_ppid(pid)
 
-    def get_single_info(self, pid: int) -> dict | None:
+    def get_single_info(self, pid: int) -> ProcessInfo | None:
         """Get tty, ppid, and comm for a single PID. Returns None on failure."""
         return procinfo.get_single_process_info(pid)
 

@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+from claudewatch.backend.core.process.models import ProcessEntry, ProcessInfo
 from claudewatch.backend.core.process.service import ProcessService
 
 
@@ -13,16 +14,16 @@ class TestProcessServiceDelegation:
 
     @patch("claudewatch.backend.core.process.service.procinfo.list_all_processes")
     def test_list_all(self, mock_list_all):
-        mock_list_all.return_value = [{"pid": 1, "ppid": 0, "tty": "??", "comm": "/sbin/launchd"}]
+        mock_list_all.return_value = [ProcessEntry(pid=1, tty="??", ppid=0, comm="/sbin/launchd")]
         result = self.svc.list_all()
-        assert result == [{"pid": 1, "ppid": 0, "tty": "??", "comm": "/sbin/launchd"}]
+        assert result == [ProcessEntry(pid=1, tty="??", ppid=0, comm="/sbin/launchd")]
         mock_list_all.assert_called_once()
 
     @patch("claudewatch.backend.core.process.service.procinfo.get_process_info")
     def test_get_info(self, mock_get_info):
-        mock_get_info.return_value = {42: {"tty": "ttys001", "ppid": 1, "comm": "/bin/zsh"}}
+        mock_get_info.return_value = {42: ProcessInfo(tty="ttys001", ppid=1, comm="/bin/zsh")}
         result = self.svc.get_info([42])
-        assert result == {42: {"tty": "ttys001", "ppid": 1, "comm": "/bin/zsh"}}
+        assert result == {42: ProcessInfo(tty="ttys001", ppid=1, comm="/bin/zsh")}
         mock_get_info.assert_called_once_with([42])
 
     @patch("claudewatch.backend.core.process.service.procinfo.get_process_info")
@@ -56,9 +57,9 @@ class TestProcessServiceDelegation:
 
     @patch("claudewatch.backend.core.process.service.procinfo.get_single_process_info")
     def test_get_single_info(self, mock_single):
-        mock_single.return_value = {"tty": "ttys001", "ppid": 1, "comm": "/bin/zsh"}
+        mock_single.return_value = ProcessInfo(tty="ttys001", ppid=1, comm="/bin/zsh")
         result = self.svc.get_single_info(42)
-        assert result == {"tty": "ttys001", "ppid": 1, "comm": "/bin/zsh"}
+        assert result == ProcessInfo(tty="ttys001", ppid=1, comm="/bin/zsh")
         mock_single.assert_called_once_with(42)
 
     @patch("claudewatch.backend.core.process.service.procinfo.get_single_process_info")

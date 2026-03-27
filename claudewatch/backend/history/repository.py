@@ -4,7 +4,9 @@ import json
 import logging
 import os
 from datetime import UTC, datetime
+from typing import TypedDict
 
+from claudewatch.backend.core.dto import HistoryEntryDTO
 from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, HISTORY_PATH, proj_key_to_cwd
 from claudewatch.backend.core.session_log.jsonl import is_safe_jsonl_path, read_jsonl_tail
 
@@ -14,7 +16,16 @@ _PATH = HISTORY_PATH
 _MAX_ENTRIES = 50
 
 
-def _load() -> list[dict]:
+class _HistoryRecord(TypedDict):
+    session_id: str
+    project: str
+    cwd: str
+    model: str
+    host_app: str
+    ended_at: str
+
+
+def _load() -> list[_HistoryRecord]:
     try:
         with open(_PATH) as f:
             data = json.load(f)
@@ -29,7 +40,7 @@ def _load() -> list[dict]:
     return data
 
 
-def _save(entries: list[dict]) -> None:
+def _save(entries: list[_HistoryRecord]) -> None:
     tmp = _PATH + ".tmp"
     try:
         with open(tmp, "w") as f:
@@ -44,16 +55,16 @@ def record_session(session_id: str, project: str, cwd: str, model: str, host_app
     entries = _load()
     ts = datetime.now(tz=UTC).isoformat()
     # Remove existing entry for same CWD (keep only latest)
-    entries = [e for e in entries if not (isinstance(e, dict) and e.get("cwd") == cwd)]
+    entries = [e for e in entries if e["cwd"] != cwd]
     entries.append(
-        {
-            "session_id": session_id,
-            "project": project,
-            "cwd": cwd,
-            "model": model,
-            "host_app": host_app,
-            "ended_at": ts,
-        }
+        _HistoryRecord(
+            session_id=session_id,
+            project=project,
+            cwd=cwd,
+            model=model,
+            host_app=host_app,
+            ended_at=ts,
+        )
     )
     # Cap at max
     if len(entries) > _MAX_ENTRIES:
@@ -62,20 +73,30 @@ def record_session(session_id: str, project: str, cwd: str, model: str, host_app
     log.info("history.recorded project=%s", project)
 
 
-def get_history() -> list[dict]:
+def get_history() -> list[HistoryEntryDTO]:
     """Return session history, newest first. Seeds from JSONL on first call."""
     entries = _load()
     if not entries:
         entries = _seed_from_jsonl()
-    return list(reversed(entries))
+    return [
+        HistoryEntryDTO(
+            session_id=e.get("session_id", ""),
+            project=e.get("project", ""),
+            cwd=e.get("cwd", ""),
+            model=e.get("model", ""),
+            host_app=e.get("host_app", ""),
+            ended_at=e.get("ended_at", ""),
+        )
+        for e in reversed(entries)
+    ]
 
 
-def _seed_from_jsonl() -> list[dict]:
+def _seed_from_jsonl() -> list[_HistoryRecord]:
     """Scan ~/.claude/projects/ for existing sessions and populate history."""
     if not os.path.isdir(CLAUDE_PROJECTS_DIR):
         return []
 
-    entries: list[dict] = []
+    entries: list[_HistoryRecord] = []
     try:
         for proj_key in os.listdir(CLAUDE_PROJECTS_DIR):
             proj_dir = os.path.join(CLAUDE_PROJECTS_DIR, proj_key)
@@ -106,19 +127,19 @@ def _seed_from_jsonl() -> list[dict]:
 
             mtime = os.path.getmtime(jsonl_path)
             entries.append(
-                {
-                    "session_id": session_id,
-                    "project": project,
-                    "cwd": cwd,
-                    "model": model,
-                    "host_app": "Terminal",
-                    "ended_at": datetime.fromtimestamp(mtime, tz=UTC).isoformat(),
-                }
+                _HistoryRecord(
+                    session_id=session_id,
+                    project=project,
+                    cwd=cwd,
+                    model=model,
+                    host_app="Terminal",
+                    ended_at=datetime.fromtimestamp(mtime, tz=UTC).isoformat(),
+                )
             )
     except OSError:
         return []
 
-    entries.sort(key=lambda e: e.get("ended_at", ""))
+    entries.sort(key=lambda e: e["ended_at"])
     if len(entries) > _MAX_ENTRIES:
         entries = entries[-_MAX_ENTRIES:]
     _save(entries)
@@ -129,5 +150,5 @@ def _seed_from_jsonl() -> list[dict]:
 def remove_history_entry(cwd: str) -> None:
     """Remove a history entry by CWD."""
     entries = _load()
-    entries = [e for e in entries if not (isinstance(e, dict) and e.get("cwd") == cwd)]
+    entries = [e for e in entries if e["cwd"] != cwd]
     _save(entries)

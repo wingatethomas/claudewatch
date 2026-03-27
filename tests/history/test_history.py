@@ -65,8 +65,8 @@ class TestGetHistory:
             history.record_session("sess-2", "proj-b", "/b", "", "Terminal")
             result = history.get_history()
 
-        assert result[0]["session_id"] == "sess-2"
-        assert result[1]["session_id"] == "sess-1"
+        assert result[0].session_id == "sess-2"
+        assert result[1].session_id == "sess-1"
 
     def test_seeds_from_jsonl_when_empty(self, tmp_path):
         fake_path = str(tmp_path / "history.json")
@@ -84,7 +84,7 @@ class TestGetHistory:
             result = history.get_history()
 
         assert len(result) >= 1
-        assert result[0]["project"] == "myapp"
+        assert result[0].project == "myapp"
 
 
 class TestSeedFromJsonl:

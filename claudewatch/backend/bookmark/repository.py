@@ -4,8 +4,10 @@ import json
 import logging
 import os
 from datetime import UTC, datetime
+from typing import TypedDict
 
 from claudewatch.backend.core import features
+from claudewatch.backend.core.dto import BookmarkDTO
 from claudewatch.backend.core.paths import PINS_PATH
 
 log = logging.getLogger("claudewatch")
@@ -13,7 +15,15 @@ log = logging.getLogger("claudewatch")
 _PATH = PINS_PATH
 
 
-def _load() -> list[dict]:
+class _BookmarkRecord(TypedDict):
+    session_id: str
+    project: str
+    cwd: str
+    note: str
+    timestamp: str
+
+
+def _load() -> list[_BookmarkRecord]:
     try:
         with open(_PATH) as f:
             data = json.load(f)
@@ -44,7 +54,7 @@ def _load() -> list[dict]:
     return alive
 
 
-def _save(pins: list[dict]) -> None:
+def _save(pins: list[_BookmarkRecord]) -> None:
     tmp = _PATH + ".tmp"
     try:
         with open(tmp, "w") as f:
@@ -59,7 +69,7 @@ def add_bookmark(session_id: str, project: str, cwd: str, note: str) -> None:
     bookmarks = _load()
     ts = datetime.now(tz=UTC).isoformat()
     for entry in bookmarks:
-        if isinstance(entry, dict) and entry.get("cwd") == cwd:
+        if entry["cwd"] == cwd:
             entry["session_id"] = session_id
             entry["note"] = note
             entry["timestamp"] = ts
@@ -67,33 +77,42 @@ def add_bookmark(session_id: str, project: str, cwd: str, note: str) -> None:
             log.info("bookmark.updated project=%s", project)
             return
     bookmarks.append(
-        {
-            "session_id": session_id,
-            "project": project,
-            "cwd": cwd,
-            "note": note,
-            "timestamp": ts,
-        }
+        _BookmarkRecord(
+            session_id=session_id,
+            project=project,
+            cwd=cwd,
+            note=note,
+            timestamp=ts,
+        )
     )
     _save(bookmarks)
     log.info("bookmark.created project=%s", project)
 
 
-def get_bookmarks() -> list[dict]:
-    """Return all bookmarked sessions."""
-    return _load()
+def get_bookmarks() -> list[BookmarkDTO]:
+    """Return all bookmarked sessions as DTOs."""
+    return [
+        BookmarkDTO(
+            session_id=p.get("session_id", ""),
+            project=p.get("project", ""),
+            cwd=p.get("cwd", ""),
+            note=p.get("note", ""),
+            timestamp=p.get("timestamp", ""),
+        )
+        for p in _load()
+    ]
 
 
 def get_bookmarked_cwds() -> set[str]:
     """Return the set of CWDs that are bookmarked."""
-    return {p.get("cwd", "") for p in _load() if isinstance(p, dict)}
+    return {p["cwd"] for p in _load()}
 
 
 def remove_bookmark(cwd: str) -> None:
     """Remove a bookmark by CWD."""
     bookmarks = _load()
     before = len(bookmarks)
-    bookmarks = [p for p in bookmarks if not (isinstance(p, dict) and p.get("cwd") == cwd)]
+    bookmarks = [p for p in bookmarks if p["cwd"] != cwd]
     if len(bookmarks) < before:
         log.info("bookmark.removed cwd=%s", cwd)
     _save(bookmarks)

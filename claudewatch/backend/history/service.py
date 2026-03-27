@@ -14,17 +14,7 @@ class HistoryService(BaseService):
 
     def get_all(self) -> list[HistoryEntryDTO]:
         """Return all history entries as DTOs, newest first."""
-        return [
-            HistoryEntryDTO(
-                session_id=e.get("session_id", ""),
-                project=e.get("project", ""),
-                cwd=e.get("cwd", ""),
-                model=e.get("model", ""),
-                host_app=e.get("host_app", ""),
-                ended_at=e.get("ended_at", ""),
-            )
-            for e in history_repo.get_history()
-        ]
+        return history_repo.get_history()
 
     def remove(self, cwd: str) -> None:
         """Remove a history entry by CWD."""
