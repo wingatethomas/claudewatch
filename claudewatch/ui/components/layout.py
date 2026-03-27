@@ -2,6 +2,24 @@
 
 NSView uses bottom-up coordinates (y=0 is the bottom). VStack lets you
 think top-down: add items sequentially, it handles the coordinate math.
+
+Design system layout rules
+--------------------------
+1. **Zero-frame convention**: All widgets (labels, buttons) MUST start with
+   frame (0, 0, 0, 0). The layout system or caller sets the actual frame.
+   This prevents intrinsic sizing from fighting the layout.
+
+2. **VStack owns width**: When a view is added to VStack, VStack sets its
+   width to ``container_width - 2 * padding``. Don't pre-set width on views
+   managed by VStack.
+
+3. **Cards own their internals**: Cards position their own child views using
+   manual coordinates inside ``contentView()``. VStack only positions the
+   card itself.
+
+4. **No manual pixel math outside cards**: Everything between pane header
+   and pane bottom should go through VStack. Manual y-tracking is only
+   allowed inside card content views.
 """
 
 from __future__ import annotations
