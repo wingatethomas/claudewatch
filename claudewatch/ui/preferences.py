@@ -3,6 +3,7 @@
 import os
 import re
 import subprocess
+import threading
 import time
 import webbrowser
 from datetime import UTC, datetime, timedelta
@@ -47,9 +48,11 @@ from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FacetType
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
+from claudewatch.backend.core.login_item import sync_login_item
 from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.summary.dependencies import get_summary_service
+from claudewatch.backend.updates.dependencies import get_update_service
 from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
 from claudewatch.ui.activity import show_activity
@@ -77,6 +80,7 @@ _FEATURE_DETAILS: dict[str, str] = {
     "notifications": "Get alerts when Claude needs your attention.",
     "background_summaries": "Periodically regenerate session summaries in the background.",
     "auto_updates": "Check GitHub for new releases periodically.",
+    "launch_at_login": "Start ClaudeWatch automatically when you log in.",
 }
 
 
@@ -260,6 +264,8 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
         features.set_enabled(key, enabled)
         for ctrl in self._feature_controls.get(key, []):
             ctrl.setEnabled_(enabled)
+        if key == "launch_at_login":
+            sync_login_item(enabled)
 
     def facetChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
         info = str(sender.cell().representedObject())
@@ -1027,59 +1033,25 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
         view.addSubview_(s_label)
 
 
-_CHANGELOG = [
-    (
-        "v0.7.0",
-        [
-            "Sidebar preferences with feature toggles",
-            "Session history with search, sort, and bookmark filter",
-            "Smarter summaries: title + bulleted action list",
-            "Background summary refresh (toggleable)",
-            "Bookmarks submenu in menu bar",
-            "Danger zone: clear bookmarks or summaries",
-            "Settings stored in macOS preferences",
-        ],
-    ),
-    (
-        "v0.6.1",
-        [
-            "Native macOS notifications (no more terminal-notifier)",
-            "Compact model names in menu bar",
-        ],
-    ),
-    (
-        "v0.6.0",
-        [
-            "One-click self-update from GitHub Releases",
-            "Onboarding tips for new users",
-            "Per-session token usage breakdown",
-        ],
-    ),
-    (
-        "v0.5.0",
-        [
-            "Onboarding tips and audit logging",
-            "Session history recording",
-            "Activity feed with timeline view",
-        ],
-    ),
-    (
-        "v0.4.0",
-        [
-            "Token usage tracking per session",
-            "Auto-generated session summaries",
-            "Pinned sessions with resume",
-        ],
-    ),
-    (
-        "v0.3.0",
-        [
-            "Preferences window with notification sounds",
-            "Session history tab",
-            "IDE detection (VS Code, PyCharm)",
-        ],
-    ),
-]
+def _parse_release_notes(body: str) -> list[str]:
+    """Extract bullet points from GitHub release notes markdown."""
+    items = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("* ", "- ", "• ")):
+            text = stripped.lstrip("*-• ").strip()
+            if not text:
+                continue
+            # Strip GitHub auto-generated suffixes: "by @user in https://..."
+            by_idx = text.find(" by @")
+            if by_idx > 0:
+                text = text[:by_idx]
+            # Skip lines that are just "Full Changelog" links or headers
+            if text.startswith(("**Full Changelog", "Full Changelog", "## ")):
+                continue
+            if text:
+                items.append(text)
+    return items
 
 
 def _build_usage_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # noqa: PLR0915
@@ -1353,23 +1325,14 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
 
     y -= card_h + 24
 
-    # Changelog in a scrollable card
+    # Changelog in a scrollable card — fetched from GitHub Releases
     y -= 12
     changelog_label = _make_secondary_label("WHAT'S NEW", _PAD, y, 200, 10.0)
     changelog_label.setTextColor_(NSColor.tertiaryLabelColor())
     view.addSubview_(changelog_label)
     y -= 6
 
-    _ver_h = 18
-    _bullet_h = 14
-    _ver_gap = 8
-    _cl_pad = 10  # inner padding for changelog
-    inner_content_h = _cl_pad
-    for _ver, items in _CHANGELOG:
-        inner_content_h += _ver_h + len(items) * _bullet_h + _ver_gap
-    inner_content_h += _cl_pad
-
-    changelog_card_h = min(y - 8, inner_content_h)  # 8px bottom margin
+    changelog_card_h = y - 8  # fill remaining space
     changelog_card = _make_card(_PAD, y - changelog_card_h, card_w, changelog_card_h)
     changelog_card.setWantsLayer_(True)
     changelog_card.layer().setMasksToBounds_(True)
@@ -1380,23 +1343,64 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     scroll.setAutohidesScrollers_(True)
     scroll.setDrawsBackground_(False)
 
-    inner_h = max(changelog_card_h, inner_content_h)
-    inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, inner_h))
-    cy = inner_h - _cl_pad
-
-    for version, items in _CHANGELOG:
-        cy -= _ver_h
-        ver = _make_label(version, _cl_pad, cy, 200, 11.0, bold=True)
-        inner.addSubview_(ver)
-        for item in items:
-            cy -= _bullet_h
-            bullet = _make_secondary_label(f"• {item}", _cl_pad + 8, cy, card_w - _cl_pad * 2 - 20, 10.0)
-            inner.addSubview_(bullet)
-        cy -= _ver_gap
-
-    scroll.setDocumentView_(inner)
-    inner.scrollPoint_((0, inner_h))
+    # Show loading placeholder
+    loading = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, changelog_card_h))
+    loading_label = _make_secondary_label("Loading changelog…", 10, changelog_card_h // 2, card_w - 20, 11.0)
+    loading.addSubview_(loading_label)
+    scroll.setDocumentView_(loading)
     changelog_card.contentView().addSubview_(scroll)
+
+    # Fetch in background and populate
+
+    def _fetch_and_render() -> None:
+        releases = get_update_service().fetch_changelog()
+        changelog: list[tuple[str, list[str]]] = []
+        for tag, body in releases:
+            items = _parse_release_notes(body)
+            if items:
+                changelog.append((tag, items))
+            elif body:
+                changelog.append((tag, [body[:100]]))
+            else:
+                changelog.append((tag, ["No release notes"]))
+
+        _ver_h = 18
+        _bullet_h = 14
+        _ver_gap = 8
+        _cl_pad = 10
+        content_h = _cl_pad
+        for _tag, items in changelog:
+            content_h += _ver_h + len(items) * _bullet_h + _ver_gap
+        content_h += _cl_pad
+
+        inner_h = max(changelog_card_h, content_h)
+        inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, inner_h))
+        cy = inner_h - _cl_pad
+
+        for tag, items in changelog:
+            cy -= _ver_h
+            ver = _make_label(tag, _cl_pad, cy, 200, 11.0, bold=True)
+            inner.addSubview_(ver)
+            for item in items:
+                cy -= _bullet_h
+                bullet = _make_secondary_label(f"• {item}", _cl_pad + 8, cy, card_w - _cl_pad * 2 - 20, 10.0)
+                inner.addSubview_(bullet)
+            cy -= _ver_gap
+
+        # UI updates must happen on main thread
+        def _apply(_arg: object) -> None:
+            scroll.setDocumentView_(inner)
+            inner.scrollPoint_((0, inner_h))
+
+        scroll.performSelectorOnMainThread_withObject_waitUntilDone_("setNeedsDisplay:", None, False)
+        NSApplication.sharedApplication().performSelectorOnMainThread_withObject_waitUntilDone_(
+            "activateIgnoringOtherApps:", False, False
+        )
+        # NSView creation happened on background thread but is safe before addSubview.
+        # setDocumentView on main thread:
+        scroll.performSelectorOnMainThread_withObject_waitUntilDone_("setDocumentView:", inner, False)
+
+    threading.Thread(target=_fetch_and_render, daemon=True).start()
 
     return view
 
