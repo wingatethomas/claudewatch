@@ -75,7 +75,7 @@ def build_session_submenu(
     action_items = [
         ("resume", "Resume", "play.circle"),
         ("bookmark", "Bookmark...", "bookmark"),
-        ("unbookmark", "Remove", "trash"),
+        ("unbookmark", "Unbookmark", "bookmark.slash"),
         ("quit", "Quit session", "xmark.circle"),
         ("remove", "Remove", "trash"),
     ]

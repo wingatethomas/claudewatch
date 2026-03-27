@@ -1,11 +1,10 @@
-"""Settings pane — feature toggles and danger zone."""
+"""Settings pane — feature toggles, test actions, and danger zone."""
 
 from __future__ import annotations
 
 import objc
 from AppKit import (
     NSBox,
-    NSColor,
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
@@ -18,13 +17,11 @@ from Foundation import NSMakeRect
 
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FacetType
+from claudewatch.ui.components.tokens import Colors, Font, Spacing
 from claudewatch.ui.components.widgets.buttons import Size, button
 from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
-
-_PAD = 24
-_CARD_PAD = 16
 
 _FEATURE_DETAILS: dict[str, str] = {
     "bookmarks": "Save sessions to resume later from the menu bar.",
@@ -35,8 +32,8 @@ _FEATURE_DETAILS: dict[str, str] = {
 }
 
 
-def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
-    """Build the Settings pane with feature cards and danger zone."""
+def build_settings_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: PLR0915
+    """Build the Settings pane with feature cards, test actions, and danger zone."""
     view, content_top = create_pane("Settings", w, h, subtitle="Feature toggles and preferences")
 
     all_features = features.get_all()
@@ -46,12 +43,14 @@ def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
     content_h = 0
     for feature in all_features:
         detail = _FEATURE_DETAILS.get(feature.key, "")
-        toggle_h = 56 if detail else 44
-        card_h = toggle_h + len(feature.facets) * 40
-        content_h += card_h + 8
-    content_h += 24  # gap before danger zone
-    content_h += 30 + 2 * 38  # danger zone
-    content_h += _PAD
+        toggle_row_h = 56 if detail else 44
+        feature_card_h = toggle_row_h + len(feature.facets) * 40
+        content_h += feature_card_h + Spacing.SM
+    content_h += Spacing.XL  # gap before test actions
+    content_h += 28  # test action buttons
+    content_h += Spacing.XL  # gap before danger zone
+    content_h += 36 + 2 * 38  # danger zone
+    content_h += Spacing.XL
 
     scroll_h = content_top
     inner_h = max(scroll_h, content_h)
@@ -62,12 +61,38 @@ def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
 
     # Feature cards
     for feature in all_features:
-        card_h = _build_feature_card(inner, delegate, feature, _PAD, y, card_w)
-        y -= card_h + 8
+        feature_card_h = _build_feature_card(inner, delegate, feature, CONTENT_PADDING, y, card_w)
+        y -= feature_card_h + Spacing.SM
+
+    # Test actions
+    y -= Spacing.LG
+    test_label = label("Test", size=Font.SMALL, bold=True, color=Colors.secondary())
+    test_label.setFrame_(NSMakeRect(CONTENT_PADDING, y - 14, 200, 14))
+    inner.addSubview_(test_label)
+    y -= 22
+
+    notification_btn = button(
+        "Send Test Notification",
+        target=delegate,
+        action=objc.selector(delegate.testNotification_, signature=b"v@:@"),
+        size=Size(160, 24),
+    )
+    notification_btn.setFrame_(NSMakeRect(CONTENT_PADDING, y - 24, 160, 24))
+    inner.addSubview_(notification_btn)
+
+    sound_btn = button(
+        "Play Sound",
+        target=delegate,
+        action=objc.selector(delegate.testSound_, signature=b"v@:@"),
+        size=Size(100, 24),
+    )
+    sound_btn.setFrame_(NSMakeRect(CONTENT_PADDING + 168, y - 24, 100, 24))
+    inner.addSubview_(sound_btn)
+    y -= 32
 
     # Danger zone
-    y -= 16
-    _build_danger_zone(inner, delegate, _PAD, y, card_w)
+    y -= Spacing.LG
+    _build_danger_zone(inner, delegate, CONTENT_PADDING, y, card_w)
 
     if content_h <= scroll_h:
         inner.setFrame_(NSMakeRect(0, 0, w, scroll_h))
@@ -78,7 +103,7 @@ def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
         scroll.setAutohidesScrollers_(True)
         scroll.setDrawsBackground_(False)
         scroll.setDocumentView_(inner)
-        inner.scrollPoint_((0, inner_h))  # scroll to top
+        inner.scrollPoint_((0, inner_h))
         view.addSubview_(scroll)
 
     return view
@@ -97,128 +122,134 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
     enabled = features.is_enabled(key)
     detail = _FEATURE_DETAILS.get(key, "")
 
-    toggle_h = 56 if detail else 44
-    facet_h = 40
-    card_h = toggle_h + len(feature.facets) * facet_h
+    toggle_row_h = 56 if detail else 44
+    facet_row_h = 40
+    feature_card_h = toggle_row_h + len(feature.facets) * facet_row_h
 
-    c = card(card_w, card_h)
-    c.setFrame_(NSMakeRect(x, y - card_h, card_w, card_h))
-    view.addSubview_(c)
-    content = c.contentView()
+    feature_card = card(card_w, feature_card_h)
+    feature_card.setFrame_(NSMakeRect(x, y - feature_card_h, card_w, feature_card_h))
+    view.addSubview_(feature_card)
+    content = feature_card.contentView()
 
     # Toggle row
-    row_y = card_h - toggle_h
-    name_y = row_y + (toggle_h - 18) // 2 + (6 if detail else 0)
-    name_lbl = label(feature.description, size=13.0)
-    name_lbl.setFrame_(NSMakeRect(_CARD_PAD, name_y, card_w - _CARD_PAD * 2 - 60, 18))
-    content.addSubview_(name_lbl)
+    row_y = feature_card_h - toggle_row_h
+    name_y = row_y + (toggle_row_h - 18) // 2 + (6 if detail else 0)
+    name_label = label(feature.description, size=Font.BODY)
+    name_label.setFrame_(NSMakeRect(Spacing.LG, name_y, card_w - Spacing.LG * 2 - 60, 18))
+    content.addSubview_(name_label)
 
     if detail:
-        detail_lbl = secondary_label(detail, size=10.0)
-        detail_lbl.setTextColor_(NSColor.tertiaryLabelColor())
-        detail_lbl.setFrame_(NSMakeRect(_CARD_PAD, name_y - 16, card_w - _CARD_PAD * 2 - 60, 14))
-        content.addSubview_(detail_lbl)
+        detail_label = secondary_label(detail, size=Font.CAPTION)
+        detail_label.setTextColor_(Colors.tertiary())
+        detail_label.setFrame_(NSMakeRect(Spacing.LG, name_y - 16, card_w - Spacing.LG * 2 - 60, 14))
+        content.addSubview_(detail_label)
 
-    sw = NSSwitch.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - 46, row_y + (toggle_h - 22) // 2, 46, 22))
-    sw.setState_(NSControlStateValueOn if enabled else NSControlStateValueOff)
-    sw.setRepresentedObject_(key)
-    sw.setTarget_(delegate)
-    sw.setAction_(objc.selector(delegate.featureToggled_, signature=b"v@:@"))
-    content.addSubview_(sw)
+    toggle_switch = NSSwitch.alloc().initWithFrame_(
+        NSMakeRect(card_w - Spacing.LG - 46, row_y + (toggle_row_h - 22) // 2, 46, 22)
+    )
+    toggle_switch.setState_(NSControlStateValueOn if enabled else NSControlStateValueOff)
+    toggle_switch.setRepresentedObject_(key)
+    toggle_switch.setTarget_(delegate)
+    toggle_switch.setAction_(objc.selector(delegate.featureToggled_, signature=b"v@:@"))
+    content.addSubview_(toggle_switch)
 
     # Facet rows
     facet_controls: list[object] = []
     for i, facet in enumerate(feature.facets):
-        fy = row_y - (i + 1) * facet_h
-        sep = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, fy + facet_h - 1, card_w - _CARD_PAD * 2, 1))
-        sep.setBoxType_(2)
-        content.addSubview_(sep)
+        facet_y = row_y - (i + 1) * facet_row_h
+        separator = NSBox.alloc().initWithFrame_(
+            NSMakeRect(Spacing.LG, facet_y + facet_row_h - 1, card_w - Spacing.LG * 2, 1)
+        )
+        separator.setBoxType_(2)
+        content.addSubview_(separator)
 
-        facet_label_text = facet.description or facet.name.replace("_", " ").title()
-        flbl = label(facet_label_text, size=12.0, color=NSColor.secondaryLabelColor())
-        flbl.setFrame_(NSMakeRect(_CARD_PAD, fy + 11, 140, 18))
-        content.addSubview_(flbl)
+        facet_text = facet.description or facet.name.replace("_", " ").title()
+        facet_label = label(facet_text, size=Font.SECONDARY, color=Colors.secondary())
+        facet_label.setFrame_(NSMakeRect(Spacing.LG, facet_y + 11, 140, 18))
+        content.addSubview_(facet_label)
 
         if facet.type == FacetType.CHOICE:
-            popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-                NSMakeRect(card_w - _CARD_PAD - 160, fy + 8, 160, 24), False
+            facet_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+                NSMakeRect(card_w - Spacing.LG - 160, facet_y + 8, 160, 24), False
             )
-            popup.setFont_(NSFont.systemFontOfSize_(12.0))
-            popup.addItemsWithTitles_(list(facet.options))
+            facet_popup.setFont_(NSFont.systemFontOfSize_(Font.SECONDARY))
+            facet_popup.addItemsWithTitles_(list(facet.options))
             current = features.get_facet(key, facet.name)
             if current is not None:
-                popup.selectItemWithTitle_(str(current))
-            popup.cell().setRepresentedObject_(f"{key}|{facet.name}")
-            popup.setTarget_(delegate)
-            popup.setAction_(objc.selector(delegate.facetChanged_, signature=b"v@:@"))
-            popup.setEnabled_(enabled)
-            content.addSubview_(popup)
-            facet_controls.append(popup)
+                facet_popup.selectItemWithTitle_(str(current))
+            facet_popup.cell().setRepresentedObject_(f"{key}|{facet.name}")
+            facet_popup.setTarget_(delegate)
+            facet_popup.setAction_(objc.selector(delegate.facetChanged_, signature=b"v@:@"))
+            facet_popup.setEnabled_(enabled)
+            content.addSubview_(facet_popup)
+            facet_controls.append(facet_popup)
         elif facet.type == FacetType.BOOL:
-            fsw = NSSwitch.alloc().initWithFrame_(NSMakeRect(card_w - _CARD_PAD - 46, fy + 9, 46, 22))
+            facet_switch = NSSwitch.alloc().initWithFrame_(NSMakeRect(card_w - Spacing.LG - 46, facet_y + 9, 46, 22))
             val = features.get_facet(key, facet.name)
-            fsw.setState_(NSControlStateValueOn if val else NSControlStateValueOff)
-            fsw.cell().setRepresentedObject_(f"{key}|{facet.name}")
-            fsw.setTarget_(delegate)
-            fsw.setAction_(objc.selector(delegate.facetBoolChanged_, signature=b"v@:@"))
-            fsw.setEnabled_(enabled)
-            content.addSubview_(fsw)
-            facet_controls.append(fsw)
+            facet_switch.setState_(NSControlStateValueOn if val else NSControlStateValueOff)
+            facet_switch.cell().setRepresentedObject_(f"{key}|{facet.name}")
+            facet_switch.setTarget_(delegate)
+            facet_switch.setAction_(objc.selector(delegate.facetBoolChanged_, signature=b"v@:@"))
+            facet_switch.setEnabled_(enabled)
+            content.addSubview_(facet_switch)
+            facet_controls.append(facet_switch)
 
     delegate._feature_controls[key] = facet_controls
-    return card_h
+    return feature_card_h
 
 
 def _build_danger_zone(view: NSView, delegate: object, x: float, y: float, card_w: float) -> None:
     """Build the danger zone card."""
-    red = NSColor.systemRedColor()
+    danger_color = Colors.danger()
     header_h = 36
     row_h = 38
     total_h = header_h + 2 * row_h
 
-    c = card(card_w, total_h, border_color=red.colorWithAlphaComponent_(0.3))
-    c.setFrame_(NSMakeRect(x, y - total_h, card_w, total_h))
-    view.addSubview_(c)
-    content = c.contentView()
+    danger_card = card(card_w, total_h, border_color=danger_color.colorWithAlphaComponent_(0.3))
+    danger_card.setFrame_(NSMakeRect(x, y - total_h, card_w, total_h))
+    view.addSubview_(danger_card)
+    content = danger_card.contentView()
 
     # Header
-    header = label("Danger Zone", size=11.0, bold=True, color=red.colorWithAlphaComponent_(0.8))
-    header.setFrame_(NSMakeRect(_CARD_PAD, total_h - 10 - 14, 200, 14))
-    content.addSubview_(header)
+    header_label = label("Danger Zone", size=Font.SMALL, bold=True, color=danger_color.colorWithAlphaComponent_(0.8))
+    header_label.setFrame_(NSMakeRect(Spacing.LG, total_h - 10 - 14, 200, 14))
+    content.addSubview_(header_label)
 
-    separator = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, total_h - header_h, card_w - _CARD_PAD * 2, 1))
-    separator.setBoxType_(2)
-    content.addSubview_(separator)
+    header_separator = NSBox.alloc().initWithFrame_(
+        NSMakeRect(Spacing.LG, total_h - header_h, card_w - Spacing.LG * 2, 1)
+    )
+    header_separator.setBoxType_(2)
+    content.addSubview_(header_separator)
 
     # Row 1: Clear bookmarks
-    r1y = total_h - header_h - row_h
-    r1_label = label("Clear all bookmarks", size=12.0)
-    r1_label.setFrame_(NSMakeRect(_CARD_PAD, r1y + 10, card_w - _CARD_PAD * 2 - 88, 18))
-    content.addSubview_(r1_label)
-    bm_btn = button(
+    bookmarks_row_y = total_h - header_h - row_h
+    bookmarks_label = label("Clear all bookmarks", size=Font.SECONDARY)
+    bookmarks_label.setFrame_(NSMakeRect(Spacing.LG, bookmarks_row_y + 10, card_w - Spacing.LG * 2 - 88, 18))
+    content.addSubview_(bookmarks_label)
+    bookmarks_button = button(
         "Clear...",
         target=delegate,
         action=objc.selector(delegate.clearBookmarks_, signature=b"v@:@"),
         size=Size(80, 22),
     )
-    bm_btn.setFrame_(NSMakeRect(card_w - _CARD_PAD - 80, r1y + 8, 80, 22))
-    content.addSubview_(bm_btn)
+    bookmarks_button.setFrame_(NSMakeRect(card_w - Spacing.LG - 80, bookmarks_row_y + 8, 80, 22))
+    content.addSubview_(bookmarks_button)
 
     # Separator
-    sep2 = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, r1y, card_w - _CARD_PAD * 2, 1))
-    sep2.setBoxType_(2)
-    content.addSubview_(sep2)
+    row_separator = NSBox.alloc().initWithFrame_(NSMakeRect(Spacing.LG, bookmarks_row_y, card_w - Spacing.LG * 2, 1))
+    row_separator.setBoxType_(2)
+    content.addSubview_(row_separator)
 
     # Row 2: Clear summaries
-    r2y = r1y - row_h
-    r2_label = label("Clear all summaries", size=12.0)
-    r2_label.setFrame_(NSMakeRect(_CARD_PAD, r2y + 10, card_w - _CARD_PAD * 2 - 88, 18))
-    content.addSubview_(r2_label)
-    sum_btn = button(
+    summaries_row_y = bookmarks_row_y - row_h
+    summaries_label = label("Clear all summaries", size=Font.SECONDARY)
+    summaries_label.setFrame_(NSMakeRect(Spacing.LG, summaries_row_y + 10, card_w - Spacing.LG * 2 - 88, 18))
+    content.addSubview_(summaries_label)
+    summaries_button = button(
         "Clear...",
         target=delegate,
         action=objc.selector(delegate.clearSummaries_, signature=b"v@:@"),
         size=Size(80, 22),
     )
-    sum_btn.setFrame_(NSMakeRect(card_w - _CARD_PAD - 80, r2y + 8, 80, 22))
-    content.addSubview_(sum_btn)
+    summaries_button.setFrame_(NSMakeRect(card_w - Spacing.LG - 80, summaries_row_y + 8, 80, 22))
+    content.addSubview_(summaries_button)

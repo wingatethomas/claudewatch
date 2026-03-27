@@ -227,6 +227,23 @@ class PrefsDelegate(NSObject):
         webbrowser.open("https://github.com/wingatethomas/claudewatch")
 
     @objc_callback
+    def testNotification_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.backend.notifications.dependencies import get_notification_service
+
+        get_notification_service().send("Test notification", "ClaudeWatch", "Notifications are working!")
+
+    @objc_callback
+    def testSound_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from AppKit import NSSound
+
+        from claudewatch.backend.core import features
+
+        sound_name = features.get_facet("notifications", "sound") or "Glass"
+        sound = NSSound.soundNamed_(sound_name)
+        if sound:
+            sound.play()
+
+    @objc_callback
     def showWelcome_(self, sender: objc.objc_object) -> None:  # noqa: N802
         from claudewatch.ui.welcome import show_welcome
 
