@@ -18,16 +18,7 @@ class BookmarkService(BaseService):
 
     def get_all(self) -> list[BookmarkDTO]:
         """Return all bookmarked sessions as DTOs."""
-        return [
-            BookmarkDTO(
-                session_id=p.get("session_id", ""),
-                project=p.get("project", ""),
-                cwd=p.get("cwd", ""),
-                note=p.get("note", ""),
-                timestamp=p.get("timestamp", ""),
-            )
-            for p in bookmarks_repo.get_bookmarks()
-        ]
+        return bookmarks_repo.get_bookmarks()
 
     def get_bookmarked_cwds(self) -> set[str]:
         """Return the set of CWDs that are currently bookmarked."""

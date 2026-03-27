@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.session_log.service import SessionLogService
+from claudewatch.backend.summary.models import SummaryEntry
 from claudewatch.backend.summary.service import SummaryService
 
 
@@ -203,7 +204,7 @@ class TestPersistentStore:
         store_file.write_text(json.dumps({"/test": {"summary": "hello", "mtime": time.time()}}))
         svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
         svc._load_store()
-        assert svc._store["/test"]["summary"] == "hello"
+        assert svc._store["/test"].summary == "hello"
 
     def test_load_missing_file(self, tmp_path):
         svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(tmp_path / "nope.json"))
@@ -220,7 +221,7 @@ class TestPersistentStore:
     def test_save_writes_to_disk(self, tmp_path):
         store_file = tmp_path / "summaries.json"
         svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
-        svc._store = {"/test": {"summary": "hi", "mtime": 1.0}}
+        svc._store = {"/test": SummaryEntry(title="", summary="hi", mtime=1.0)}
         svc._save_store()
         with open(store_file) as f:
             data = json.load(f)
@@ -257,7 +258,7 @@ class TestCacheSummary:
 
         svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(tmp_path / "store.json"))
         svc._store_loaded = True
-        svc._store = {"/test": {"summary": "old", "mtime": 1.0}}
+        svc._store = {"/test": SummaryEntry(title="", summary="old", mtime=1.0)}
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.get_cached("/test")
         # mtime of jsonl > cached mtime of 1.0, so stale

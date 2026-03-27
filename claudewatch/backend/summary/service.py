@@ -18,6 +18,7 @@ from claudewatch.backend.core.paths import SUMMARIES_PATH
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
+from claudewatch.backend.summary.models import SummaryEntry
 
 log = logging.getLogger("claudewatch")
 
@@ -95,8 +96,8 @@ class SummaryService(BaseService):
         self._process_service = process_service
         self._store_path = store_path
 
-        # In-memory mirror of the persistent store: CWD -> {"summary": str, "mtime": float}
-        self._store: dict[str, dict] = {}
+        # In-memory mirror of the persistent store: CWD -> SummaryEntry
+        self._store: dict[str, SummaryEntry] = {}
         self._store_loaded = False
         self._store_lock = threading.Lock()
 
@@ -125,16 +126,24 @@ class SummaryService(BaseService):
             with open(self._store_path) as f:
                 data = json.load(f)
                 if isinstance(data, dict):
-                    self._store = data
+                    self._store = {
+                        k: SummaryEntry(
+                            title=v.get("title", ""),
+                            summary=v.get("summary", ""),
+                            mtime=v.get("mtime", 0),
+                        )
+                        for k, v in data.items()
+                        if isinstance(v, dict)
+                    }
         except (OSError, json.JSONDecodeError):
             self._store = {}
         # Prune entries older than 30 days
         cutoff = time.time() - _STORE_MAX_AGE
         before = len(self._store)
-        self._store = {k: v for k, v in self._store.items() if v.get("mtime", 0) > cutoff}
+        self._store = {k: v for k, v in self._store.items() if v.mtime > cutoff}
         # Cap total entries
         if len(self._store) > _MAX_STORE_ENTRIES:
-            sorted_keys = sorted(self._store, key=lambda k: self._store[k].get("mtime", 0))
+            sorted_keys = sorted(self._store, key=lambda k: self._store[k].mtime)
             for k in sorted_keys[: len(self._store) - _MAX_STORE_ENTRIES]:
                 del self._store[k]
         if len(self._store) < before:
@@ -144,22 +153,23 @@ class SummaryService(BaseService):
     def _save_store(self) -> None:
         tmp = self._store_path + ".tmp"
         try:
+            serialized = {k: {"title": v.title, "summary": v.summary, "mtime": v.mtime} for k, v in self._store.items()}
             with open(tmp, "w") as f:
-                json.dump(self._store, f, indent=2)
+                json.dump(serialized, f, indent=2)
             os.replace(tmp, self._store_path)
         except OSError:
             log.warning("Failed to save summaries to %s", self._store_path)
 
     # -- Public API ---------------------------------------------------------
 
-    def _get_entry(self, cwd: str) -> dict | None:
+    def _get_entry(self, cwd: str) -> SummaryEntry | None:
         """Return the cached entry if JSONL hasn't changed since generation."""
         with self._store_lock:
             self._load_store()
             entry = self._store.get(cwd)
         if not entry:
             return None
-        cached_mtime = entry.get("mtime", 0)
+        cached_mtime = entry.mtime
         current_mtime = self._get_jsonl_mtime(cwd)
         if current_mtime and current_mtime <= cached_mtime:
             return entry
@@ -171,7 +181,7 @@ class SummaryService(BaseService):
         if not entry:
             return None
         # Support old format (plain "summary" string) and new format ("title" + "summary")
-        return entry.get("title") or entry.get("summary", "")
+        return entry.title or entry.summary
 
     def get_cached_title(self, cwd: str) -> str | None:
         """Return the short title (what's happening now)."""
@@ -182,19 +192,19 @@ class SummaryService(BaseService):
         entry = self._get_entry(cwd)
         if not entry:
             return None
-        return entry.get("summary", "")
+        return entry.summary
 
     def cache(self, cwd: str, summary: str) -> None:
         """Persist a summary. Accepts plain string (becomes title) or title+summary."""
         mtime = self._get_jsonl_mtime(cwd) or time.time()
         with self._store_lock:
             self._load_store()
-            existing = self._store.get(cwd, {})
-            if isinstance(existing, dict) and existing.get("summary"):
+            existing = self._store.get(cwd)
+            if existing and existing.summary:
                 # Preserve existing summary if only updating title
-                self._store[cwd] = {"title": summary, "summary": existing["summary"], "mtime": mtime}
+                self._store[cwd] = SummaryEntry(title=summary, summary=existing.summary, mtime=mtime)
             else:
-                self._store[cwd] = {"title": summary, "summary": "", "mtime": mtime}
+                self._store[cwd] = SummaryEntry(title=summary, summary="", mtime=mtime)
             self._save_store()
 
     def cache_full(self, cwd: str, title: str, summary: str) -> None:
@@ -202,7 +212,7 @@ class SummaryService(BaseService):
         mtime = self._get_jsonl_mtime(cwd) or time.time()
         with self._store_lock:
             self._load_store()
-            self._store[cwd] = {"title": title, "summary": summary, "mtime": mtime}
+            self._store[cwd] = SummaryEntry(title=title, summary=summary, mtime=mtime)
             self._save_store()
 
     def clear_all(self) -> None:

@@ -3,10 +3,26 @@
 import time
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from claudewatch.backend.core.models import ClaudeSession, HostApp, SessionStatus
+from claudewatch.backend.notifications import service as svc_mod
+from claudewatch.backend.notifications.models import FrontmostWindow
 from claudewatch.backend.notifications.service import NotificationService
 
 _MOD = "claudewatch.backend.notifications.service"
+
+
+@pytest.fixture(autouse=True)
+def _mock_notification_center():
+    """Mock NSUserNotificationCenter so tests work without a display server."""
+    svc_mod._delegate = None
+    with (
+        patch(f"{_MOD}._ensure_delegate"),
+        patch(f"{_MOD}.NSUserNotificationCenter") as mock_center_cls,
+    ):
+        mock_center_cls.defaultUserNotificationCenter.return_value = MagicMock()
+        yield
 
 
 def _make_session(**kwargs):
@@ -98,7 +114,7 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
+            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -113,7 +129,7 @@ class TestNotifyIfNeeded:
         svc._center = mock_center
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
-            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
+            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -129,7 +145,7 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
+            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -143,7 +159,7 @@ class TestNotifyIfNeeded:
         svc._center = mock_center
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
-            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
+            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
         ):
             s = _make_session(pid=100, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -158,7 +174,7 @@ class TestNotifyIfNeeded:
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(
                 f"{_MOD}._get_frontmost_window",
-                return_value=("Terminal", "myproject — claude"),
+                return_value=FrontmostWindow(app_name="Terminal", window_title="myproject — claude"),
             ),
         ):
             s = _make_session(
@@ -180,7 +196,7 @@ class TestNotifyIfNeeded:
             patch(f"{_MOD}.NSUserNotification", mock_cls),
             patch(
                 f"{_MOD}._get_frontmost_window",
-                return_value=("Terminal", "other-project — claude"),
+                return_value=FrontmostWindow(app_name="Terminal", window_title="other-project — claude"),
             ),
         ):
             s = _make_session(
@@ -200,7 +216,7 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
+            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
         ):
             s = _make_session(pid=500, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -234,7 +250,7 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-            patch(f"{_MOD}._get_frontmost_window", return_value=("Finder", "")),
+            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
         ):
             s = _make_session(
                 pid=600,

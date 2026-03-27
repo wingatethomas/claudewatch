@@ -56,11 +56,8 @@ Click any session to focus its window. Hover for actions: Activity log, Bookmark
 - **Notifications** — native macOS alerts when sessions need attention, with context about what's being asked
 - **Session summaries** — auto-generated titles and bulleted action summaries
 - **Token usage** — per-session and aggregated usage stats with top sessions breakdown
-- **Launch at login** — optional auto-start via Preferences
 - **Self-update** — checks GitHub Releases periodically, one-click update from the menu
-- **Changelog** — "What's New" viewer in Preferences, pulled from GitHub Releases
-- **Getting started guide** — onboarding tips for new users, replayable from the menu
-- **Preferences** — sidebar settings with feature toggles, session history with search/sort/filter, usage dashboard
+- **Preferences** — sidebar settings with feature toggles, session history with search/sort/filter, usage dashboard, changelog
 
 ### Permissions
 
