@@ -11,6 +11,12 @@ brew tap wingatethomas/brews
 brew install --cask claudewatch
 ```
 
+To update:
+
+```bash
+brew update && brew upgrade --cask claudewatch
+```
+
 ### Download Manually
 
 Download the latest `.zip` from the [releases page](https://github.com/wingatethomas/claudewatch/releases/latest), unzip, and drag to `/Applications`.
