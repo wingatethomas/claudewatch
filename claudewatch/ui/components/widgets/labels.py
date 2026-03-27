@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from AppKit import NSColor, NSFont, NSTextField
+from Foundation import NSMakeRect
 
 
 def label(
@@ -12,9 +13,10 @@ def label(
     bold: bool = False,
     color: NSColor | None = None,
 ) -> NSTextField:
-    """Create a text label. Frame is set by the layout system."""
+    """Create a text label. Frame starts at zero — set by the layout system or caller."""
     lbl = NSTextField.labelWithString_(text)
     lbl.setFont_(NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size))
+    lbl.setFrame_(NSMakeRect(0, 0, 0, 0))  # zero frame — layout system or caller sets actual size
     if color:
         lbl.setTextColor_(color)
     return lbl
