@@ -168,20 +168,27 @@ def _build_top_sessions_card(delegate: object, card_w: float, top: list[tuple[st
     top_card = card(card_w, card_h)
     content = top_card.contentView()
     row_y = card_h - _CARD_PAD
-    for project, tokens, _ended in top:
+    for project, tokens, ended_at in top:
         row_y -= row_h
         project_btn = button(
             project,
             target=delegate,
             action=objc.selector(delegate.jumpToSession_, signature=b"v@:@"),
-            size=Size(200, 18),
+            size=Size(160, 18),
             font_size=12.0,
         )
         project_btn.setBordered_(False)
         project_btn.setAlignment_(0)
         project_btn.cell().setRepresentedObject_(project)
-        project_btn.setFrame_(NSMakeRect(_CARD_PAD, row_y, 200, 18))
+        project_btn.setFrame_(NSMakeRect(_CARD_PAD, row_y, 160, 18))
         content.addSubview_(project_btn)
+        # Date
+        date_text = ended_at[:10] if len(ended_at) >= 10 else ""
+        if date_text:
+            date_label = label(date_text, size=10.0, color=NSColor.tertiaryLabelColor())
+            date_label.setFrame_(NSMakeRect(170, row_y + 1, 80, 16))
+            content.addSubview_(date_label)
+        # Tokens
         token_count = sum(tokens.values())
         token_label = label(_fmt(token_count), size=11.0, color=NSColor.secondaryLabelColor())
         token_label.setFrame_(NSMakeRect(card_w - _CARD_PAD - 120, row_y, 120, 18))
