@@ -223,6 +223,7 @@ class ClaudeWatchApp:
                 self.sessions = [s for s in self.sessions if s.pid not in self._exiting_pids]
                 self._has_polled = True
                 self._log_changes()
+                self._check_accessibility()
                 self.update_display()
                 self._notification_service.notify_if_needed(self.sessions)
                 self._check_onboarding_tips()
