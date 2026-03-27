@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 from AppKit import NSView
-from Foundation import NSMakeRect
 
 from claudewatch.ui.components.composites.guide import build_guide
-from claudewatch.ui.components.widgets.labels import pane_title
-
-_PAD = 24
+from claudewatch.ui.preferences.panes.common import create_pane_stack
 
 _SECTIONS = [
     (
@@ -58,19 +55,11 @@ _SECTIONS = [
 
 
 def build_guide_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: ARG001
-    """Build the Guide pane using the guide composite."""
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
+    """Build the Guide pane using VStack + guide composite."""
+    stack = create_pane_stack("Guide", w)
 
-    y = h - 12 - 24
-    title = pane_title("Guide")
-    title.setFrame_(NSMakeRect(_PAD, y, w - _PAD * 2, 24))
-    view.addSubview_(title)
-    y -= 8
+    guide_content_h = h - stack.content_height - 20
+    guide_view = build_guide(sections=_SECTIONS, width=w - 24, height=guide_content_h)
+    stack.add(guide_view, height=guide_content_h)
 
-    card_w = w - _PAD * 2
-    card_h = y - 20
-    guide_view = build_guide(sections=_SECTIONS, width=card_w, height=card_h)
-    guide_view.setFrame_(NSMakeRect(_PAD, y - card_h, card_w, card_h))
-    view.addSubview_(guide_view)
-
-    return view
+    return stack.to_view(min_height=h)

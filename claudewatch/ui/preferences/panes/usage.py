@@ -8,10 +8,10 @@ from Foundation import NSMakeRect
 
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.usage.dependencies import get_usage_service
-from claudewatch.ui.components.layout import VStack
 from claudewatch.ui.components.widgets.buttons import Size, button
 from claudewatch.ui.components.widgets.cards import card
-from claudewatch.ui.components.widgets.labels import label, pane_title, secondary_label
+from claudewatch.ui.components.widgets.labels import label, secondary_label
+from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane_stack
 
 _PAD = 24
 _CARD_PAD = 16
@@ -60,9 +60,8 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:
         except (ValueError, TypeError):
             pass
 
-    card_w = w - _PAD * 2
-    stack = VStack(width=w, padding=12, spacing=8)
-    stack.add(pane_title("Usage"), height=24)
+    card_w = w - CONTENT_PADDING * 2
+    stack = create_pane_stack("Usage", w)
 
     if not session_stats:
         stack.gap(4)

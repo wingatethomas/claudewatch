@@ -52,7 +52,7 @@ def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
     card_w = w - _PAD * 2
 
-    y = inner_h - _PAD
+    y = inner_h - 12  # match PANE_PADDING from common.py
     # Header
     title = pane_title("Settings")
     title.setFrame_(NSMakeRect(_PAD, y - 24, w - _PAD * 2, 24))

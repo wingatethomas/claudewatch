@@ -10,8 +10,8 @@ from Foundation import NSMakeRect
 
 from claudewatch import __version__
 from claudewatch.backend.updates.dependencies import get_update_service
-from claudewatch.ui.components.layout import VStack
-from claudewatch.ui.components.widgets.labels import label, pane_title, secondary_label
+from claudewatch.ui.components.widgets.labels import label, secondary_label
+from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane_stack
 from claudewatch.ui.safety import dispatch_to_main_thread
 
 _PAD = 24
@@ -19,10 +19,8 @@ _PAD = 24
 
 def build_about_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: PLR0915
     """Build the About pane with version, buttons, and changelog."""
-    card_w = w - _PAD * 2
-
-    stack = VStack(width=w, padding=12, spacing=8)
-    stack.add(pane_title("About"), height=24)
+    card_w = w - CONTENT_PADDING * 2
+    stack = create_pane_stack("About", w)
 
     # Version + buttons row
     version_label = label(f"ClaudeWatch v{__version__}", size=14.0, bold=True)
