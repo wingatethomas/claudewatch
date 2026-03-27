@@ -46,8 +46,6 @@ def build_settings_pane(delegate: object, w: float, h: float) -> NSView:  # noqa
         toggle_row_h = 56 if detail else 44
         feature_card_h = toggle_row_h + len(feature.facets) * 40
         content_h += feature_card_h + Spacing.SM
-    content_h += Spacing.XL  # gap before test actions
-    content_h += 28  # test action buttons
     content_h += Spacing.XL  # gap before danger zone
     content_h += 36 + 2 * 38  # danger zone
     content_h += Spacing.XL
@@ -63,32 +61,6 @@ def build_settings_pane(delegate: object, w: float, h: float) -> NSView:  # noqa
     for feature in all_features:
         feature_card_h = _build_feature_card(inner, delegate, feature, CONTENT_PADDING, y, card_w)
         y -= feature_card_h + Spacing.SM
-
-    # Test actions
-    y -= Spacing.LG
-    test_label = label("Test", size=Font.SMALL, bold=True, color=Colors.secondary())
-    test_label.setFrame_(NSMakeRect(CONTENT_PADDING, y - 14, 200, 14))
-    inner.addSubview_(test_label)
-    y -= 22
-
-    notification_btn = button(
-        "Send Test Notification",
-        target=delegate,
-        action=objc.selector(delegate.testNotification_, signature=b"v@:@"),
-        size=Size(160, 24),
-    )
-    notification_btn.setFrame_(NSMakeRect(CONTENT_PADDING, y - 24, 160, 24))
-    inner.addSubview_(notification_btn)
-
-    sound_btn = button(
-        "Play Sound",
-        target=delegate,
-        action=objc.selector(delegate.testSound_, signature=b"v@:@"),
-        size=Size(100, 24),
-    )
-    sound_btn.setFrame_(NSMakeRect(CONTENT_PADDING + 168, y - 24, 100, 24))
-    inner.addSubview_(sound_btn)
-    y -= 32
 
     # Danger zone
     y -= Spacing.LG
