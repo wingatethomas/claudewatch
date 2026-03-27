@@ -72,8 +72,8 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
         return view
 
     # Build scroll content below fixed header
-    # padding=CONTENT_PADDING aligns cards with the header horizontally
-    stack = VStack(width=w, padding=CONTENT_PADDING, spacing=8)
+    # padding matches CONTENT_PADDING horizontally, minimal top padding
+    stack = VStack(width=w - CONTENT_PADDING * 2, padding=0, spacing=8)
     stack.add(_section_header("LAST 30 DAYS"), height=14)
 
     total_in = total["input"] + total["cache_create"] + total["cache_read"]
@@ -97,14 +97,15 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
     top_card = _build_top_sessions_card(delegate, card_w, top)
     stack.add(top_card, height=top_card.frame().size.height)
 
-    # Place stack content below fixed header
+    # Place stack content below fixed header, offset to align with header
     scroll_h = content_top
     if stack.content_height <= scroll_h:
         content_view = stack.to_view(min_height=scroll_h)
+        content_view.setFrame_(NSMakeRect(CONTENT_PADDING, 0, card_w, scroll_h))
         view.addSubview_(content_view)
     else:
         inner = stack.to_view()
-        scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, scroll_h))
+        scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING, 0, card_w, scroll_h))
         scroll.setHasVerticalScroller_(True)
         scroll.setAutohidesScrollers_(True)
         scroll.setDrawsBackground_(False)

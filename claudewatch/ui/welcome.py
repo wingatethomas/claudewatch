@@ -22,7 +22,7 @@ from claudewatch.backend.core.settings import get_setting, set_setting
 from claudewatch.ui.safety import objc_callback
 
 _W = 500
-_H = 520
+_H = 420
 _PAD = 24
 _TEXT_W = _W - _PAD * 2
 
@@ -159,10 +159,10 @@ def show_welcome() -> None:  # noqa: PLR0915
     _add_label(
         root, "AppleScript · claude -p · Notifications · GitHub API", y, height=18, color=NSColor.secondaryLabelColor()
     )
-    y -= _g * 3
+    y -= 24
 
     # Get Started button
-    get_started = NSButton.alloc().initWithFrame_(NSMakeRect((_W - 140) // 2, max(y, 14), 140, 36))
+    get_started = NSButton.alloc().initWithFrame_(NSMakeRect((_W - 140) // 2, max(y - 36, 14), 140, 36))
     get_started.setTitle_("Get Started")
     get_started.setBezelStyle_(1)
     get_started.setKeyEquivalent_("\r")
