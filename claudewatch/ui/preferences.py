@@ -89,8 +89,8 @@ _FEATURE_DETAILS: dict[str, str] = {
 def _sidebar_items() -> list[dict]:
     """Build sidebar item list."""
     return [
-        {"type": "static", "key": "general", "label": "General"},
-        {"type": "static", "key": "history", "label": "History"},
+        {"type": "static", "key": "general", "label": "Settings"},
+        {"type": "static", "key": "history", "label": "Sessions"},
         {"type": "static", "key": "usage", "label": "Usage"},
         {"type": "separator"},
         {"type": "static", "key": "guide", "label": "Guide"},
@@ -665,7 +665,7 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
     card_w = w - _PAD * 2
 
-    y = _add_pane_header(inner, "General", w, inner_h)
+    y = _add_pane_header(inner, "Settings", w, inner_h)
     for feature in all_features:
         feat_toggle_h = 56 if _FEATURE_DETAILS.get(feature.key) else 44
         card_h = feat_toggle_h + len(feature.facets) * _facet_row_h
@@ -746,7 +746,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    below_header = _add_pane_header(view, "History", w, h)
+    below_header = _add_pane_header(view, "Sessions", w, h)
     _toolbar_ctrl_h = 22
     toolbar_y = below_header - _toolbar_ctrl_h
     search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 22))
@@ -1342,7 +1342,7 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     view.addSubview_(changelog_label)
     y -= 6
 
-    changelog_card_h = y - 8  # fill remaining space
+    changelog_card_h = y - 20  # fill remaining space with bottom margin
     changelog_card = _make_card(_PAD, y - changelog_card_h, card_w, changelog_card_h)
     changelog_card.setWantsLayer_(True)
     changelog_card.layer().setMasksToBounds_(True)
