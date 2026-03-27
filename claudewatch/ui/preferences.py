@@ -21,7 +21,6 @@ from AppKit import (
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
-    NSImageView,
     NSMenu,
     NSMenuItem,
     NSMutableAttributedString,
@@ -90,8 +89,8 @@ _FEATURE_DETAILS: dict[str, str] = {
 def _sidebar_items() -> list[dict]:
     """Build sidebar item list."""
     return [
-        {"type": "static", "key": "general", "label": "General"},
-        {"type": "static", "key": "history", "label": "History"},
+        {"type": "static", "key": "general", "label": "Settings"},
+        {"type": "static", "key": "history", "label": "Sessions"},
         {"type": "static", "key": "usage", "label": "Usage"},
         {"type": "separator"},
         {"type": "static", "key": "guide", "label": "Guide"},
@@ -309,16 +308,18 @@ class _PrefsDelegate(NSObject):  # noqa: PLR0904
     # ── Bookmark actions ──
 
     def bookmarkSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        data = str(sender.representedObject())
+        data = str(sender.representedObject() or sender.cell().representedObject() or "")
         if "|" not in data:
             return
         sid, rest = data.split("|", 1)
         project, cwd = rest.split("|", 1) if "|" in rest else ("", rest)
         get_bookmark_service().add(sid, project, cwd, "")
+        _rebuild_history_rows(self)
 
     def unbookmarkSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        cwd = str(sender.representedObject())
+        cwd = str(sender.representedObject() or sender.cell().representedObject() or "")
         get_bookmark_service().remove(cwd)
+        _rebuild_history_rows(self)
 
     # ── History card actions ──
 
@@ -664,7 +665,7 @@ def _build_general_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, inner_h))
     card_w = w - _PAD * 2
 
-    y = _add_pane_header(inner, "General", w, inner_h)
+    y = _add_pane_header(inner, "Settings", w, inner_h)
     for feature in all_features:
         feat_toggle_h = 56 if _FEATURE_DETAILS.get(feature.key) else 44
         card_h = feat_toggle_h + len(feature.facets) * _facet_row_h
@@ -745,7 +746,7 @@ def _build_history_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # 
 
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
 
-    below_header = _add_pane_header(view, "History", w, h)
+    below_header = _add_pane_header(view, "Sessions", w, h)
     _toolbar_ctrl_h = 22
     toolbar_y = below_header - _toolbar_ctrl_h
     search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 22))
@@ -910,12 +911,21 @@ def _add_history_row(  # noqa: PLR0912, PLR0913, PLR0915
     _name_col = _p + 18  # content starts after bookmark column
     ly1 = y + h - 20
 
-    if is_pinned:
-        bm_icon = sf_icon("bookmark.fill", size=11.0)
-        if bm_icon:
-            mark = NSImageView.alloc().initWithFrame_(NSMakeRect(_bm_col, ly1 + 1, 14, 14))
-            mark.setImage_(bm_icon)
-            view.addSubview_(mark)
+    bm_icon_name = "bookmark.fill" if is_pinned else "bookmark"
+    bm_icon_img = sf_icon(bm_icon_name, size=11.0)
+    if bm_icon_img:
+        bm_btn = NSButton.alloc().initWithFrame_(NSMakeRect(_bm_col, ly1 - 1, 18, 18))
+        bm_btn.setImage_(bm_icon_img)
+        bm_btn.setBordered_(False)
+        bm_btn.setTarget_(delegate)
+        if is_pinned:
+            bm_btn.setAction_(objc.selector(delegate.unbookmarkSession_, signature=b"v@:@"))
+            bm_btn.cell().setRepresentedObject_(cwd)
+        else:
+            bm_btn.setAction_(objc.selector(delegate.bookmarkSession_, signature=b"v@:@"))
+            bm_btn.cell().setRepresentedObject_(f"{session_id}|{project}|{cwd}")
+        bm_btn.setToolTip_("Remove bookmark" if is_pinned else "Bookmark this session")
+        view.addSubview_(bm_btn)
 
     name_label = _make_label(project, _name_col, ly1, w - _name_col - 30, 13.0, bold=True)
     view.addSubview_(name_label)
@@ -1332,7 +1342,7 @@ def _build_about_pane(delegate: _PrefsDelegate, w: int, h: int) -> NSView:  # no
     view.addSubview_(changelog_label)
     y -= 6
 
-    changelog_card_h = y - 8  # fill remaining space
+    changelog_card_h = y - 20  # fill remaining space with bottom margin
     changelog_card = _make_card(_PAD, y - changelog_card_h, card_w, changelog_card_h)
     changelog_card.setWantsLayer_(True)
     changelog_card.layer().setMasksToBounds_(True)
