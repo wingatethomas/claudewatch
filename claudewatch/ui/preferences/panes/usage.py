@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import objc
-from AppKit import NSColor, NSScrollView, NSView
+from AppKit import NSButton, NSColor, NSFont, NSScrollView, NSView
 from Foundation import NSMakeRect
 
 from claudewatch.backend.history.dependencies import get_history_service
@@ -96,6 +96,16 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
     top = session_stats[:10]
     top_card = _build_top_sessions_card(delegate, card_w, top)
     stack.add(top_card, height=top_card.frame().size.height)
+
+    # Open in Claude button
+    stack.gap(4)
+    claude_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 140, 24))
+    claude_btn.setTitle_("Open in Claude")
+    claude_btn.setBezelStyle_(1)
+    claude_btn.setFont_(NSFont.systemFontOfSize_(11.0))
+    claude_btn.setTarget_(delegate)
+    claude_btn.setAction_(objc.selector(delegate.openClaudeUsage_, signature=b"v@:@"))
+    stack.add(claude_btn, height=24)
 
     # Place stack content below fixed header, offset to align with header
     scroll_h = content_top
