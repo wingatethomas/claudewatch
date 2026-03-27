@@ -143,9 +143,6 @@ STATUS_SCHEMES: dict[str, StatusScheme] = {
 }
 
 
-def get_active_scheme() -> StatusScheme:
-    """Get the currently configured status color scheme."""
-    from claudewatch.backend.core import features  # noqa: PLC0415 — circular dep
-
-    scheme_name = features.get_facet("accessibility", "color_scheme") or "default"
-    return STATUS_SCHEMES.get(str(scheme_name), STATUS_SCHEMES["default"])
+def get_scheme(name: str) -> StatusScheme:
+    """Look up a scheme by name. Returns default if not found."""
+    return STATUS_SCHEMES.get(name, STATUS_SCHEMES["default"])

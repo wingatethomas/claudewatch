@@ -20,20 +20,8 @@ from claudewatch.backend.core.models import (
     SessionStatus,
 )
 
-
-# Status colors — the Digital Color Meter samples were display-rendered values,
-# not sRGB input. Use brighter sRGB values that render to match Claude Code on screen.
-def get_status_colors() -> dict:
-    """Get status colors from the active color scheme."""
-    from claudewatch.ui.components.tokens import get_active_scheme  # noqa: PLC0415 — circular dep
-
-    scheme = get_active_scheme()
-    return {
-        SessionStatus.ATTENTION: scheme.attention,
-        SessionStatus.WORKING: scheme.working,
-        SessionStatus.IDLE: scheme.idle,
-    }
-
+# Re-export from theme for backward compat
+from claudewatch.ui.theme import get_status_colors  # noqa: E402
 
 # Cache for scaled NSImage icons
 _app_icon_cache: dict[HostApp, NSImage | None] = {}
