@@ -24,13 +24,13 @@ from claudewatch.ui.icons import (
     render_status_icon,
     sf_icon,
 )
-from claudewatch.ui.menu.session_submenu import SessionActions, build_session_submenu
-from claudewatch.ui.menu_helpers import (
+from claudewatch.ui.menu.core import (
     AppDelegate,
     disabled_item,
     make_menu_item,
     noop,
 )
+from claudewatch.ui.menu.session_submenu import SessionActions, build_session_submenu
 from claudewatch.ui.theme import theme
 
 if TYPE_CHECKING:

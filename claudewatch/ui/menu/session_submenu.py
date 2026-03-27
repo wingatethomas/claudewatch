@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from AppKit import NSMenu, NSMenuItem
 
 from claudewatch.ui.icons import sf_icon
-from claudewatch.ui.menu_helpers import add_summary_lines, make_menu_item
+from claudewatch.ui.menu.core import add_summary_lines, make_menu_item
 
 MenuCallback = Callable[[NSMenuItem], None]
 
