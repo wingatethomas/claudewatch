@@ -89,13 +89,18 @@ def handle_clear_summaries(delegate: object, sender: object) -> None:  # noqa: A
 
 
 def handle_open_claude_usage(delegate: object, sender: object) -> None:  # noqa: ARG001
-    """Open claude /usage in Terminal."""
+    """Open claude /usage in Terminal using a trusted project directory."""
     history = get_history_service().get_all()
     cwd = ""
+    # Prefer real project dirs over worktrees/temp dirs
+    skip_patterns = (".claude/worktrees", "/tmp/", "/var/folders/")  # noqa: S108
     for entry in history:
-        if entry.cwd and os.path.isdir(entry.cwd):
-            cwd = entry.cwd
-            break
+        if not entry.cwd or not os.path.isdir(entry.cwd):
+            continue
+        if any(p in entry.cwd for p in skip_patterns):
+            continue
+        cwd = entry.cwd
+        break
     if not cwd:
         cwd = os.path.expanduser("~")
     safe_cwd = escape_applescript(cwd)
