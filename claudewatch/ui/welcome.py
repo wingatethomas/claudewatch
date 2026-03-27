@@ -116,9 +116,10 @@ def show_welcome() -> None:  # noqa: PLR0915
     y -= 18
     _add_label(
         root,
-        "Required to focus terminal windows when you click a session.",
+        "Focus terminal windows when you click a session.",
         y,
         height=18,
+        width=_TEXT_W - 130,
         color=NSColor.secondaryLabelColor(),
     )
     _add_action_button(root, "Open Settings", y, _delegate, "openAccessibility_")
@@ -131,9 +132,10 @@ def show_welcome() -> None:  # noqa: PLR0915
     y -= 18
     _add_label(
         root,
-        "Required to list Terminal.app windows, resume sessions, and close tabs.",
+        "List Terminal.app windows, resume sessions, close tabs.",
         y,
         height=18,
+        width=_TEXT_W - 130,
         color=NSColor.secondaryLabelColor(),
     )
     _add_action_button(root, "Open Settings", y, _delegate, "openAutomation_")
@@ -214,12 +216,13 @@ def _add_label(  # noqa: PLR0913
     y: float,
     *,
     height: float = 16,
+    width: float = _TEXT_W,
     size: float = 12.0,
     bold: bool = False,
     color: object | None = None,
 ) -> None:
     text_label = NSTextField.labelWithString_(text)
-    text_label.setFrame_(NSMakeRect(_PAD, y, _TEXT_W, height))
+    text_label.setFrame_(NSMakeRect(_PAD, y, width, height))
     text_label.setFont_(NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size))
     if color:
         text_label.setTextColor_(color)
