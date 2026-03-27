@@ -79,6 +79,7 @@ def build_settings_pane(delegate: object, w: float, h: float) -> NSView:
     scroll.setAutohidesScrollers_(True)
     scroll.setDrawsBackground_(False)
     scroll.setDocumentView_(inner)
+    inner.scrollPoint_((0, inner_h))  # scroll to top
     return scroll
 
 

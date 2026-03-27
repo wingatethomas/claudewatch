@@ -143,7 +143,7 @@ class TestClaudeSession:
             host_app=HostApp.TERMINAL,
             status=SessionStatus.IDLE,
         )
-        assert s.detail_line == "Waiting for input"
+        assert s.detail_line == "Idle"
 
     def test_menu_label_filters_claude_code_task(self):
         s = ClaudeSession(
