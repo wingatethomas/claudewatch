@@ -32,6 +32,15 @@ _CARD_PAD = 16
 _ROW_H = 54
 
 
+def _build_subtitle() -> str:
+    """Build subtitle showing date range of recorded sessions."""
+    entries = get_history_service().get_all()
+    if not entries:
+        return "No sessions recorded yet"
+    oldest = min((e.ended_at or "" for e in entries), default="")
+    return f"Since {oldest[:10]}" if oldest and len(oldest) >= 10 else f"{len(entries)} sessions"
+
+
 def build_sessions_pane(delegate: object, w: float, h: float) -> NSView:
     """Build the Sessions pane with toolbar and scrollable rows."""
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
@@ -41,7 +50,7 @@ def build_sessions_pane(delegate: object, w: float, h: float) -> NSView:
     # Subtitle
     from AppKit import NSColor
 
-    subtitle = secondary_label("Last 50 sessions recorded by ClaudeWatch", size=11.0)
+    subtitle = secondary_label(_build_subtitle(), size=11.0)
     subtitle.setTextColor_(NSColor.tertiaryLabelColor())
     subtitle.setFrame_(NSMakeRect(_PAD, below_header - 14, w - _PAD * 2, 14))
     view.addSubview_(subtitle)
