@@ -5,6 +5,8 @@ from __future__ import annotations
 from AppKit import NSBox, NSColor
 from Foundation import NSMakeRect
 
+from claudewatch.ui.components.tokens import Colors
+
 _CARD_RADIUS = 10.0
 
 
@@ -19,8 +21,8 @@ def card(
     box.setBoxType_(4)
     box.setBorderType_(1)
     box.setCornerRadius_(_CARD_RADIUS)
-    box.setFillColor_(NSColor.windowBackgroundColor().blendedColorWithFraction_ofColor_(0.06, NSColor.whiteColor()))
-    box.setBorderColor_(border_color or NSColor.separatorColor().colorWithAlphaComponent_(0.3))
+    box.setFillColor_(Colors.card_background())
+    box.setBorderColor_(border_color or Colors.card_border())
     box.setTitlePosition_(0)
     box.setContentViewMargins_((0, 0))
     return box

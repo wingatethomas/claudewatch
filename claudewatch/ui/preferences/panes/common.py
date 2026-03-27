@@ -3,19 +3,20 @@
 All panes MUST use these values for consistent layout.
 """
 
-from AppKit import NSColor, NSView
+from AppKit import NSView
 from Foundation import NSMakeRect
 
 from claudewatch.ui.components.layout import VStack
+from claudewatch.ui.components.tokens import Colors, Font, Spacing
 from claudewatch.ui.components.widgets.labels import pane_title, secondary_label
 
-# Standard pane layout — used by every pane for consistent header positioning
-PANE_PADDING = 12
-PANE_SPACING = 8
-CONTENT_PADDING = 24  # horizontal padding for content inside panes
+# Standard pane layout — derived from design tokens
+PANE_PADDING = Spacing.MD  # 12 — top/bottom padding inside pane
+PANE_SPACING = Spacing.SM  # 8 — gap between header and content
+CONTENT_PADDING = Spacing.XL  # 24 — horizontal padding for content
 
-# Fixed header height: padding(12) + title(24) + spacing(8) = 44
-HEADER_HEIGHT = PANE_PADDING + 24 + PANE_SPACING
+# Title height (fixed)
+_TITLE_H = 24
 
 
 def create_pane_stack(title: str, width: float) -> VStack:
@@ -25,7 +26,7 @@ def create_pane_stack(title: str, width: float) -> VStack:
     Returns a VStack with the title already added.
     """
     stack = VStack(width=width, padding=PANE_PADDING, spacing=PANE_SPACING)
-    stack.add(pane_title(title), height=24)
+    stack.add(pane_title(title), height=_TITLE_H)
     return stack
 
 
@@ -36,17 +37,18 @@ def create_pane(title: str, w: float, h: float, subtitle: str = "") -> tuple[NSV
     content_top_y is the y position where content should start (below header).
     """
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
-    header_y = h - PANE_PADDING - 24
+    header_y = h - PANE_PADDING - _TITLE_H
     title_label = pane_title(title)
-    title_label.setFrame_(NSMakeRect(CONTENT_PADDING, header_y, w - CONTENT_PADDING * 2, 24))
+    title_label.setFrame_(NSMakeRect(CONTENT_PADDING, header_y, w - CONTENT_PADDING * 2, _TITLE_H))
     view.addSubview_(title_label)
 
     content_y = header_y - PANE_SPACING
     if subtitle:
-        content_y -= 14
-        sub = secondary_label(subtitle, size=11.0)
-        sub.setTextColor_(NSColor.tertiaryLabelColor())
-        sub.setFrame_(NSMakeRect(CONTENT_PADDING, content_y, w - CONTENT_PADDING * 2, 14))
+        _sub_h = 14
+        content_y -= _sub_h
+        sub = secondary_label(subtitle, size=Font.SMALL)
+        sub.setTextColor_(Colors.tertiary())
+        sub.setFrame_(NSMakeRect(CONTENT_PADDING, content_y, w - CONTENT_PADDING * 2, _sub_h))
         view.addSubview_(sub)
         content_y -= PANE_SPACING
 
