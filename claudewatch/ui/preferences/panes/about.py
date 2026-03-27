@@ -11,7 +11,7 @@ from Foundation import NSMakeRect
 from claudewatch import __version__
 from claudewatch.backend.updates.dependencies import get_update_service
 from claudewatch.ui.components.widgets.labels import label, secondary_label
-from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane_stack
+from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
 from claudewatch.ui.safety import dispatch_to_main_thread
 
 _PAD = 24
@@ -19,40 +19,47 @@ _PAD = 24
 
 def build_about_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: PLR0915
     """Build the About pane with version, buttons, and changelog."""
+    view, content_top = create_pane("About", w, h)
     card_w = w - CONTENT_PADDING * 2
-    stack = create_pane_stack("About", w)
 
-    # Version + buttons row
+    y = content_top
+
+    # Version
     version_label = label(f"ClaudeWatch v{__version__}", size=14.0, bold=True)
-    stack.add(version_label, height=18)
+    y -= 18
+    version_label.setFrame_(NSMakeRect(CONTENT_PADDING, y, card_w, 18))
+    view.addSubview_(version_label)
+    y -= 8
 
-    button_row = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 0, 24))
-    audit_log_button = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 100, 24))
+    # Buttons
+    y -= 24
+    audit_log_button = NSButton.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING, y, 100, 24))
     audit_log_button.setTitle_("Audit Log")
     audit_log_button.setBezelStyle_(1)
     audit_log_button.setFont_(NSFont.systemFontOfSize_(11.0))
     audit_log_button.setTarget_(delegate)
     audit_log_button.setAction_(objc.selector(delegate.viewAuditLog_, signature=b"v@:@"))
-    button_row.addSubview_(audit_log_button)
+    view.addSubview_(audit_log_button)
 
-    github_button = NSButton.alloc().initWithFrame_(NSMakeRect(108, 0, 80, 24))
+    github_button = NSButton.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING + 108, y, 80, 24))
     github_button.setTitle_("GitHub")
     github_button.setBezelStyle_(1)
     github_button.setFont_(NSFont.systemFontOfSize_(11.0))
     github_button.setTarget_(delegate)
     github_button.setAction_(objc.selector(delegate.openRepo_, signature=b"v@:@"))
-    button_row.addSubview_(github_button)
-    stack.add(button_row, height=24)
+    view.addSubview_(github_button)
+    y -= 16
 
     # Changelog header
-    stack.gap(8)
+    y -= 14
     changelog_header = label("WHAT'S NEW", size=10.0, color=NSColor.tertiaryLabelColor())
-    stack.add(changelog_header, height=14)
+    changelog_header.setFrame_(NSMakeRect(CONTENT_PADDING, y, 200, 14))
+    view.addSubview_(changelog_header)
+    y -= 8
 
-    # Changelog scroll area — fills remaining space
-    # Calculate remaining height after stack content so far
-    changelog_h = h - stack.content_height - 20
-    changelog_scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, card_w, changelog_h))
+    # Changelog scroll
+    changelog_h = y
+    changelog_scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING, 0, card_w, changelog_h))
     changelog_scroll.setHasVerticalScroller_(True)
     changelog_scroll.setAutohidesScrollers_(True)
     changelog_scroll.setDrawsBackground_(False)
@@ -62,7 +69,7 @@ def build_about_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
     loading_label.setFrame_(NSMakeRect(10, changelog_h // 2, card_w - 20, 18))
     loading_view.addSubview_(loading_label)
     changelog_scroll.setDocumentView_(loading_view)
-    stack.add(changelog_scroll, height=changelog_h)
+    view.addSubview_(changelog_scroll)
 
     # Fetch in background, build views on main thread
     def _fetch() -> None:
@@ -87,7 +94,7 @@ def build_about_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: P
 
     threading.Thread(target=_fetch, daemon=True).start()
 
-    return stack.to_view(min_height=h)
+    return view
 
 
 def _parse_notes(body: str) -> list[str]:

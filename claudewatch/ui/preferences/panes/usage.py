@@ -8,10 +8,11 @@ from Foundation import NSMakeRect
 
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.usage.dependencies import get_usage_service
+from claudewatch.ui.components.layout import VStack
 from claudewatch.ui.components.widgets.buttons import Size, button
 from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
-from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane_stack
+from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
 
 _PAD = 24
 _CARD_PAD = 16
@@ -20,7 +21,7 @@ _M = 1_000_000
 _K = 1_000
 
 
-def build_usage_pane(delegate: object, w: float, h: float) -> NSView:
+def build_usage_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: PLR0915
     """Build the Usage pane with aggregated stats."""
     from datetime import UTC, datetime, timedelta
 
@@ -60,15 +61,17 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:
         except (ValueError, TypeError):
             pass
 
+    view, content_top = create_pane("Usage", w, h)
     card_w = w - CONTENT_PADDING * 2
-    stack = create_pane_stack("Usage", w)
 
     if not session_stats:
-        stack.gap(4)
-        stack.add(secondary_label("No usage data yet.", size=13.0), height=18)
-        return stack.to_scroll_view(max_height=h)
+        empty = secondary_label("No usage data yet.", size=13.0)
+        empty.setFrame_(NSMakeRect(CONTENT_PADDING, content_top - 24, card_w, 18))
+        view.addSubview_(empty)
+        return view
 
-    # Last 30 days section
+    # Build scroll content below fixed header
+    stack = VStack(width=w, padding=CONTENT_PADDING, spacing=8)
     stack.add(_section_header("LAST 30 DAYS"), height=14)
 
     total_in = total["input"] + total["cache_create"] + total["cache_read"]
@@ -92,7 +95,24 @@ def build_usage_pane(delegate: object, w: float, h: float) -> NSView:
     top_card = _build_top_sessions_card(delegate, card_w, top)
     stack.add(top_card, height=top_card.frame().size.height)
 
-    return stack.to_scroll_view(max_height=h)
+    # Place stack content below fixed header
+    from AppKit import NSScrollView
+
+    scroll_h = content_top
+    if stack.content_height <= scroll_h:
+        content_view = stack.to_view(min_height=scroll_h)
+        view.addSubview_(content_view)
+    else:
+        inner = stack.to_view()
+        scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, scroll_h))
+        scroll.setHasVerticalScroller_(True)
+        scroll.setAutohidesScrollers_(True)
+        scroll.setDrawsBackground_(False)
+        scroll.setDocumentView_(inner)
+        inner.scrollPoint_((0, inner.frame().size.height))
+        view.addSubview_(scroll)
+
+    return view
 
 
 def _section_header(text: str) -> NSView:

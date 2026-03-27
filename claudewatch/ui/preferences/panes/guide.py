@@ -5,7 +5,7 @@ from __future__ import annotations
 from AppKit import NSView
 
 from claudewatch.ui.components.composites.guide import build_guide
-from claudewatch.ui.preferences.panes.common import create_pane_stack
+from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
 
 _SECTIONS = [
     (
@@ -55,11 +55,13 @@ _SECTIONS = [
 
 
 def build_guide_pane(delegate: object, w: float, h: float) -> NSView:  # noqa: ARG001
-    """Build the Guide pane using VStack + guide composite."""
-    stack = create_pane_stack("Guide", w)
+    """Build the Guide pane with fixed header + scrollable guide content."""
+    view, content_top = create_pane("Guide", w, h)
 
-    guide_content_h = h - stack.content_height - 20
-    guide_view = build_guide(sections=_SECTIONS, width=w - 24, height=guide_content_h)
-    stack.add(guide_view, height=guide_content_h)
+    guide_view = build_guide(sections=_SECTIONS, width=w - CONTENT_PADDING * 2, height=content_top)
+    from Foundation import NSMakeRect
 
-    return stack.to_view(min_height=h)
+    guide_view.setFrame_(NSMakeRect(CONTENT_PADDING, 0, w - CONTENT_PADDING * 2, content_top))
+    view.addSubview_(guide_view)
+
+    return view
