@@ -1,25 +1,42 @@
-.idea/
+# Python
 __pycache__/
 *.pyc
 *.py[cod]
-.DS_Store
+*.egg-info/
+.venv/
 .python-version
+
+# Build artifacts
 dist/
 build/
-.venv/
-*.egg-info/
+macOS/
+*.zip
+*.dmg
+*.app
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Tools
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
 .coverage
 htmlcov/
-.vscode/
+
+# Environment
 .env
-macOS/
-.claude/worktrees/
+.env.*
+
+# Logs
 logs/
-*.zip
-*.dmg
-.superpowers/
-docs/superpowers/
+*.log
+
+# Claude Code
+.claude/worktrees/
+.claude/plans/
+
+# Local clones
 homebrew-brews/
