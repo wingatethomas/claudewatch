@@ -172,29 +172,29 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
 def _build_danger_zone(view: NSView, delegate: object, x: float, y: float, card_w: float) -> None:
     """Build the danger zone card."""
     red = NSColor.systemRedColor()
-    header_h = 30
+    header_h = 36
     row_h = 38
     total_h = header_h + 2 * row_h
 
     c = make_card(card_w, total_h, border_color=red.colorWithAlphaComponent_(0.3))
     c.setFrame_(NSMakeRect(x, y - total_h, card_w, total_h))
     view.addSubview_(c)
-    dc = c.contentView()
+    content = c.contentView()
 
     # Header
     header = label("Danger Zone", size=11.0, bold=True, color=red.colorWithAlphaComponent_(0.8))
-    header.setFrame_(NSMakeRect(_CARD_PAD, total_h - _CARD_PAD - 14, 200, 14))
-    dc.addSubview_(header)
+    header.setFrame_(NSMakeRect(_CARD_PAD, total_h - 10 - 14, 200, 14))
+    content.addSubview_(header)
 
-    sep = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, total_h - header_h, card_w - _CARD_PAD * 2, 1))
-    sep.setBoxType_(2)
-    dc.addSubview_(sep)
+    separator = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, total_h - header_h, card_w - _CARD_PAD * 2, 1))
+    separator.setBoxType_(2)
+    content.addSubview_(separator)
 
     # Row 1: Clear bookmarks
     r1y = total_h - header_h - row_h
     r1_label = label("Clear all bookmarks", size=12.0)
     r1_label.setFrame_(NSMakeRect(_CARD_PAD, r1y + 10, card_w - _CARD_PAD * 2 - 88, 18))
-    dc.addSubview_(r1_label)
+    content.addSubview_(r1_label)
     bm_btn = button(
         "Clear...",
         target=delegate,
@@ -202,18 +202,18 @@ def _build_danger_zone(view: NSView, delegate: object, x: float, y: float, card_
         size=Size(80, 22),
     )
     bm_btn.setFrame_(NSMakeRect(card_w - _CARD_PAD - 80, r1y + 8, 80, 22))
-    dc.addSubview_(bm_btn)
+    content.addSubview_(bm_btn)
 
     # Separator
     sep2 = NSBox.alloc().initWithFrame_(NSMakeRect(_CARD_PAD, r1y, card_w - _CARD_PAD * 2, 1))
     sep2.setBoxType_(2)
-    dc.addSubview_(sep2)
+    content.addSubview_(sep2)
 
     # Row 2: Clear summaries
     r2y = r1y - row_h
     r2_label = label("Clear all summaries", size=12.0)
     r2_label.setFrame_(NSMakeRect(_CARD_PAD, r2y + 10, card_w - _CARD_PAD * 2 - 88, 18))
-    dc.addSubview_(r2_label)
+    content.addSubview_(r2_label)
     sum_btn = button(
         "Clear...",
         target=delegate,
@@ -221,4 +221,4 @@ def _build_danger_zone(view: NSView, delegate: object, x: float, y: float, card_
         size=Size(80, 22),
     )
     sum_btn.setFrame_(NSMakeRect(card_w - _CARD_PAD - 80, r2y + 8, 80, 22))
-    dc.addSubview_(sum_btn)
+    content.addSubview_(sum_btn)
