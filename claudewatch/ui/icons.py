@@ -121,10 +121,15 @@ def render_status_icon(  # noqa: PLR0914
             col = i % _dots_per_row
             row_y = top_y if i < _dots_per_row else bot_y
             x = _symbol_width + col * _dot_step
+            dot_rect = NSMakeRect(x, row_y, _dot_radius * 2, _dot_radius * 2)
+            dot_path = NSBezierPath.bezierPathWithOvalInRect_(dot_rect)
+            # Fill with color
             color.set()
-            NSBezierPath.bezierPathWithOvalInRect_(
-                NSMakeRect(x, row_y, _dot_radius * 2, _dot_radius * 2),
-            ).fill()
+            dot_path.fill()
+            # Subtle outline for visibility on any background
+            color.colorWithAlphaComponent_(0.4).set()
+            dot_path.setLineWidth_(0.5)
+            dot_path.stroke()
     finally:
         img.unlockFocus()
     img.setTemplate_(False)

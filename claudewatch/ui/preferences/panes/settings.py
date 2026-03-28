@@ -17,7 +17,7 @@ from Foundation import NSMakeRect
 
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FacetType
-from claudewatch.ui.components.tokens import Font, Spacing
+from claudewatch.ui.components.tokens import Font, Spacing, get_scheme
 from claudewatch.ui.components.widgets.buttons import Size, button
 from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
@@ -161,7 +161,11 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
             facet_popup.addItemsWithTitles_(list(facet.options))
             current = features.get_facet(key, facet.name)
             if current is not None:
-                facet_popup.selectItemWithTitle_(str(current))
+                display_value = str(current)
+                # Normalize legacy values to current option names
+                if key == "accessibility" and facet.name == "color_scheme":
+                    display_value = get_scheme(display_value).name
+                facet_popup.selectItemWithTitle_(display_value)
             facet_popup.cell().setRepresentedObject_(f"{key}|{facet.name}")
             facet_popup.setTarget_(delegate)
             facet_popup.setAction_(objc.selector(delegate.facetChanged_, signature=b"v@:@"))

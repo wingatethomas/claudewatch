@@ -27,6 +27,7 @@ from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
 from claudewatch.ui.components.composites.session_row import build_session_row
+from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.icons import sf_icon
 from claudewatch.ui.preferences.panes.common import BasePane
 
@@ -58,47 +59,48 @@ class SessionsPane(BasePane):
     def build_content(self, view: NSView, content_top: float) -> None:
         # Toolbar
         toolbar_y = content_top - 30
-        search = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 24))
-        search.setPlaceholderString_("Search...")
-        search.setStringValue_(self.delegate._history_search or "")
-        search.setTarget_(self.delegate)
-        search.setAction_(objc.selector(self.delegate.historySearchChanged_, signature=b"v@:@"))
-        view.addSubview_(search)
+        search_field = NSSearchField.alloc().initWithFrame_(NSMakeRect(_PAD, toolbar_y, 180, 24))
+        search_field.setPlaceholderString_("Search...")
+        search_field.setStringValue_(self.delegate._history_search or "")
+        search_field.setTarget_(self.delegate)
+        search_field.setAction_(objc.selector(self.delegate.historySearchChanged_, signature=b"v@:@"))
+        view.addSubview_(search_field)
 
-        sort_seg = NSSegmentedControl.segmentedControlWithLabels_trackingMode_target_action_(
+        sort_control = NSSegmentedControl.segmentedControlWithLabels_trackingMode_target_action_(
             ["Date", "Name"],
             0,
             self.delegate,
             objc.selector(self.delegate.historySortChanged_, signature=b"v@:@"),
         )
-        sort_seg.setFrame_(NSMakeRect(_PAD + 190, toolbar_y, 150, 24))
-        sort_seg.setSegmentStyle_(NSSegmentStyleTexturedRounded)
-        sort_seg.setFont_(NSFont.systemFontOfSize_(11.0))
-        sel_idx = 1 if self.delegate._history_sort == "name" else 0
-        sort_seg.setSelectedSegment_(sel_idx)
-        view.addSubview_(sort_seg)
+        sort_control.setFrame_(NSMakeRect(_PAD + 190, toolbar_y, 150, 24))
+        sort_control.setSegmentStyle_(NSSegmentStyleTexturedRounded)
+        sort_control.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
+        sort_index = 1 if self.delegate._history_sort == "name" else 0
+        sort_control.setSelectedSegment_(sort_index)
+        view.addSubview_(sort_control)
 
-        bm_chip = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 350, toolbar_y - 1, 36, 24))
-        bm_chip.setTitle_("")
-        bm_chip.setImage_(sf_icon("bookmark.fill", size=12.0))
-        bm_chip.setButtonType_(1)
-        bm_chip.setBezelStyle_(1)
-        bm_chip.setState_(NSControlStateValueOn if self.delegate._history_bookmarked_only else NSControlStateValueOff)
-        bm_chip.setTarget_(self.delegate)
-        bm_chip.setAction_(objc.selector(self.delegate.historyBookmarkFilter_, signature=b"v@:@"))
-        bm_chip.setToolTip_("Show bookmarked only")
-        view.addSubview_(bm_chip)
+        bookmark_filter = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 350, toolbar_y - 1, 36, 24))
+        bookmark_filter.setTitle_("")
+        bookmark_filter.setImage_(sf_icon("bookmark.fill", size=Font.SECONDARY))
+        bookmark_filter.setButtonType_(1)
+        bookmark_filter.setBezelStyle_(1)
+        bookmark_filter.setState_(
+            NSControlStateValueOn if self.delegate._history_bookmarked_only else NSControlStateValueOff
+        )
+        bookmark_filter.setTarget_(self.delegate)
+        bookmark_filter.setAction_(objc.selector(self.delegate.historyBookmarkFilter_, signature=b"v@:@"))
+        bookmark_filter.setToolTip_("Show bookmarked only")
+        view.addSubview_(bookmark_filter)
 
         # Separator
-        sep_y = toolbar_y - 8
-        sep = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, sep_y, self.width - _PAD * 2, 1))
-        sep.setBoxType_(2)
-        view.addSubview_(sep)
+        separator_y = toolbar_y - Spacing.SM
+        toolbar_separator = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, separator_y, self.width - _PAD * 2, 1))
+        toolbar_separator.setBoxType_(2)
+        view.addSubview_(toolbar_separator)
 
         # Scroll area for rows
-        scroll_y = 0
-        scroll_h = sep_y - 4
-        scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, scroll_y, self.width, scroll_h))
+        scroll_h = separator_y - Spacing.XS
+        scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, self.width, scroll_h))
         scroll.setHasVerticalScroller_(True)
         scroll.setAutohidesScrollers_(True)
         scroll.setDrawsBackground_(False)

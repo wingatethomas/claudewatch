@@ -122,14 +122,14 @@ STATUS_SCHEMES: dict[str, StatusScheme] = {
         working=_rgb(0.25, 0.65, 0.30),
         idle=_rgb(0.85, 0.65, 0.15),
     ),
-    "Deuteranopia": StatusScheme(
-        "Deuteranopia",
+    "Blue-Orange": StatusScheme(
+        "Blue-Orange",
         attention=_rgb(0.90, 0.40, 0.10),
         working=_rgb(0.20, 0.50, 0.85),
         idle=_rgb(0.70, 0.70, 0.70),
     ),
-    "Protanopia": StatusScheme(
-        "Protanopia",
+    "Blue-Yellow": StatusScheme(
+        "Blue-Yellow",
         attention=_rgb(0.90, 0.60, 0.00),
         working=_rgb(0.00, 0.45, 0.85),
         idle=_rgb(0.60, 0.60, 0.60),
@@ -143,12 +143,25 @@ STATUS_SCHEMES: dict[str, StatusScheme] = {
 }
 
 
+# Map old scheme names to new ones (for backward compat with stored settings)
+_LEGACY_NAMES: dict[str, str] = {
+    "default": "Default",
+    "deuteranopia": "Blue-Orange",
+    "protanopia": "Blue-Yellow",
+    "high_contrast": "High Contrast",
+}
+
+
 def get_scheme(name: str) -> StatusScheme:
-    """Look up a scheme by name. Case-insensitive. Returns Default if not found."""
-    # Direct match first
+    """Look up a scheme by name. Handles legacy names. Returns Default if not found."""
+    # Direct match
     if name in STATUS_SCHEMES:
         return STATUS_SCHEMES[name]
-    # Case-insensitive fallback (handles old lowercase values)
+    # Legacy name migration
+    legacy = _LEGACY_NAMES.get(name.lower().replace(" ", "_"))
+    if legacy and legacy in STATUS_SCHEMES:
+        return STATUS_SCHEMES[legacy]
+    # Case-insensitive fallback
     for key, scheme in STATUS_SCHEMES.items():
         if key.lower() == name.lower():
             return scheme
