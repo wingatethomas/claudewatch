@@ -136,9 +136,9 @@ STATUS_SCHEMES: dict[str, StatusScheme] = {
     ),
     "High Contrast": StatusScheme(
         "High Contrast",
-        attention=_rgb(1.00, 0.20, 0.20),
-        working=_rgb(0.20, 0.80, 1.00),
-        idle=_rgb(1.00, 1.00, 0.30),
+        attention=_rgb(1.00, 0.00, 0.00),
+        working=_rgb(0.00, 0.60, 1.00),
+        idle=_rgb(0.80, 0.80, 0.00),
     ),
 }
 

@@ -31,6 +31,7 @@ from claudewatch.backend.core.dto import ActivityEventDTO
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.session_log.dependencies import get_session_log_service
 from claudewatch.backend.detection.dependencies import get_detection_service
+from claudewatch.ui.components.tokens import Font
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.safety import objc_callback
 
@@ -48,9 +49,9 @@ _KIND_CONFIG = {
     "assistant": {"icon": "◇", "color": NSColor.systemBlueColor(), "label": "Claude"},
     "tool": {"icon": "⚙", "color": NSColor.systemOrangeColor(), "label": "Tool"},
 }
-_MONO = NSFont.monospacedSystemFontOfSize_weight_(11.0, 0)
-_MONO_BOLD = NSFont.monospacedSystemFontOfSize_weight_(11.0, 0.5)
-_MONO_SMALL = NSFont.monospacedSystemFontOfSize_weight_(10.0, 0)
+_MONO = NSFont.monospacedSystemFontOfSize_weight_(Font.SMALL, 0)
+_MONO_BOLD = NSFont.monospacedSystemFontOfSize_weight_(Font.SMALL, 0.5)
+_MONO_SMALL = NSFont.monospacedSystemFontOfSize_weight_(Font.CAPTION, 0)
 
 
 def _get_session_id(cwd: str) -> str:
