@@ -8,7 +8,6 @@ from AppKit import (
     NSApplicationActivationPolicyAccessory,
     NSBox,
     NSButton,
-    NSColor,
     NSFont,
     NSObject,
     NSTextField,
@@ -20,6 +19,7 @@ from Foundation import NSMakeRect
 
 from claudewatch.backend.core.settings import get_setting, set_setting
 from claudewatch.ui.safety import objc_callback
+from claudewatch.ui.theme import theme
 
 _W = 500
 _H = 460
@@ -104,9 +104,9 @@ def show_welcome() -> None:  # noqa: PLR0915
         "Monitor your Claude Code sessions from the menu bar.",
         y + 16,
         height=16,
-        color=NSColor.secondaryLabelColor(),
+        color=theme.secondary,
     )
-    _add_label(root, "Grant these two permissions to get started.", y, height=16, color=NSColor.secondaryLabelColor())
+    _add_label(root, "Grant these two permissions to get started.", y, height=16, color=theme.secondary)
     y -= _g * 2
 
     # Accessibility
@@ -120,7 +120,7 @@ def show_welcome() -> None:  # noqa: PLR0915
         y,
         height=18,
         width=_TEXT_W - 130,
-        color=NSColor.secondaryLabelColor(),
+        color=theme.secondary,
     )
     _add_action_button(root, "Open Settings", y, _delegate, "openAccessibility_")
     y -= _g
@@ -136,7 +136,7 @@ def show_welcome() -> None:  # noqa: PLR0915
         y,
         height=18,
         width=_TEXT_W - 130,
-        color=NSColor.secondaryLabelColor(),
+        color=theme.secondary,
     )
     _add_action_button(root, "Open Settings", y, _delegate, "openAutomation_")
     y -= _g
@@ -151,7 +151,7 @@ def show_welcome() -> None:  # noqa: PLR0915
         "Only reads ~/.claude/ and writes to ~/Library/Application Support/ClaudeWatch/.",
         y,
         height=18,
-        color=NSColor.secondaryLabelColor(),
+        color=theme.secondary,
     )
     y -= 18
     _add_label(
@@ -159,7 +159,7 @@ def show_welcome() -> None:  # noqa: PLR0915
         "Does not access Photos, Music, Documents, or Downloads.",
         y,
         height=18,
-        color=NSColor.secondaryLabelColor(),
+        color=theme.secondary,
     )
     y -= 18
     _add_label(
@@ -167,7 +167,7 @@ def show_welcome() -> None:  # noqa: PLR0915
         "Deny any other permission prompts that appear on first launch.",
         y,
         height=18,
-        color=NSColor.secondaryLabelColor(),
+        color=theme.secondary,
     )
     y -= _g
 
@@ -181,7 +181,7 @@ def show_welcome() -> None:  # noqa: PLR0915
         "AppleScript (Terminal windows) · claude -p (summaries)",
         y,
         height=18,
-        color=NSColor.secondaryLabelColor(),
+        color=theme.secondary,
     )
     y -= 18
     _add_label(
@@ -189,7 +189,7 @@ def show_welcome() -> None:  # noqa: PLR0915
         "Native macOS notifications · GitHub API (update checks)",
         y,
         height=18,
-        color=NSColor.secondaryLabelColor(),
+        color=theme.secondary,
     )
     y -= 24
 
