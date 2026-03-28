@@ -33,6 +33,13 @@ _FEATURE_DETAILS: dict[str, str] = {
     "accessibility": "Color scheme for status dots in the menu bar.",
 }
 
+# Feature groups — defines section order and which features belong to each
+_FEATURE_GROUPS: list[tuple[str, list[str]]] = [
+    ("Sessions", ["bookmarks", "background_summaries"]),
+    ("Notifications", ["notifications"]),
+    ("App", ["launch_at_login", "auto_updates", "accessibility"]),
+]
+
 
 class SettingsPane(BasePane):
     """Settings pane with feature cards, test actions, and danger zone."""
@@ -46,16 +53,23 @@ class SettingsPane(BasePane):
         return "Feature toggles and preferences"
 
     def build_content(self, view: NSView, content_top: float) -> None:  # noqa: PLR0915
-        all_features = features.get_all()
+        all_features = {f.key: f for f in features.get_all()}
         self.delegate._feature_controls = {}
 
         # Calculate scroll content height
+        _section_header_h = 20
         content_h = 0
-        for feature in all_features:
-            detail = _FEATURE_DETAILS.get(feature.key, "")
-            toggle_row_h = 56 if detail else 44
-            feature_card_h = toggle_row_h + len(feature.facets) * 40
-            content_h += feature_card_h + Spacing.SM
+        for _group_name, feature_keys in _FEATURE_GROUPS:
+            content_h += _section_header_h + Spacing.SM
+            for key in feature_keys:
+                feature = all_features.get(key)
+                if not feature:
+                    continue
+                detail = _FEATURE_DETAILS.get(key, "")
+                toggle_row_h = 56 if detail else 44
+                feature_card_h = toggle_row_h + len(feature.facets) * 40
+                content_h += feature_card_h + Spacing.SM
+            content_h += Spacing.SM
         content_h += Spacing.XL  # gap before danger zone
         content_h += 36 + 2 * 38  # danger zone
         content_h += Spacing.XL
@@ -66,10 +80,21 @@ class SettingsPane(BasePane):
 
         y = inner_h
 
-        # Feature cards
-        for feature in all_features:
-            feature_card_h = _build_feature_card(inner, self.delegate, feature, CONTENT_PADDING, y, self.card_width)
-            y -= feature_card_h + Spacing.SM
+        # Feature cards grouped by section
+        for group_name, feature_keys in _FEATURE_GROUPS:
+            y -= _section_header_h
+            section_label = label(group_name.upper(), size=Font.CAPTION, color=theme.tertiary)
+            section_label.setFrame_(NSMakeRect(CONTENT_PADDING, y, self.card_width, 14))
+            inner.addSubview_(section_label)
+            y -= Spacing.XS
+
+            for key in feature_keys:
+                feature = all_features.get(key)
+                if not feature:
+                    continue
+                feature_card_h = _build_feature_card(inner, self.delegate, feature, CONTENT_PADDING, y, self.card_width)
+                y -= feature_card_h + Spacing.SM
+            y -= Spacing.SM
 
         # Danger zone
         y -= Spacing.LG
