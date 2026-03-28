@@ -13,6 +13,7 @@ macOS/
 *.zip
 *.dmg
 *.app
+checksums.txt
 
 # IDE
 .idea/
