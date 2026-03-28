@@ -122,14 +122,14 @@ STATUS_SCHEMES: dict[str, StatusScheme] = {
         working=_rgb(0.25, 0.65, 0.30),
         idle=_rgb(0.85, 0.65, 0.15),
     ),
-    "Deuteranopia": StatusScheme(
-        "Deuteranopia",
+    "Blue-Orange": StatusScheme(
+        "Blue-Orange",
         attention=_rgb(0.90, 0.40, 0.10),
         working=_rgb(0.20, 0.50, 0.85),
         idle=_rgb(0.70, 0.70, 0.70),
     ),
-    "Protanopia": StatusScheme(
-        "Protanopia",
+    "Blue-Yellow": StatusScheme(
+        "Blue-Yellow",
         attention=_rgb(0.90, 0.60, 0.00),
         working=_rgb(0.00, 0.45, 0.85),
         idle=_rgb(0.60, 0.60, 0.60),

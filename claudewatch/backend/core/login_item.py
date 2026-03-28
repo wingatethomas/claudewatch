@@ -24,7 +24,7 @@ register(
                 type=FacetType.CHOICE,
                 default="Default",
                 description="Status colors",
-                options=("Default", "Deuteranopia", "Protanopia", "High Contrast"),
+                options=("Default", "Blue-Orange", "Blue-Yellow", "High Contrast"),
             ),
         ),
     )

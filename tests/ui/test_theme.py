@@ -15,9 +15,9 @@ class TestGetScheme:
         scheme = get_scheme("default")
         assert scheme.name == "Default"
 
-    def test_case_insensitive_deuteranopia(self) -> None:
-        scheme = get_scheme("deuteranopia")
-        assert scheme.name == "Deuteranopia"
+    def test_case_insensitive_blue_orange(self) -> None:
+        scheme = get_scheme("blue-orange")
+        assert scheme.name == "Blue-Orange"
 
     def test_case_insensitive_high_contrast(self) -> None:
         scheme = get_scheme("high contrast")
