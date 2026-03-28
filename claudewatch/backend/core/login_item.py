@@ -8,11 +8,27 @@ import os
 import plistlib
 import sys
 
-from claudewatch.backend.core.features import Feature, register
+from claudewatch.backend.core.features import Facet, FacetType, Feature, register
 
 log = logging.getLogger("claudewatch")
 
 register(Feature(key="launch_at_login", description="Launch at login", default_enabled=False))
+register(
+    Feature(
+        key="accessibility",
+        description="Accessibility",
+        default_enabled=True,
+        facets=(
+            Facet(
+                name="color_scheme",
+                type=FacetType.CHOICE,
+                default="Default",
+                description="Status colors",
+                options=("Default", "Deuteranopia", "Protanopia", "High Contrast"),
+            ),
+        ),
+    )
+)
 
 _PLIST_NAME = "com.claudewatch.plist"
 _LAUNCH_AGENTS_DIR = os.path.expanduser("~/Library/LaunchAgents")

@@ -15,7 +15,7 @@ class PrefsDelegate(NSObject):
     # Instance vars (set by window.py)
     _sidebar_items: list[dict]
     _sidebar_btns: list
-    _pane_builders: dict
+    _pane_classes: dict
     _content_w: float
     _content_h: float
     _content_area: NSView | None
@@ -38,14 +38,15 @@ class PrefsDelegate(NSObject):
             self._current_pane.removeFromSuperview()
             self._current_pane = None
 
-        builder = self._pane_builders.get(item["key"])
-        if not builder:
+        pane_class = self._pane_classes.get(item["key"])
+        if not pane_class:
             return
 
-        pane = builder(self, self._content_w, self._content_h)
-        pane.setFrame_(NSMakeRect(0, 0, self._content_w, self._content_h))
-        self._content_area.addSubview_(pane)
-        self._current_pane = pane
+        pane = pane_class(self, self._content_w, self._content_h)
+        view = pane.build()
+        view.setFrame_(NSMakeRect(0, 0, self._content_w, self._content_h))
+        self._content_area.addSubview_(view)
+        self._current_pane = view
 
     def select_sidebar(self, idx: int) -> None:
         """Update sidebar highlight and show corresponding pane."""
@@ -227,6 +228,23 @@ class PrefsDelegate(NSObject):
         webbrowser.open("https://github.com/wingatethomas/claudewatch")
 
     @objc_callback
+    def testNotification_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.backend.notifications.dependencies import get_notification_service
+
+        get_notification_service().send("Test notification", "ClaudeWatch", "Notifications are working!")
+
+    @objc_callback
+    def testSound_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from AppKit import NSSound
+
+        from claudewatch.backend.core import features
+
+        sound_name = features.get_facet("notifications", "sound") or "Glass"
+        sound = NSSound.soundNamed_(sound_name)
+        if sound:
+            sound.play()
+
+    @objc_callback
     def showWelcome_(self, sender: objc.objc_object) -> None:  # noqa: N802
         from claudewatch.ui.welcome import show_welcome
 
@@ -236,6 +254,6 @@ class PrefsDelegate(NSObject):
 
     @objc_callback
     def windowWillClose_(self, notification: objc.objc_object) -> None:  # noqa: N802, ARG002
-        from claudewatch.ui.preferences import window as _win_mod
+        from claudewatch.ui.preferences import window
 
-        _win_mod._window = None
+        window._window = None

@@ -33,3 +33,7 @@ paths:
 10. **@objc_callback on all delegate methods**: Every ObjC callback method must have the `@objc_callback` decorator for crash safety.
 
 11. **Use `get_represented_object(sender)`**: Never call `sender.representedObject()` directly. The helper handles NSMenuItem vs NSButton differences.
+
+12. **No `import X as Y`**: Naming should be clear enough without aliasing. If a name clashes, rename the local variable instead.
+
+13. **Use design tokens**: Import `Spacing`, `Font`, `Colors` from `components.tokens` instead of hardcoding pixel values, font sizes, or color constructors.

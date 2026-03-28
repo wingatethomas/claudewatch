@@ -20,7 +20,7 @@ def handle_toggle(delegate: object, sender: object) -> None:
         sync_login_item(enabled)
 
 
-def handle_facet_change(delegate: object, sender: object) -> None:  # noqa: ARG001
+def handle_facet_change(delegate: object, sender: object) -> None:
     """Handle facet dropdown or control change."""
     info = get_represented_object(sender)
     key, facet_name = info.split("|", 1)

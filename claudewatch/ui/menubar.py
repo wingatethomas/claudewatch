@@ -25,7 +25,7 @@ from AppKit import (
 )
 from PyObjCTools import AppHelper
 
-import claudewatch.backend.core.login_item as _login_item  # noqa: F401 — registers feature
+import claudewatch.backend.core.login_item  # noqa: F401 — registers feature
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
@@ -48,10 +48,11 @@ from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import UsageService
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
+from claudewatch.ui.menu.core import AppDelegate, MenuCallback, make_menu_item
 from claudewatch.ui.menu_builder import MenuBuilder
-from claudewatch.ui.menu_helpers import AppDelegate, MenuCallback, make_menu_item
 from claudewatch.ui.preferences import show_preferences
 from claudewatch.ui.session_actions import clean_exit_session, is_accessibility_trusted, notify_paused
+from claudewatch.ui.theme import theme
 from claudewatch.ui.welcome import should_show_welcome, show_welcome
 
 log = logging.getLogger("claudewatch")
@@ -245,7 +246,7 @@ class ClaudeWatchApp:
         self._future = _executor.submit(self._detection_service.detect)
 
     def _menu_key(self) -> str:
-        parts = []
+        parts = [f"scheme:{theme.scheme.name}"]
         for s in self.sessions:
             cached = self._summary_service.get_cached(s.cwd) or ""
             parts.append(f"{s.pid}:{s.status.value}:{s.project}:{s.task_summary}:{s.last_output}:{cached}")

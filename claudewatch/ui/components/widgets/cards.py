@@ -15,12 +15,14 @@ def card(
     border_color: NSColor | None = None,
 ) -> NSBox:
     """Rounded-rect grouped container like macOS Settings cards."""
+    from claudewatch.ui.theme import theme  # noqa: PLC0415
+
     box = NSBox.alloc().initWithFrame_(NSMakeRect(0, 0, width, height))
     box.setBoxType_(4)
     box.setBorderType_(1)
     box.setCornerRadius_(_CARD_RADIUS)
-    box.setFillColor_(NSColor.windowBackgroundColor().blendedColorWithFraction_ofColor_(0.06, NSColor.whiteColor()))
-    box.setBorderColor_(border_color or NSColor.separatorColor().colorWithAlphaComponent_(0.3))
+    box.setFillColor_(theme.card_background)
+    box.setBorderColor_(border_color or theme.card_border)
     box.setTitlePosition_(0)
     box.setContentViewMargins_((0, 0))
     return box

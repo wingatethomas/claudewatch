@@ -7,7 +7,7 @@ from AppKit import NSButton, NSFont, NSView
 from Foundation import NSMakeRect
 
 from claudewatch.ui.components.composites.guide import build_guide
-from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, create_pane
+from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, BasePane
 
 _SECTIONS = [
     (
@@ -58,23 +58,31 @@ _SECTIONS = [
 _BUTTON_H = 32
 
 
+class GuidePane(BasePane):
+    """Guide pane with static getting-started content and welcome button."""
+
+    @property
+    def title(self) -> str:
+        return "Guide"
+
+    def build_content(self, view: NSView, content_top: float) -> None:
+        # Welcome button at the bottom
+        welcome_button = NSButton.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING, 8, 160, 24))
+        welcome_button.setTitle_("Show Welcome Screen")
+        welcome_button.setBezelStyle_(1)
+        welcome_button.setFont_(NSFont.systemFontOfSize_(11.0))
+        welcome_button.setTarget_(self.delegate)
+        welcome_button.setAction_(objc.selector(self.delegate.showWelcome_, signature=b"v@:@"))
+        view.addSubview_(welcome_button)
+
+        # Guide content fills space between header and button
+        guide_h = content_top - _BUTTON_H
+        guide_view = build_guide(sections=_SECTIONS, width=self.card_width, height=guide_h)
+        guide_view.setFrame_(NSMakeRect(CONTENT_PADDING, _BUTTON_H, self.card_width, guide_h))
+        view.addSubview_(guide_view)
+
+
+# Legacy function interface for window.py
 def build_guide_pane(delegate: object, w: float, h: float) -> NSView:
-    """Build the Guide pane with fixed header + scrollable guide content + welcome button."""
-    view, content_top = create_pane("Guide", w, h)
-
-    # Welcome button at the bottom
-    welcome_button = NSButton.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING, 8, 160, 24))
-    welcome_button.setTitle_("Show Welcome Screen")
-    welcome_button.setBezelStyle_(1)
-    welcome_button.setFont_(NSFont.systemFontOfSize_(11.0))
-    welcome_button.setTarget_(delegate)
-    welcome_button.setAction_(objc.selector(delegate.showWelcome_, signature=b"v@:@"))
-    view.addSubview_(welcome_button)
-
-    # Guide content fills space between header and button
-    guide_h = content_top - _BUTTON_H
-    guide_view = build_guide(sections=_SECTIONS, width=w - CONTENT_PADDING * 2, height=guide_h)
-    guide_view.setFrame_(NSMakeRect(CONTENT_PADDING, _BUTTON_H, w - CONTENT_PADDING * 2, guide_h))
-    view.addSubview_(guide_view)
-
-    return view
+    """Build the Guide pane."""
+    return GuidePane(delegate, w, h).build()

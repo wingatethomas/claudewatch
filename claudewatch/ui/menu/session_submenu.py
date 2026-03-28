@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from AppKit import NSMenu, NSMenuItem
 
 from claudewatch.ui.icons import sf_icon
-from claudewatch.ui.menu_helpers import add_summary_lines, make_menu_item
+from claudewatch.ui.menu.core import add_summary_lines, make_menu_item
 
 MenuCallback = Callable[[NSMenuItem], None]
 
@@ -75,7 +75,7 @@ def build_session_submenu(
     action_items = [
         ("resume", "Resume", "play.circle"),
         ("bookmark", "Bookmark...", "bookmark"),
-        ("unbookmark", "Remove", "trash"),
+        ("unbookmark", "Unbookmark", "bookmark.slash"),
         ("quit", "Quit session", "xmark.circle"),
         ("remove", "Remove", "trash"),
     ]

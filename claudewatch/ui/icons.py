@@ -20,13 +20,8 @@ from claudewatch.backend.core.models import (
     SessionStatus,
 )
 
-# Status colors — the Digital Color Meter samples were display-rendered values,
-# not sRGB input. Use brighter sRGB values that render to match Claude Code on screen.
-STATUS_COLORS = {
-    SessionStatus.ATTENTION: NSColor.colorWithSRGBRed_green_blue_alpha_(0.85, 0.30, 0.28, 1.0),  # warm red
-    SessionStatus.WORKING: NSColor.colorWithSRGBRed_green_blue_alpha_(0.25, 0.65, 0.30, 1.0),  # forest green
-    SessionStatus.IDLE: NSColor.colorWithSRGBRed_green_blue_alpha_(0.85, 0.65, 0.15, 1.0),  # warm amber
-}
+# Re-export from theme for backward compat
+from claudewatch.ui.theme import get_status_colors  # noqa: E402
 
 # Cache for scaled NSImage icons
 _app_icon_cache: dict[HostApp, NSImage | None] = {}
@@ -40,7 +35,7 @@ def make_header_title(text: str, status: SessionStatus, count: int) -> NSMutable
     # Style the dots: colored, smaller font, baseline-shifted up to center vertically
     dot_start = len(full) - len(dots)
     dot_range = NSRange(dot_start, len(dots))
-    color = STATUS_COLORS.get(status, NSColor.secondaryLabelColor())
+    color = get_status_colors().get(status, NSColor.secondaryLabelColor())
     attr_str.addAttribute_value_range_("NSColor", color, dot_range)
     attr_str.addAttribute_value_range_("NSFont", NSFont.systemFontOfSize_(7.0), dot_range)
     attr_str.addAttribute_value_range_("NSBaselineOffset", 2.0, dot_range)
@@ -58,7 +53,7 @@ def render_dot_row(status: SessionStatus, count: int) -> NSImage:
     img = NSImage.alloc().initWithSize_(NSMakeSize(width, _height))
     img.lockFocus()
     try:
-        color = STATUS_COLORS.get(status, NSColor.secondaryLabelColor())
+        color = get_status_colors().get(status, NSColor.secondaryLabelColor())
         color.set()
         center_y = (_height - _dot_diameter) / 2.0
         for i in range(count):
@@ -90,11 +85,11 @@ def render_status_icon(  # noqa: PLR0914
     # Build dot list: attention first (red), then working (green), then idle (yellow)
     dots: list[NSColor] = []
     for _ in attention:
-        dots.append(STATUS_COLORS[SessionStatus.ATTENTION])
+        dots.append(get_status_colors()[SessionStatus.ATTENTION])
     for _ in working:
-        dots.append(STATUS_COLORS[SessionStatus.WORKING])
+        dots.append(get_status_colors()[SessionStatus.WORKING])
     for _ in idle:
-        dots.append(STATUS_COLORS[SessionStatus.IDLE])
+        dots.append(get_status_colors()[SessionStatus.IDLE])
     dots = dots[:_max_dots]
 
     n_dots = len(dots)

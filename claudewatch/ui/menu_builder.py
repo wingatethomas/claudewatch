@@ -6,7 +6,6 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from AppKit import (
-    NSColor,
     NSFont,
     NSMenu,
     NSMenuItem,
@@ -14,23 +13,25 @@ from AppKit import (
 )
 from Foundation import NSRange
 
+from claudewatch.backend.core import features
 from claudewatch.backend.core.models import ClaudeSession, SessionStatus
 from claudewatch.backend.core.paths import is_homebrew_install
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_breakdown
 from claudewatch.ui.icons import (
-    STATUS_COLORS,
     get_app_icon,
+    get_status_colors,
     make_header_title,
     render_status_icon,
     sf_icon,
 )
-from claudewatch.ui.menu.session_submenu import SessionActions, build_session_submenu
-from claudewatch.ui.menu_helpers import (
+from claudewatch.ui.menu.core import (
     AppDelegate,
     disabled_item,
     make_menu_item,
     noop,
 )
+from claudewatch.ui.menu.session_submenu import SessionActions, build_session_submenu
+from claudewatch.ui.theme import theme
 
 if TYPE_CHECKING:
     from claudewatch.ui.menubar import ClaudeWatchApp
@@ -167,8 +168,8 @@ class MenuBuilder:
                     is_pinned = s.cwd in pinned_cwds
                     self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
-        # Bookmarked sessions that are NOT currently active
-        pins = self._app._bookmark_service.get_all()
+        # Bookmarked sessions that are NOT currently active (respects feature toggle)
+        pins = self._app._bookmark_service.get_all() if features.is_enabled("bookmarks") else []
         inactive_pins = [p for p in pins if p.cwd not in active_cwds]
         if inactive_pins:
             self._menu.addItem_(NSMenuItem.separatorItem())
@@ -260,14 +261,8 @@ class MenuBuilder:
         help_item = make_menu_item("Help", None, d)
         help_item.setImage_(sf_icon("questionmark.circle"))
         help_submenu = NSMenu.alloc().init()
-        for tip in (
-            "Click → focus window",
-            "Hover → Activity · Pin · Quit",
-            "▸ = bookmarked (resume later)",
-        ):
-            help_submenu.addItem_(make_menu_item(f"  {tip}", None, d))
 
-        # Color legend with actual colored dots
+        # Color legend with colored dots
         legend = make_menu_item("  Status dots", None, d)
         legend_text = NSMutableAttributedString.alloc().initWithString_("")
         _legend_font = NSFont.menuFontOfSize_(13.0)
@@ -282,12 +277,12 @@ class MenuBuilder:
             dot_end = label.index("●") + 1
             seg.addAttribute_value_range_(
                 "NSColor",
-                STATUS_COLORS[status],
+                get_status_colors()[status],
                 NSRange(label.index("●"), 1),
             )
             seg.addAttribute_value_range_(
                 "NSColor",
-                NSColor.secondaryLabelColor(),
+                theme.secondary,
                 NSRange(dot_end, len(label) - dot_end),
             )
             legend_text.appendAttributedString_(seg)
