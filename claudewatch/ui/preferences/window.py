@@ -19,7 +19,7 @@ from AppKit import (
 from Foundation import NSMakeRect
 
 from claudewatch.ui.preferences.delegate import PrefsDelegate
-from claudewatch.ui.preferences.panes import about, guide, sessions, settings, usage
+from claudewatch.ui.preferences.panes import about, guide, insights, sessions, settings, usage
 
 _W = 660
 _H = 620
@@ -31,6 +31,7 @@ _SIDEBAR_ITEMS = [
     {"type": "static", "key": "general", "label": "Settings"},
     {"type": "static", "key": "history", "label": "Sessions"},
     {"type": "static", "key": "usage", "label": "Usage"},
+    {"type": "static", "key": "insights", "label": "Insights"},
     {"type": "separator"},
     {"type": "static", "key": "guide", "label": "Guide"},
     {"type": "static", "key": "about", "label": "About"},
@@ -40,6 +41,7 @@ _PANE_CLASSES = {
     "general": settings.SettingsPane,
     "history": sessions.SessionsPane,
     "usage": usage.UsagePane,
+    "insights": insights.InsightsPane,
     "guide": guide.GuidePane,
     "about": about.AboutPane,
 }
