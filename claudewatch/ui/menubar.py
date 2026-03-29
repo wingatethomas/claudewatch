@@ -34,7 +34,8 @@ from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
 from claudewatch.backend.core.settings import ensure_defaults_migrated, get_setting
 from claudewatch.backend.detection.dependencies import get_detection_service
 from claudewatch.backend.detection.service import DetectionService
-from claudewatch.backend.graph.dependencies import get_graph_service
+from claudewatch.backend.graph.dependencies import get_graph_etl, get_graph_service
+from claudewatch.backend.graph.etl import GraphETL
 from claudewatch.backend.graph.service import AgentGraphService
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.history.service import HistoryService
@@ -72,6 +73,7 @@ class ClaudeWatchApp:
         *,
         detection_service: DetectionService,
         graph_service: AgentGraphService,
+        graph_etl: GraphETL,
         summary_service: SummaryService,
         notification_service: NotificationService,
         onboarding_service: OnboardingService,
@@ -89,6 +91,7 @@ class ClaudeWatchApp:
         self._consecutive_errors = 0
         self._detection_service = detection_service
         self._graph_service = graph_service
+        self._graph_etl = graph_etl
         self._summary_service = summary_service
         self._notification_service = notification_service
         self._onboarding_service = onboarding_service
@@ -113,8 +116,9 @@ class ClaudeWatchApp:
         except Exception:
             log.exception("initial detection failed")
         self.update_display()
-        # Kick off background update check
+        # Kick off background tasks
         threading.Thread(target=self._update_service.check, daemon=True).start()
+        threading.Thread(target=self._graph_etl_initial_scan, daemon=True).start()
 
     def run(self) -> None:
         """Start the app: create status bar item, timer, and run the event loop."""
@@ -209,7 +213,18 @@ class ClaudeWatchApp:
         """Run detection then enrich sessions with graph data. Background-safe."""
         sessions = self._detection_service.detect()
         self._graph_service.enrich_sessions(sessions)
+        try:
+            self._graph_etl.incremental_scan()
+        except Exception:
+            log.debug("graph etl incremental scan failed", exc_info=True)
         return sessions
+
+    def _graph_etl_initial_scan(self) -> None:
+        """Run full graph ETL scan on startup. Background thread."""
+        try:
+            self._graph_etl.full_scan()
+        except Exception:
+            log.warning("graph etl initial scan failed", exc_info=True)
 
     def poll(self) -> None:
         if self._modal_active:
@@ -568,6 +583,7 @@ def main() -> None:
         delegate,
         detection_service=get_detection_service(),
         graph_service=get_graph_service(),
+        graph_etl=get_graph_etl(),
         summary_service=get_summary_service(),
         notification_service=get_notification_service(),
         onboarding_service=get_onboarding_service(),

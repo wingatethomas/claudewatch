@@ -18,6 +18,15 @@ MenuCallback = Callable[[NSMenuItem], None]
 
 
 @dataclass
+class AgentInfo:
+    """Display data for a single subagent."""
+
+    agent_type: str
+    description: str
+    entry_count: int = 0
+
+
+@dataclass
 class SessionActions:
     """Optional action callbacks for a session submenu."""
 
@@ -29,9 +38,13 @@ class SessionActions:
     remove: MenuCallback | None = None
     track_summary: Callable[[], None] | None = None
     usage_lines: list[str] = field(default_factory=list)
+    agents: list[AgentInfo] = field(default_factory=list)
 
 
-def build_session_submenu(
+_DESC_MAX_LEN = 45
+
+
+def build_session_submenu(  # noqa: PLR0912
     *,
     delegate: object,
     summary: str | None,
@@ -68,6 +81,22 @@ def build_session_submenu(
         usage_sub.addItem_(make_menu_item("View session activity log", act.activity, d))
     usage_item.setSubmenu_(usage_sub)
     sub.addItem_(usage_item)
+
+    # Agents section
+    if act.agents:
+        agents_item = make_menu_item(f"Agents ({len(act.agents)})", None, d)
+        agents_item.setImage_(sf_icon("person.3"))
+        agents_sub = NSMenu.alloc().init()
+        for agent in act.agents:
+            desc = agent.description or agent.agent_type
+            if len(desc) > _DESC_MAX_LEN:
+                desc = desc[: _DESC_MAX_LEN - 1] + "…"
+            line = f"  {agent.agent_type}: {desc}"
+            if agent.entry_count > 0:
+                line += f"  ({agent.entry_count} entries)"
+            agents_sub.addItem_(make_menu_item(line, None, d))
+        agents_item.setSubmenu_(agents_sub)
+        sub.addItem_(agents_item)
 
     sub.addItem_(NSMenuItem.separatorItem())
 

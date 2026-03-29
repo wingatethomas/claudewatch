@@ -19,6 +19,7 @@ from claudewatch.backend.graph.models import (
     GraphEdgeDTO,
     NodeKind,
     ProjectGraph,
+    ScannedAgentDTO,
     SessionGraph,
     SessionNodeDTO,
 )
@@ -129,6 +130,17 @@ class AgentGraphService(BaseService):
                 session.agent_count = self._scanner.count_agents(proj_key, session.session_id)
             except Exception:
                 log.debug("graph: failed to count agents for %s", session.session_id, exc_info=True)
+
+    def get_agent_details(self, cwd: str, session_id: str) -> list[ScannedAgentDTO]:
+        """Get full agent details for a session. Used by the menu submenu."""
+        if not cwd or not session_id:
+            return []
+        try:
+            proj_key = cwd_to_proj_key(cwd)
+            return self._scanner.scan_session(proj_key, session_id)
+        except Exception:
+            log.debug("graph: failed to get agent details for %s", session_id, exc_info=True)
+            return []
 
     def _sync_session_to_store(self, graph: SessionGraph) -> None:
         """Persist a session graph to the SQLite store."""

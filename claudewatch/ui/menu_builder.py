@@ -30,7 +30,7 @@ from claudewatch.ui.menu.core import (
     make_menu_item,
     noop,
 )
-from claudewatch.ui.menu.session_submenu import SessionActions, build_session_submenu
+from claudewatch.ui.menu.session_submenu import AgentInfo, SessionActions, build_session_submenu
 from claudewatch.ui.theme import theme
 
 if TYPE_CHECKING:
@@ -310,6 +310,19 @@ class MenuBuilder:
         # Build submenu using shared session_submenu builder
         is_active = s.status in (SessionStatus.ATTENTION, SessionStatus.WORKING)
         token_data = self._app._usage_service.get_tokens(s.cwd)
+        # Fetch agent details if session has agents
+        agent_infos: list[AgentInfo] = []
+        if s.agent_count > 0:
+            scanned = self._app._graph_service.get_agent_details(s.cwd, s.session_id)
+            agent_infos = [
+                AgentInfo(
+                    agent_type=a.agent_type,
+                    description=a.description,
+                    entry_count=a.entry_count,
+                )
+                for a in scanned
+            ]
+
         actions = SessionActions(
             activity=self._app._make_activity_handler(s),
             bookmark=self._app._make_bookmark_handler(s) if not pinned and s.session_id else None,
@@ -319,6 +332,7 @@ class MenuBuilder:
                 cwd, urgent=urgent
             ),
             usage_lines=format_tokens_breakdown(token_data),
+            agents=agent_infos,
         )
         sub = build_session_submenu(
             delegate=d,
