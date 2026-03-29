@@ -101,8 +101,5 @@ def build_session_row(  # noqa: PLR0913
 
 
 def _format_date(ended_at: str) -> str:
-    """Format a date string for display. Returns relative or short date."""
-    _min_date_len = 10
-    if not ended_at or len(ended_at) < _min_date_len:
-        return ""
-    return ended_at[:10]
+    """Pass through the display date. Caller provides either relative time or formatted date."""
+    return ended_at or ""
