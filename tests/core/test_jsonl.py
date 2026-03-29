@@ -94,7 +94,8 @@ class TestCheckJsonlForPendingTool:
         result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert result.has_pending is False
 
-    def test_too_old_file_ignored(self, tmp_path):
+    def test_old_file_still_detected(self, tmp_path):
+        """Pending tools are detected even if JSONL is hours old — user may step away."""
         jsonl = tmp_path / "session.jsonl"
         _write_jsonl(
             jsonl,
@@ -113,9 +114,10 @@ class TestCheckJsonlForPendingTool:
 
         svc = _make_service(str(jsonl), jsonl.read_text())
         result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert result.has_pending is False
+        assert result.has_pending is True
 
-    def test_too_fresh_file_ignored(self, tmp_path):
+    def test_fresh_file_still_detected(self, tmp_path):
+        """Pending tools are detected even on very fresh files."""
         jsonl = tmp_path / "session.jsonl"
         _write_jsonl(
             jsonl,
@@ -134,7 +136,7 @@ class TestCheckJsonlForPendingTool:
 
         svc = _make_service(str(jsonl), jsonl.read_text())
         result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert result.has_pending is False
+        assert result.has_pending is True
 
     def test_nonexistent_project_dir(self):
         svc = _make_service(None)
