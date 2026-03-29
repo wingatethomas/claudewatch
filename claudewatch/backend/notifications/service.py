@@ -10,7 +10,7 @@ import time
 from Foundation import NSObject, NSUserNotification, NSUserNotificationCenter
 
 from claudewatch.backend.core import features
-from claudewatch.backend.core.helpers import run_applescript
+from claudewatch.backend.core.helpers import is_accessibility_trusted, run_applescript
 from claudewatch.backend.core.models import ClaudeSession
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.notifications.models import FrontmostWindow
@@ -29,6 +29,9 @@ def set_focus_callback(callback: object) -> None:
 
 def _get_frontmost_window() -> FrontmostWindow:
     """Return the frontmost macOS window."""
+    if not is_accessibility_trusted():
+        log.warning("notifications: skipping System Events — Accessibility permission not granted")
+        return FrontmostWindow(app_name="", window_title="")
     result = run_applescript("""
     tell application "System Events"
         set frontApp to first application process whose frontmost is true
