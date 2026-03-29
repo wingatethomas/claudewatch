@@ -15,6 +15,9 @@ import logging
 import os
 import sqlite3
 import time
+from collections import deque
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from claudewatch.backend.graph.models import EdgeKind, NodeKind
@@ -43,6 +46,7 @@ CREATE TABLE IF NOT EXISTS edges (
 
 CREATE INDEX IF NOT EXISTS idx_nodes_kind ON nodes(kind);
 CREATE INDEX IF NOT EXISTS idx_nodes_proj ON nodes(proj_key);
+CREATE INDEX IF NOT EXISTS idx_nodes_proj_kind ON nodes(proj_key, kind);
 CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source);
 CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target);
 """
@@ -54,11 +58,30 @@ class GraphStore:
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_SCHEMA)
+        self._in_batch = False
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        """Context manager for batching multiple writes in a single transaction."""
+        self._in_batch = True
+        try:
+            yield
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+        finally:
+            self._in_batch = False
+
+    def _auto_commit(self) -> None:
+        """Commit unless inside a batch context."""
+        if not self._in_batch:
+            self._conn.commit()
 
     # ------------------------------------------------------------------
     # Node operations
@@ -87,7 +110,7 @@ class GraphStore:
             """,
             (node_id, kind.value, label, proj_key, meta_json, time.time()),
         )
-        self._conn.commit()
+        self._auto_commit()
 
     def get_node(self, node_id: str) -> dict[str, Any] | None:
         """Get a single node by ID."""
@@ -109,7 +132,7 @@ class GraphStore:
     def delete_node(self, node_id: str) -> None:
         """Delete a node and cascade to its edges."""
         self._conn.execute("DELETE FROM nodes WHERE node_id = ?", (node_id,))
-        self._conn.commit()
+        self._auto_commit()
 
     def count_nodes(self, proj_key: str, kind: NodeKind) -> int:
         """Count nodes of a kind within a project."""
@@ -137,7 +160,7 @@ class GraphStore:
             """,
             (source, target, kind.value, time.time()),
         )
-        self._conn.commit()
+        self._auto_commit()
 
     def get_edges_from(self, source: str) -> list[dict[str, Any]]:
         """Get all edges originating from a node."""
@@ -195,11 +218,11 @@ class GraphStore:
     def get_subtree(self, node_id: str) -> list[dict[str, Any]]:
         """Get all descendants of a node (recursive BFS)."""
         result: list[dict[str, Any]] = []
-        queue = [node_id]
+        queue: deque[str] = deque([node_id])
         visited: set[str] = {node_id}
 
         while queue:
-            current = queue.pop(0)
+            current = queue.popleft()
             children = self.get_children(current)
             for child in children:
                 if child["node_id"] not in visited:

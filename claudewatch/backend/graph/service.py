@@ -62,6 +62,9 @@ class AgentGraphService(BaseService):
                 parent_uuid=agent.parent_uuid,
                 session_id=agent.session_id,
                 last_active=agent.last_active,
+                started_at=agent.started_at,
+                ended_at=agent.ended_at,
+                entry_count=agent.entry_count,
             )
             agent_nodes.append(agent_node)
 
@@ -133,29 +136,33 @@ class AgentGraphService(BaseService):
             return
 
         try:
-            self._store.upsert_node(
-                node_id=graph.session_node.session_id,
-                kind=NodeKind.SESSION,
-                label=graph.session_node.proj_key,
-                proj_key=graph.session_node.proj_key,
-            )
-
-            for agent in graph.agent_nodes:
+            with self._store.batch():
                 self._store.upsert_node(
-                    node_id=agent.agent_id,
-                    kind=NodeKind.AGENT,
-                    label=agent.description or agent.agent_type,
+                    node_id=graph.session_node.session_id,
+                    kind=NodeKind.SESSION,
+                    label=graph.session_node.proj_key,
                     proj_key=graph.session_node.proj_key,
-                    metadata={
-                        "agent_type": agent.agent_type,
-                        "description": agent.description,
-                        "parent_uuid": agent.parent_uuid,
-                        "last_active": agent.last_active,
-                    },
                 )
 
-            for edge in graph.edges:
-                self._store.add_edge(edge.source, edge.target, edge.kind)
+                for agent in graph.agent_nodes:
+                    self._store.upsert_node(
+                        node_id=agent.agent_id,
+                        kind=NodeKind.AGENT,
+                        label=agent.description or agent.agent_type,
+                        proj_key=graph.session_node.proj_key,
+                        metadata={
+                            "agent_type": agent.agent_type,
+                            "description": agent.description,
+                            "parent_uuid": agent.parent_uuid,
+                            "last_active": agent.last_active,
+                            "started_at": agent.started_at,
+                            "ended_at": agent.ended_at,
+                            "entry_count": agent.entry_count,
+                        },
+                    )
+
+                for edge in graph.edges:
+                    self._store.add_edge(edge.source, edge.target, edge.kind)
 
         except Exception:
             log.warning("graph: failed to sync session %s to store", graph.session_node.session_id, exc_info=True)

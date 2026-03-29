@@ -33,6 +33,9 @@ class ScannedAgentDTO(BaseDTO):
     session_id: str
     jsonl_path: str
     last_active: float  # mtime of JSONL file
+    started_at: str  # ISO timestamp of first JSONL entry
+    ended_at: str  # ISO timestamp of last JSONL entry
+    entry_count: int  # number of JSONL entries (activity proxy)
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,9 @@ class AgentNodeDTO(BaseDTO):
     parent_uuid: str
     session_id: str
     last_active: float
+    started_at: str = ""
+    ended_at: str = ""
+    entry_count: int = 0
     kind: NodeKind = NodeKind.AGENT
 
 

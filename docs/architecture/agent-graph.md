@@ -108,34 +108,34 @@ Key: `sessionId` is **shared** between parent and all children. `parentUuid` lin
 ```
 Session     — a Claude Code process (interactive or background)
 Agent       — a subagent spawned by a session (may itself spawn agents)
-Project     — a working directory (CWD) where sessions run
 ```
+
+Projects are tracked via `proj_key` on each node, not as separate graph nodes.
 
 ### Edge Types
 
 ```
 Session  --spawns-->    Agent       (parent spawned child)
-Agent    --spawns-->    Agent       (agent spawned sub-agent, recursive)
-Session  --works_on-->  Project     (session's CWD maps to project)
-Agent    --works_on-->  Project     (worktree agents work on different project)
+Agent    --spawns-->    Agent       (agent spawned sub-agent, recursive — future)
 ```
+
+Note: agent-to-agent edges require resolving `parentUuid` against agent JSONL entries. Currently all agents are linked directly to their session. Recursive spawn tracking is planned.
 
 ### Data Model
 
 ```python
 @dataclass
 class GraphNode:
-    id: str                    # session_id, agent_id, or proj_key
-    kind: NodeKind             # SESSION | AGENT | PROJECT
+    id: str                    # session_id or agent_id
+    kind: NodeKind             # SESSION | AGENT
     label: str                 # display name
-    metadata: dict             # kind-specific data
+    metadata: dict             # kind-specific data (lifecycle, type, etc.)
 
 @dataclass
 class GraphEdge:
     source: str                # node id
     target: str                # node id
-    kind: EdgeKind             # SPAWNS | WORKS_ON
-    metadata: dict             # timing, tool_use_id, etc.
+    kind: EdgeKind             # SPAWNS
 
 @dataclass
 class SessionGraph:

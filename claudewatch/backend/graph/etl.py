@@ -42,7 +42,7 @@ class GraphETL:
                 stats["agents_ingested"] += agents
 
                 # Record mtime for incremental tracking
-                session_dir = os.path.join(self._scanner._projects_dir, proj_key, session_id)
+                session_dir = os.path.join(self._scanner.projects_dir, proj_key, session_id)
                 self._session_mtimes[f"{proj_key}/{session_id}"] = _dir_mtime(session_dir)
 
         log.info(
@@ -64,7 +64,7 @@ class GraphETL:
 
             for session_id in session_ids:
                 key = f"{proj_key}/{session_id}"
-                session_dir = os.path.join(self._scanner._projects_dir, proj_key, session_id)
+                session_dir = os.path.join(self._scanner.projects_dir, proj_key, session_id)
                 current_mtime = _dir_mtime(session_dir)
                 last_mtime = self._session_mtimes.get(key, 0)
 
@@ -86,40 +86,45 @@ class GraphETL:
 
     def _ingest_session(self, proj_key: str, session_id: str) -> int:
         """Ingest a single session and its agents into the store. Returns agent count."""
-        self._store.upsert_node(
-            node_id=session_id,
-            kind=NodeKind.SESSION,
-            label=proj_key,
-            proj_key=proj_key,
-            metadata={"ingested_at": time.time()},
-        )
-
         scanned_agents = self._scanner.scan_session(proj_key, session_id)
-        for agent in scanned_agents:
+
+        with self._store.batch():
             self._store.upsert_node(
-                node_id=agent.agent_id,
-                kind=NodeKind.AGENT,
-                label=agent.description or agent.agent_type,
+                node_id=session_id,
+                kind=NodeKind.SESSION,
+                label=proj_key,
                 proj_key=proj_key,
-                metadata={
-                    "agent_type": agent.agent_type,
-                    "description": agent.description,
-                    "parent_uuid": agent.parent_uuid,
-                    "last_active": agent.last_active,
-                },
+                metadata={"ingested_at": time.time()},
             )
-            self._store.add_edge(session_id, agent.agent_id, EdgeKind.SPAWNS)
+
+            for agent in scanned_agents:
+                self._store.upsert_node(
+                    node_id=agent.agent_id,
+                    kind=NodeKind.AGENT,
+                    label=agent.description or agent.agent_type,
+                    proj_key=proj_key,
+                    metadata={
+                        "agent_type": agent.agent_type,
+                        "description": agent.description,
+                        "parent_uuid": agent.parent_uuid,
+                        "last_active": agent.last_active,
+                        "started_at": agent.started_at,
+                        "ended_at": agent.ended_at,
+                        "entry_count": agent.entry_count,
+                    },
+                )
+                self._store.add_edge(session_id, agent.agent_id, EdgeKind.SPAWNS)
 
         return len(scanned_agents)
 
     def _list_project_dirs(self) -> list[str]:
         """List all project directory keys from the projects directory."""
         try:
-            entries = os.listdir(self._scanner._projects_dir)
+            entries = os.listdir(self._scanner.projects_dir)
         except OSError:
             return []
 
-        return [e for e in entries if os.path.isdir(os.path.join(self._scanner._projects_dir, e))]
+        return [e for e in entries if os.path.isdir(os.path.join(self._scanner.projects_dir, e))]
 
 
 def _dir_mtime(path: str) -> float:

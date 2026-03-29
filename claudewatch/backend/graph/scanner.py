@@ -26,6 +26,10 @@ class SubagentScanner:
     def __init__(self, projects_dir: str) -> None:
         self._projects_dir = projects_dir
 
+    @property
+    def projects_dir(self) -> str:
+        return self._projects_dir
+
     def count_agents(self, proj_key: str, session_id: str) -> int:
         """Fast count of subagent JSONL files without parsing content."""
         subagents_dir = os.path.join(self._projects_dir, proj_key, session_id, "subagents")
@@ -70,8 +74,9 @@ class SubagentScanner:
             meta_path = os.path.join(subagents_dir, f"agent-{agent_id}.meta.json")
             agent_type, description = self._read_meta(meta_path)
 
-            # Read first JSONL entry for parentUuid and sessionId
+            # Read JSONL for parentUuid, sessionId, and lifecycle timestamps
             parent_uuid, linked_session_id = self._read_first_entry(jsonl_path)
+            started_at, ended_at, entry_count = self._read_lifecycle(jsonl_path)
 
             agents.append(
                 ScannedAgentDTO(
@@ -82,6 +87,9 @@ class SubagentScanner:
                     session_id=linked_session_id or session_id,
                     jsonl_path=jsonl_path,
                     last_active=last_active,
+                    started_at=started_at,
+                    ended_at=ended_at,
+                    entry_count=entry_count,
                 )
             )
 
@@ -136,6 +144,35 @@ class SubagentScanner:
             )
         except (OSError, json.JSONDecodeError, ValueError):
             return ("unknown", "")
+
+    @staticmethod
+    def _read_lifecycle(path: str) -> tuple[str, str, int]:
+        """Read first/last timestamps and entry count from JSONL.
+
+        Returns (started_at, ended_at, entry_count). Timestamps are ISO strings.
+        """
+        first_ts = ""
+        last_ts = ""
+        count = 0
+        try:
+            with open(path) as f:
+                for raw_line in f:
+                    stripped = raw_line.strip()
+                    if not stripped:
+                        continue
+                    count += 1
+                    try:
+                        entry = json.loads(stripped)
+                        ts = entry.get("timestamp", "")
+                        if ts:
+                            if not first_ts:
+                                first_ts = ts
+                            last_ts = ts
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+        except OSError:
+            pass
+        return (first_ts, last_ts, count)
 
     @staticmethod
     def _read_first_entry(path: str) -> tuple[str, str]:
