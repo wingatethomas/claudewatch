@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from AppKit import NSScrollView, NSView
 from Foundation import NSMakeRect
 
+from claudewatch.backend.graph.analytics import GraphAnalytics
+from claudewatch.backend.graph.dependencies import get_graph_store
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.metrics.dependencies import get_metrics_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES
@@ -13,6 +17,8 @@ from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, BasePane
 from claudewatch.ui.theme import theme
+
+log = logging.getLogger("claudewatch")
 
 
 class InsightsPane(BasePane):
@@ -126,6 +132,37 @@ class InsightsPane(BasePane):
                 sl = label(f"{session_count} sessions", size=Font.SECONDARY, color=theme.secondary)
                 sl.setFrame_(NSMakeRect(220, my, 150, 18))
                 mc.addSubview_(sl)
+
+        # Agent graph card
+        try:
+            analytics = GraphAnalytics(get_graph_store())
+            type_dist = analytics.agent_type_distribution()
+            if type_dist:
+                agent_rows = min(len(type_dist), 8)
+                agents_h = _card_pad + agent_rows * _row_h + _card_pad
+
+                agents_header = label("AGENT TYPES", size=Font.CAPTION, color=theme.tertiary)
+                agents_header.setFrame_(NSMakeRect(CONTENT_PADDING, y - 14, self.card_width, 14))
+                inner.addSubview_(agents_header)
+                y -= 14 + Spacing.XS
+
+                agents_card = card(self.card_width, agents_h)
+                agents_card.setFrame_(NSMakeRect(CONTENT_PADDING, y - agents_h, self.card_width, agents_h))
+                inner.addSubview_(agents_card)
+                agents_content = agents_card.contentView()
+                agents_y = agents_h - _card_pad
+                for agent_type, count in sorted(type_dist.items(), key=lambda x: -x[1])[:8]:
+                    agents_y -= _row_h
+                    type_label = label(agent_type, size=Font.SECONDARY)
+                    type_label.setFrame_(NSMakeRect(_card_pad, agents_y, 200, 18))
+                    agents_content.addSubview_(type_label)
+                    count_label = label(str(count), size=Font.SECONDARY, bold=True, color=theme.secondary)
+                    count_label.setFrame_(NSMakeRect(220, agents_y, 100, 18))
+                    agents_content.addSubview_(count_label)
+                y -= agents_h + Spacing.MD
+                content_h += agents_h + Spacing.XL
+        except Exception:
+            log.debug("insights: graph analytics unavailable", exc_info=True)
 
         # Place in scroll
         if content_h <= scroll_h:
