@@ -66,6 +66,7 @@ class AgentGraphService(BaseService):
                 started_at=agent.started_at,
                 ended_at=agent.ended_at,
                 entry_count=agent.entry_count,
+                status=agent.status,
             )
             agent_nodes.append(agent_node)
 
@@ -170,6 +171,7 @@ class AgentGraphService(BaseService):
                             "started_at": agent.started_at,
                             "ended_at": agent.ended_at,
                             "entry_count": agent.entry_count,
+                            "status": agent.status.value if hasattr(agent.status, "value") else str(agent.status),
                         },
                     )
 

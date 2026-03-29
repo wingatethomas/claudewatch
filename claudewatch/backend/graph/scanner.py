@@ -11,8 +11,9 @@ import json
 import logging
 import os
 import re
+import time
 
-from claudewatch.backend.graph.models import ScannedAgentDTO, WorktreeProjectDTO
+from claudewatch.backend.graph.models import AgentStatus, ScannedAgentDTO, WorktreeProjectDTO
 
 log = logging.getLogger("claudewatch")
 
@@ -76,7 +77,17 @@ class SubagentScanner:
 
             # Read JSONL for parentUuid, sessionId, and lifecycle timestamps
             parent_uuid, linked_session_id = self._read_first_entry(jsonl_path)
-            started_at, ended_at, entry_count = self._read_lifecycle(jsonl_path)
+            started_at, ended_at, entry_count, completed = self._read_lifecycle(jsonl_path)
+
+            # Derive agent status
+            _active_threshold = 30
+            age = time.time() - last_active if last_active > 0 else float("inf")
+            if age < _active_threshold:
+                status = AgentStatus.ACTIVE
+            elif completed:
+                status = AgentStatus.COMPLETED
+            else:
+                status = AgentStatus.STALE
 
             agents.append(
                 ScannedAgentDTO(
@@ -90,6 +101,7 @@ class SubagentScanner:
                     started_at=started_at,
                     ended_at=ended_at,
                     entry_count=entry_count,
+                    status=status,
                 )
             )
 
@@ -146,14 +158,17 @@ class SubagentScanner:
             return ("unknown", "")
 
     @staticmethod
-    def _read_lifecycle(path: str) -> tuple[str, str, int]:
-        """Read first/last timestamps and entry count from JSONL.
+    def _read_lifecycle(path: str) -> tuple[str, str, int, bool]:
+        """Read first/last timestamps, entry count, and completion from JSONL.
 
-        Returns (started_at, ended_at, entry_count). Timestamps are ISO strings.
+        Returns (started_at, ended_at, entry_count, completed).
+        An agent is considered completed if its last assistant message
+        contains text content (not a tool_use awaiting approval).
         """
         first_ts = ""
         last_ts = ""
         count = 0
+        completed = False
         try:
             with open(path) as f:
                 for raw_line in f:
@@ -168,11 +183,19 @@ class SubagentScanner:
                             if not first_ts:
                                 first_ts = ts
                             last_ts = ts
+                        # Check if last assistant message has text (completed)
+                        msg = entry.get("message", {})
+                        if isinstance(msg, dict) and msg.get("role") == "assistant":
+                            content = msg.get("content", [])
+                            if isinstance(content, list) and content:
+                                last_block = content[-1]
+                                if isinstance(last_block, dict):
+                                    completed = last_block.get("type") == "text"
                     except (json.JSONDecodeError, ValueError):
                         continue
         except OSError:
             pass
-        return (first_ts, last_ts, count)
+        return (first_ts, last_ts, count, completed)
 
     @staticmethod
     def _read_first_entry(path: str) -> tuple[str, str]:

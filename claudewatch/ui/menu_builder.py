@@ -319,6 +319,7 @@ class MenuBuilder:
                     agent_type=a.agent_type,
                     description=a.description,
                     entry_count=a.entry_count,
+                    status=a.status.value,
                 )
                 for a in scanned
             ]

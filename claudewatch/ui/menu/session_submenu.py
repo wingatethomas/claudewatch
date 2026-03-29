@@ -17,6 +17,13 @@ from claudewatch.ui.menu.core import add_summary_lines, make_menu_item
 MenuCallback = Callable[[NSMenuItem], None]
 
 
+_STATUS_ICONS = {
+    "active": "●",
+    "completed": "✓",
+    "stale": "○",
+}
+
+
 @dataclass
 class AgentInfo:
     """Display data for a single subagent."""
@@ -24,6 +31,7 @@ class AgentInfo:
     agent_type: str
     description: str
     entry_count: int = 0
+    status: str = "stale"  # active, completed, stale
 
 
 @dataclass
@@ -91,9 +99,8 @@ def build_session_submenu(  # noqa: PLR0912
             desc = agent.description or agent.agent_type
             if len(desc) > _DESC_MAX_LEN:
                 desc = desc[: _DESC_MAX_LEN - 1] + "…"
-            line = f"  {agent.agent_type}: {desc}"
-            if agent.entry_count > 0:
-                line += f"  ({agent.entry_count} entries)"
+            icon = _STATUS_ICONS.get(agent.status, "○")
+            line = f"  {icon} {agent.agent_type}: {desc}"
             agents_sub.addItem_(make_menu_item(line, None, d))
         agents_item.setSubmenu_(agents_sub)
         sub.addItem_(agents_item)

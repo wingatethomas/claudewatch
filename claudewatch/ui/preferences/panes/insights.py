@@ -32,7 +32,7 @@ class InsightsPane(BasePane):
     def subtitle(self) -> str:
         return "Aggregated metrics across all sessions"
 
-    def build_content(self, view: NSView, content_top: float) -> None:  # noqa: PLR0915
+    def build_content(self, view: NSView, content_top: float) -> None:  # noqa: PLR0912, PLR0915
         history = get_history_service().get_all()
         metrics_svc = get_metrics_service()
         cwds = [e.cwd for e in history if e.cwd]
@@ -161,6 +161,35 @@ class InsightsPane(BasePane):
                     agents_content.addSubview_(count_label)
                 y -= agents_h + Spacing.MD
                 content_h += agents_h + Spacing.XL
+
+            # Top projects card
+            top_projects = analytics.most_active_projects(limit=5)
+            if top_projects:
+                proj_rows = len(top_projects)
+                projs_h = _card_pad + proj_rows * _row_h + _card_pad
+
+                projs_header = label("TOP PROJECTS", size=Font.CAPTION, color=theme.tertiary)
+                projs_header.setFrame_(NSMakeRect(CONTENT_PADDING, y - 14, self.card_width, 14))
+                inner.addSubview_(projs_header)
+                y -= 14 + Spacing.XS
+
+                projs_card = card(self.card_width, projs_h)
+                projs_card.setFrame_(NSMakeRect(CONTENT_PADDING, y - projs_h, self.card_width, projs_h))
+                inner.addSubview_(projs_card)
+                projs_content = projs_card.contentView()
+                projs_y = projs_h - _card_pad
+                for proj in top_projects:
+                    projs_y -= _row_h
+                    proj_label_text = proj["proj_key"].lstrip("-").split("-")[-1]
+                    pl = label(proj_label_text, size=Font.SECONDARY)
+                    pl.setFrame_(NSMakeRect(_card_pad, projs_y, 140, 18))
+                    projs_content.addSubview_(pl)
+                    stats_text = f"{proj['session_count']}s / {proj['agent_count']}a"
+                    stats_l = label(stats_text, size=Font.SECONDARY, bold=True, color=theme.secondary)
+                    stats_l.setFrame_(NSMakeRect(160, projs_y, 120, 18))
+                    projs_content.addSubview_(stats_l)
+                y -= projs_h + Spacing.MD
+                content_h += projs_h + Spacing.XL
         except Exception:
             log.debug("insights: graph analytics unavailable", exc_info=True)
 

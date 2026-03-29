@@ -13,6 +13,12 @@ class NodeKind(Enum):
     AGENT = "agent"
 
 
+class AgentStatus(Enum):
+    ACTIVE = "active"  # mtime < 30s — still writing
+    COMPLETED = "completed"  # last entry is assistant text (not tool_use)
+    STALE = "stale"  # mtime > 30s, last entry is tool_use or unknown
+
+
 class EdgeKind(Enum):
     SPAWNS = "spawns"
 
@@ -36,6 +42,7 @@ class ScannedAgentDTO(BaseDTO):
     started_at: str  # ISO timestamp of first JSONL entry
     ended_at: str  # ISO timestamp of last JSONL entry
     entry_count: int  # number of JSONL entries (activity proxy)
+    status: AgentStatus = AgentStatus.STALE
 
 
 @dataclass(frozen=True)
@@ -73,6 +80,7 @@ class AgentNodeDTO(BaseDTO):
     started_at: str = ""
     ended_at: str = ""
     entry_count: int = 0
+    status: AgentStatus = AgentStatus.STALE
     kind: NodeKind = NodeKind.AGENT
 
 

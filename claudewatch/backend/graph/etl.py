@@ -111,6 +111,7 @@ class GraphETL:
                         "started_at": agent.started_at,
                         "ended_at": agent.ended_at,
                         "entry_count": agent.entry_count,
+                        "status": agent.status.value,
                     },
                 )
                 self._store.add_edge(session_id, agent.agent_id, EdgeKind.SPAWNS)
