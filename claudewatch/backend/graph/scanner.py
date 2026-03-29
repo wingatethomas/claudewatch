@@ -26,6 +26,16 @@ class SubagentScanner:
     def __init__(self, projects_dir: str) -> None:
         self._projects_dir = projects_dir
 
+    def count_agents(self, proj_key: str, session_id: str) -> int:
+        """Fast count of subagent JSONL files without parsing content."""
+        subagents_dir = os.path.join(self._projects_dir, proj_key, session_id, "subagents")
+        if not os.path.isdir(subagents_dir):
+            return 0
+        try:
+            return sum(1 for f in os.listdir(subagents_dir) if _AGENT_JSONL_RE.match(f))
+        except OSError:
+            return 0
+
     def scan_session(self, proj_key: str, session_id: str) -> list[ScannedAgentDTO]:
         """Scan a session directory for subagent JSONL files.
 

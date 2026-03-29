@@ -340,7 +340,8 @@ class MenuBuilder:
             oneliner = "Generating summary…"
         else:
             oneliner = s.detail_line
-        detail_parts = [p for p in [model, oneliner] if p]
+        agent_tag = f"{s.agent_count} agents" if s.agent_count > 1 else "1 agent" if s.agent_count == 1 else ""
+        detail_parts = [p for p in [model, agent_tag, oneliner] if p]
         if detail_parts:
             detail_text = " · ".join(detail_parts)
             if len(detail_text) > _max_detail_total:

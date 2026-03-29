@@ -34,6 +34,8 @@ from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
 from claudewatch.backend.core.settings import ensure_defaults_migrated, get_setting
 from claudewatch.backend.detection.dependencies import get_detection_service
 from claudewatch.backend.detection.service import DetectionService
+from claudewatch.backend.graph.dependencies import get_graph_service
+from claudewatch.backend.graph.service import AgentGraphService
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.history.service import HistoryService
 from claudewatch.backend.notifications.dependencies import get_notification_service
@@ -69,6 +71,7 @@ class ClaudeWatchApp:
         delegate: AppDelegate,
         *,
         detection_service: DetectionService,
+        graph_service: AgentGraphService,
         summary_service: SummaryService,
         notification_service: NotificationService,
         onboarding_service: OnboardingService,
@@ -85,6 +88,7 @@ class ClaudeWatchApp:
         self._last_menu_key = "__uninitialized__"
         self._consecutive_errors = 0
         self._detection_service = detection_service
+        self._graph_service = graph_service
         self._summary_service = summary_service
         self._notification_service = notification_service
         self._onboarding_service = onboarding_service
@@ -104,7 +108,7 @@ class ClaudeWatchApp:
         self._menu_builder = MenuBuilder(self, self._menu, delegate)
         # Run first detection synchronously so menu has data immediately
         try:
-            self.sessions = self._detection_service.detect()
+            self.sessions = self._detect_and_enrich()
             self._has_polled = True
         except Exception:
             log.exception("initial detection failed")
@@ -201,6 +205,12 @@ class ClaudeWatchApp:
         else:
             self._accessibility_warning = False
 
+    def _detect_and_enrich(self) -> list[ClaudeSession]:
+        """Run detection then enrich sessions with graph data. Background-safe."""
+        sessions = self._detection_service.detect()
+        self._graph_service.enrich_sessions(sessions)
+        return sessions
+
     def poll(self) -> None:
         if self._modal_active:
             return
@@ -241,14 +251,16 @@ class ClaudeWatchApp:
                     self._menu.addItem_(make_menu_item("Quit", self._quit, self._delegate))
             self._future = None
 
-        # Dispatch new detection to background thread
-        self._future = _executor.submit(self._detection_service.detect)
+        # Dispatch new detection + graph enrichment to background thread
+        self._future = _executor.submit(self._detect_and_enrich)
 
     def _menu_key(self) -> str:
         parts = [f"scheme:{theme.scheme.name}"]
         for s in self.sessions:
             cached = self._summary_service.get_cached(s.cwd) or ""
-            parts.append(f"{s.pid}:{s.status.value}:{s.project}:{s.task_summary}:{s.last_output}:{cached}")
+            parts.append(
+                f"{s.pid}:{s.status.value}:{s.project}:{s.task_summary}:{s.last_output}:{cached}:{s.agent_count}"
+            )
         return "|".join(parts)
 
     def update_display(self) -> None:
@@ -555,6 +567,7 @@ def main() -> None:
     app = ClaudeWatchApp(
         delegate,
         detection_service=get_detection_service(),
+        graph_service=get_graph_service(),
         summary_service=get_summary_service(),
         notification_service=get_notification_service(),
         onboarding_service=get_onboarding_service(),

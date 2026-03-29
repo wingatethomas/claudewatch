@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 
+from claudewatch.backend.core.models import ClaudeSession
+from claudewatch.backend.core.paths import cwd_to_proj_key
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.graph.models import (
     AgentNodeDTO,
@@ -108,6 +110,22 @@ class AgentGraphService(BaseService):
             session_graphs=session_graphs,
             worktree_branches=worktree_branches,
         )
+
+    def enrich_sessions(self, sessions: list[ClaudeSession]) -> None:
+        """Enrich detected sessions with agent counts from disk.
+
+        Sets agent_count on each session. Fast path: just counts files
+        in the subagents directory without parsing JSONL content.
+        Safe to call from background thread.
+        """
+        for session in sessions:
+            if not session.cwd or not session.session_id:
+                continue
+            try:
+                proj_key = cwd_to_proj_key(session.cwd)
+                session.agent_count = self._scanner.count_agents(proj_key, session.session_id)
+            except Exception:
+                log.debug("graph: failed to count agents for %s", session.session_id, exc_info=True)
 
     def _sync_session_to_store(self, graph: SessionGraph) -> None:
         """Persist a session graph to the SQLite store."""
