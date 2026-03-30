@@ -22,8 +22,6 @@ log = logging.getLogger("claudewatch")
 # Module-level constants
 _MAX_SESSIONS = 50
 _TEXT_MAX_LEN = 80
-_JSONL_MAX_AGE = 300  # 5 min — Claude can wait for approval a long time
-_JSONL_MIN_AGE = 1
 _WIN_SPLIT_FIELDS = 3
 _TERMINAL_CACHE_TTL = 3  # seconds between AppleScript refreshes
 
@@ -228,17 +226,17 @@ class DetectionService(BaseService):
         return self._session_log_service.get_session_id(path) if path else ""
 
     def _check_jsonl_for_pending_tool(self, cwd: str) -> PendingToolResult:  # noqa: PLR0911, PLR0912
-        """Check if the most recent JSONL for this CWD has a pending tool_use."""
+        """Check if the most recent JSONL for this CWD has a pending tool_use.
+
+        No age cutoffs — a tool waiting for approval stays pending regardless
+        of how long ago the file was modified. Users can step away for hours.
+        """
         _empty = PendingToolResult(has_pending=False, one_line="", context="")
         path = self._session_log_service.find_most_recent(cwd)
         if not path:
             return _empty
 
-        try:
-            age = time.time() - os.path.getmtime(path)
-            if age > _JSONL_MAX_AGE or age < _JSONL_MIN_AGE:
-                return _empty
-        except OSError:
+        if not os.path.isfile(path):
             return _empty
 
         tail = self._session_log_service.read_tail(path)
@@ -375,17 +373,26 @@ class DetectionService(BaseService):
 
         self._get_ide_tab_indices(sessions, all_ps)
 
-        checked_cwds: set[str] = set()
+        # JSONL-based status refinement.
+        # Priority: ATTENTION (pending tool) > IDLE/WORKING from JSONL > window title.
+        # Cache results per CWD so we don't re-read for sessions sharing a CWD.
+        cwd_status_cache: dict[str, tuple[PendingToolResult, SessionStatus]] = {}
         for s in sessions:
-            if s.cwd and s.cwd not in checked_cwds:
+            if not s.cwd:
+                continue
+            if s.cwd not in cwd_status_cache:
                 tool_result = self._check_jsonl_for_pending_tool(s.cwd)
-                if tool_result.has_pending:
-                    s.status = SessionStatus.ATTENTION
-                    s.prompt_text = tool_result.one_line
-                    s.prompt_context = tool_result.context
-                elif s.status != SessionStatus.IDLE:
-                    s.status = self._check_jsonl_for_idle(s.cwd)
-                checked_cwds.add(s.cwd)
+                jsonl_status = self._check_jsonl_for_idle(s.cwd) if not tool_result.has_pending else s.status
+                cwd_status_cache[s.cwd] = (tool_result, jsonl_status)
+
+            tool_result, jsonl_status = cwd_status_cache[s.cwd]
+            if tool_result.has_pending:
+                s.status = SessionStatus.ATTENTION
+                s.prompt_text = tool_result.one_line
+                s.prompt_context = tool_result.context
+            else:
+                # JSONL status takes precedence over window title
+                s.status = jsonl_status
 
         return sessions
 
