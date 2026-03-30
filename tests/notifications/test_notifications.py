@@ -8,7 +8,7 @@ import pytest
 from claudewatch.backend.core.models import ClaudeSession, HostApp, SessionStatus
 from claudewatch.backend.notifications import service as svc_mod
 from claudewatch.backend.notifications.models import FrontmostWindow
-from claudewatch.backend.notifications.service import NotificationService
+from claudewatch.backend.notifications.service import NotificationService, _get_frontmost_window
 
 _MOD = "claudewatch.backend.notifications.service"
 
@@ -260,3 +260,24 @@ class TestNotifyIfNeeded:
             svc.notify_if_needed([s])
         user_info = mock_notif.setUserInfo_.call_args[0][0]
         assert user_info["project"] == "myproject"
+
+
+class TestGetFrontmostWindowAccessibilityGuard:
+    """_get_frontmost_window returns empty defaults when Accessibility is not trusted."""
+
+    def test_returns_empty_when_not_trusted(self) -> None:
+        with (
+            patch(f"{_MOD}.is_accessibility_trusted", return_value=False),
+            patch(f"{_MOD}.run_applescript") as mock_run,
+        ):
+            result = _get_frontmost_window()
+        assert result == FrontmostWindow(app_name="", window_title="")
+        mock_run.assert_not_called()
+
+    def test_calls_applescript_when_trusted(self) -> None:
+        with (
+            patch(f"{_MOD}.is_accessibility_trusted", return_value=True),
+            patch(f"{_MOD}.run_applescript", return_value="Finder|Desktop"),
+        ):
+            result = _get_frontmost_window()
+        assert result == FrontmostWindow(app_name="Finder", window_title="Desktop")

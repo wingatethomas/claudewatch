@@ -1,3 +1,4 @@
+import ctypes
 import logging
 
 from Foundation import NSAppleScript
@@ -5,11 +6,25 @@ from Foundation import NSAppleScript
 log = logging.getLogger("claudewatch")
 
 
+def is_accessibility_trusted() -> bool:
+    """Check if the app has Accessibility permissions via AXIsProcessTrusted."""
+    try:
+        lib = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
+        lib.AXIsProcessTrusted.restype = ctypes.c_bool
+        return lib.AXIsProcessTrusted()
+    except OSError:
+        return False
+
+
 def run_applescript(source: str) -> str:
     script = NSAppleScript.alloc().initWithSource_(source)
     result, error = script.executeAndReturnError_(None)
     if error:
-        log.debug("AppleScript error: %s", error.get("NSAppleScriptErrorMessage", error))
+        msg = error.get("NSAppleScriptErrorMessage", error)
+        if "-60005" in str(msg):
+            log.warning("AppleScript error (Accessibility permissions required): %s", msg)
+        else:
+            log.debug("AppleScript error: %s", msg)
     return result.stringValue() or "" if result else ""
 
 

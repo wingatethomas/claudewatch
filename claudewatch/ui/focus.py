@@ -12,7 +12,7 @@ from Quartz import (
     kCGMouseButtonLeft,
 )
 
-from claudewatch.backend.core.helpers import escape_applescript, run_applescript
+from claudewatch.backend.core.helpers import escape_applescript, is_accessibility_trusted, run_applescript
 from claudewatch.backend.core.models import ClaudeSession, HostApp
 
 log = logging.getLogger("claudewatch")
@@ -29,6 +29,9 @@ def _click_at(x: float, y: float) -> None:
 
 def _focus_ide_tab(process_name: str, app_name: str, project: str, tab_index: int | None) -> None:
     """Focus an IDE window and switch to the right terminal tab."""
+    if not is_accessibility_trusted():
+        log.warning("focus: skipping System Events — Accessibility permission not granted")
+        return
     # Step 1: Raise the right window and activate
     run_applescript(f'''
         tell application "System Events"
@@ -126,6 +129,9 @@ def _focus_ide_tab(process_name: str, app_name: str, project: str, tab_index: in
 
 def _find_jetbrains_process() -> str:
     """Find the running JetBrains IDE process name via System Events."""
+    if not is_accessibility_trusted():
+        log.warning("focus: skipping System Events — Accessibility permission not granted")
+        return "pycharm"
     result = run_applescript("""
         tell application "System Events"
             set jbNames to {"pycharm", "idea", "webstorm", "goland", "rubymine", "clion", "phpstorm", "rider"}

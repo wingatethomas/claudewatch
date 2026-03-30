@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import ctypes
 import logging
 import os
 import signal
 import threading
 import time
 
-from claudewatch.backend.core.helpers import run_applescript
+from claudewatch.backend.core.helpers import is_accessibility_trusted, run_applescript
 from claudewatch.backend.notifications.dependencies import get_notification_service
 
 log = logging.getLogger("claudewatch")
@@ -55,11 +54,4 @@ def notify_paused(project: str) -> None:
     get_notification_service().send("Session paused", project, "Resume from the Pinned section")
 
 
-def is_accessibility_trusted() -> bool:
-    """Check if the app has Accessibility permissions via AXIsProcessTrusted."""
-    try:
-        lib = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
-        lib.AXIsProcessTrusted.restype = ctypes.c_bool
-        return lib.AXIsProcessTrusted()
-    except OSError:
-        return False
+__all__ = ["clean_exit_session", "is_accessibility_trusted", "notify_paused"]
