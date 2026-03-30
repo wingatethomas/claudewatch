@@ -1,7 +1,12 @@
 """App settings backed by NSUserDefaults.
 
-Reads/writes to keys prefixed with 'com.claudewatch.' in the standard
-user defaults domain. On first run, migrates any existing settings.json.
+Uses an explicit suite domain ('com.claudewatch') so settings persist
+regardless of how the app is launched — dev (uv run), Homebrew (.app),
+or Briefcase bundle. Keys are prefixed with 'com.claudewatch.' within
+the suite for namespacing.
+
+On first run, migrates settings from legacy JSON and from the old
+standardUserDefaults domain (which varied by bundle ID).
 """
 
 import json
@@ -13,7 +18,7 @@ from Foundation import NSUserDefaults
 log = logging.getLogger("claudewatch")
 
 _SUITE = "com.claudewatch"
-_defaults = NSUserDefaults.standardUserDefaults()
+_defaults = NSUserDefaults.alloc().initWithSuiteName_(_SUITE)
 
 _DEFAULTS: dict[str, object] = {
     "notifications_enabled": True,
@@ -78,6 +83,34 @@ def _migrate_from_json() -> None:
         log.warning("Could not rename legacy settings file")
 
 
+def _migrate_from_standard_defaults() -> None:
+    """One-time migration: copy settings from standardUserDefaults to the suite domain.
+
+    Before this fix, settings were written to standardUserDefaults() which uses
+    the app's bundle identifier as the domain. Homebrew .app and dev (uv run)
+    had different bundle IDs, so settings didn't carry over between them.
+    """
+    if _defaults.objectForKey_(f"{_SUITE}._suite_migrated"):
+        return
+
+    std = NSUserDefaults.standardUserDefaults()
+    migrated_count = 0
+    for key in std.dictionaryRepresentation():
+        if not isinstance(key, str) or not key.startswith(f"{_SUITE}."):
+            continue
+        # Only copy if not already in suite domain
+        if _defaults.objectForKey_(key) is None:
+            val = std.objectForKey_(key)
+            if val is not None:
+                _defaults.setObject_forKey_(val, key)
+                migrated_count += 1
+
+    _defaults.setObject_forKey_(True, f"{_SUITE}._suite_migrated")
+    if migrated_count > 0:
+        log.info("Migrated %d settings from standardUserDefaults to suite domain", migrated_count)
+
+
 def ensure_defaults_migrated() -> None:
     """Call at app startup to trigger migration if needed."""
     _migrate_from_json()
+    _migrate_from_standard_defaults()
