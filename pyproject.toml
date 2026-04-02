@@ -9,6 +9,7 @@ authors = [{name = "ClaudeWatch Contributors"}]
 dependencies = [
     "pyobjc-framework-Cocoa~=12.1",
     "pyobjc-framework-Quartz~=12.1",
+    "kuzu>=0.8.0",
 ]
 
 [dependency-groups]
@@ -48,6 +49,7 @@ sources = ["claudewatch"]
 requires = [
     "pyobjc-framework-Cocoa~=12.1",
     "pyobjc-framework-Quartz~=12.1",
+    "kuzu>=0.8.0",
 ]
 
 [tool.briefcase.app.claudewatch.macOS]
