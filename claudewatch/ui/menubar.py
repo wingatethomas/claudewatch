@@ -31,6 +31,7 @@ from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.models import ClaudeSession
 from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
+from claudewatch.backend.core.session_log.dependencies import get_session_log_service
 from claudewatch.backend.core.settings import ensure_defaults_migrated, get_setting
 from claudewatch.backend.detection.dependencies import get_detection_service
 from claudewatch.backend.detection.service import DetectionService
@@ -210,6 +211,9 @@ class ClaudeWatchApp:
         if now - self._last_poll_time < interval:
             return
         self._last_poll_time = now
+
+        # Recheck accessibility so warning dismisses after user grants it
+        self._check_accessibility()
 
         # Collect results from background detection if ready
         if self._future is not None:
@@ -411,6 +415,11 @@ class ClaudeWatchApp:
             # Validate session ID is a UUID to prevent command injection
             if not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", session_id):
                 log.warning("invalid session ID: %s", session_id[:20])
+                return
+            # Verify the session JSONL still exists before trying to resume
+            path = get_session_log_service().find_most_recent(cwd) if cwd else None
+            if not path:
+                log.warning("session JSONL not found for resume: %s", session_id[:8])
                 return
             # Open a new Terminal tab, cd to the project dir, and resume
             safe_cwd = escape_applescript(cwd) if cwd else ""
