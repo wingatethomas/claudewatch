@@ -68,6 +68,7 @@ class ClaudeSession:
     prompt_context: str = ""  # full multi-line context for alert
     tab_index: int | None = None  # terminal tab index within IDE (0-based)
     session_id: str = ""  # Claude Code session UUID from JSONL filename
+    agent_count: int = 0  # populated by analytics.enrich_sessions()
 
     @property
     def task_summary(self) -> str:

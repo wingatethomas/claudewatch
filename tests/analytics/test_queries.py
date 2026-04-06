@@ -134,6 +134,12 @@ class TestToolQueries:
         result = queries.tool_usage(populated, limit=1)
         assert len(result) == 1
 
+    def test_tool_usage_global(self, queries: Queries, populated: str) -> None:
+        result = queries.tool_usage()
+        assert len(result) > 0
+        names = {r.name for r in result}
+        assert "Read" in names
+
     def test_tool_trends(self, queries: Queries, populated: str) -> None:
         result = queries.tool_trends(populated)
         assert len(result) > 0
@@ -227,6 +233,13 @@ class TestGlobalQueries:
     def test_agent_type_distribution_empty(self, queries: Queries, populated: str) -> None:
         result = queries.agent_type_distribution()
         assert isinstance(result, dict)
+
+    def test_model_distribution(self, queries: Queries, populated: str) -> None:
+        result = queries.model_distribution()
+        assert len(result) > 0
+        assert isinstance(result[0], ToolUsage)
+        models = {r.name for r in result}
+        assert "claude-opus-4-6" in models or "claude-sonnet-4-6" in models
 
 
 class TestRelationshipQueries:

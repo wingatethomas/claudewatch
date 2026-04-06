@@ -31,12 +31,15 @@ class Queries:
 
     def tool_usage(
         self,
-        proj_key: str,
+        proj_key: str | None = None,
         since: datetime | None = None,
         limit: int = 20,
     ) -> list[ToolUsage]:
-        sql = "SELECT name, COUNT(*) AS c FROM tools WHERE proj_key = ?"
-        params: list = [proj_key]
+        sql = "SELECT name, COUNT(*) AS c FROM tools WHERE 1=1"
+        params: list = []
+        if proj_key:
+            sql += " AND proj_key = ?"
+            params.append(proj_key)
         if since:
             sql += " AND ts_epoch >= ?"
             params.append(since.timestamp())
@@ -256,6 +259,19 @@ class Queries:
             params.append(proj_key)
         sql += " GROUP BY agent_type ORDER BY c DESC"
         return {r["agent_type"]: r["c"] for r in self._conn.execute(sql, params).fetchall()}
+
+    def model_distribution(
+        self,
+        since: datetime | None = None,
+    ) -> list[ToolUsage]:
+        """Model usage across all sessions, returned as ToolUsage(name=model, count=sessions)."""
+        sql = "SELECT primary_model, COUNT(*) AS c FROM sessions WHERE primary_model IS NOT NULL"
+        params: list = []
+        if since:
+            sql += " AND last_epoch >= ?"
+            params.append(since.timestamp())
+        sql += " GROUP BY primary_model ORDER BY c DESC"
+        return [ToolUsage(name=r["primary_model"], count=r["c"]) for r in self._conn.execute(sql, params).fetchall()]
 
     # --- Relationship derivation ---
 
