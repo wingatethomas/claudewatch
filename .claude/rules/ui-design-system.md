@@ -24,7 +24,7 @@ paths:
 
 7. **Explicit function names**: Every composite builder is named `build_<thing>()`, not just `build()`. Import should be self-documenting.
 
-8. **Descriptive variable names**: No single-letter variables except `x`, `y`, `w`, `h` as function params. Use `feature_card` not `c`, `content` not `cc`, `bookmark_button` not `bm_btn`.
+8. **Descriptive variable names**: No single-letter variables except `x`, `y`, `w`, `h` as function params. Coordinate-suffixed abbreviations (`ry`, `ty` for row-y, tool-y) and `d` for delegate are acceptable in layout code. Use `feature_card` not `c`, `content` not `cc`, `bookmark_button` not `bm_btn`.
 
 ## Delegate Pattern
 
