@@ -100,6 +100,8 @@ class ClaudeWatchApp:
         self._future: Future | None = None  # type: ignore[type-arg]
         self._last_poll_time = 0.0
         self._last_scan_time = 0.0
+        self._scan_lock = threading.Lock()
+        self._scan_running = False
         self._modal_active = False
         self._prev_pids: set[int] = set()
         self._prev_status: dict[int, str] = {}
@@ -200,17 +202,18 @@ class ClaudeWatchApp:
         pass
 
     _SCAN_INTERVAL = 30
-    _scan_running = False
 
     def _maybe_bg_scan(self) -> None:
         """Kick off an analytics scan if enough time has passed and none is running."""
-        if self._scan_running:
-            return
-        now = time.time()
-        if now - self._last_scan_time >= self._SCAN_INTERVAL:
+        with self._scan_lock:
+            if self._scan_running:
+                return
+            now = time.time()
+            if now - self._last_scan_time < self._SCAN_INTERVAL:
+                return
             self._last_scan_time = now
             self._scan_running = True
-            threading.Thread(target=self._bg_scan, daemon=True).start()
+        threading.Thread(target=self._bg_scan, daemon=True).start()
 
     def _bg_scan(self) -> None:
         try:
@@ -218,7 +221,8 @@ class ClaudeWatchApp:
         except Exception:
             log.exception("analytics background scan failed")
         finally:
-            self._scan_running = False
+            with self._scan_lock:
+                self._scan_running = False
 
     def _check_accessibility(self) -> None:
         """Show a warning if Accessibility permissions are not granted."""

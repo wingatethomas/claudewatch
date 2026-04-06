@@ -22,6 +22,8 @@ log = logging.getLogger("claudewatch")
 class InsightsPane(BasePane):
     """Insights pane showing aggregated session metrics."""
 
+    _bootstrap_running = False
+
     @property
     def title(self) -> str:
         return "Insights"
@@ -38,8 +40,10 @@ class InsightsPane(BasePane):
             empty = secondary_label("No session data yet.", size=Font.BODY)
             empty.setFrame_(NSMakeRect(CONTENT_PADDING, content_top - 30, self.card_width, 18))
             view.addSubview_(empty)
-            # Bootstrap: kick off a first scan in background
-            threading.Thread(target=self._bootstrap_scan, daemon=True).start()
+            # Bootstrap: kick off a first scan in background (once)
+            if not InsightsPane._bootstrap_running:
+                InsightsPane._bootstrap_running = True
+                threading.Thread(target=self._bootstrap_scan, daemon=True).start()
             return
 
         tools = analytics_svc.queries.tool_usage(limit=10)
@@ -156,6 +160,8 @@ class InsightsPane(BasePane):
             get_analytics_service().incremental_scan()
         except Exception:
             log.exception("insights bootstrap scan failed")
+        finally:
+            InsightsPane._bootstrap_running = False
 
 
 # Legacy function wrapper

@@ -46,6 +46,9 @@ _ACCESS_TYPE: dict[str, str] = {
 
 _PR_PATTERN = re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)")
 
+_MAX_FILE_PATH = 2048
+_MAX_PATTERN = 1024
+
 
 class Ingest:
     """Reads JSONL session logs and writes normalized rows into SQLite."""
@@ -233,15 +236,15 @@ class Ingest:
 
             path_field = _FILE_TOOLS.get(tool_name)
             if path_field:
-                file_path = tool_input.get(path_field, "")
+                file_path = (tool_input.get(path_field) or "")[:_MAX_FILE_PATH]
             elif tool_name == "Bash":
                 command = (tool_input.get("command") or "")[:200]
 
             if not file_path:
-                file_path = tool_input.get("file_path", "")
+                file_path = (tool_input.get("file_path") or "")[:_MAX_FILE_PATH]
 
             if tool_name in ("Grep", "Glob"):
-                pattern = tool_input.get("pattern", "")
+                pattern = (tool_input.get("pattern") or "")[:_MAX_PATTERN]
 
             tool_row = ToolRow(
                 event_id=event_id,

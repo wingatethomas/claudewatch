@@ -71,7 +71,7 @@ class AgentScanner:
                     continue
                 agent_id = meta.get("agent_id", agent_dir_name)
                 agent_type = meta.get("type", meta.get("agent_type", "general-purpose"))
-                description = meta.get("description", "")
+                description = (meta.get("description") or "")[:1000]
                 parent = meta.get("parent_agent_id", "")
                 started_at = meta.get("started_at", "")
                 ended_at = meta.get("ended_at", "")

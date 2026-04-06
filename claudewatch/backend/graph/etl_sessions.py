@@ -196,7 +196,7 @@ class SessionETL:
 
         action_id = block.get("id") or str(uuid.uuid4())
         kind = _tool_to_kind(tool_name)
-        file_path = tool_input.get("file_path", "") or tool_input.get("path", "")
+        file_path = ((tool_input.get("file_path") or tool_input.get("path")) or "")[:2048]
         command = (tool_input.get("command") or "")[:200] if kind == "bash" else ""
         pattern = tool_input.get("pattern", "") if kind == "search" else ""
         description = tool_input.get("description", "") if kind == "agent" else ""
