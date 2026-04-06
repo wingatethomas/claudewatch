@@ -258,7 +258,7 @@ class SessionETL:
 
         return action_id
 
-    def _process_agent(self, entry: dict, session_id: str) -> None:
+    def _process_agent(self, entry: dict[str, object], session_id: str) -> None:
         agent_type = entry.get("agentType", "general-purpose")
         agent_id = entry.get("agentId", str(uuid.uuid4()))
         agent_desc = entry.get("description", "")

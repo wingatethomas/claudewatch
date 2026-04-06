@@ -316,7 +316,7 @@ class Ingest:
     def _extract_pr(  # noqa: PLR0913
         self,
         s: Session,
-        entry: dict,
+        entry: dict[str, object],
         session_id: str,
         proj_key: str,
         ts: str,

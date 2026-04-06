@@ -234,7 +234,7 @@ class GraphQueries:
             return 0
         return result.get_next()[0] or 0
 
-    def _safe_execute(self, query: str, params: dict | None = None) -> kuzu.QueryResult | None:
+    def _safe_execute(self, query: str, params: dict[str, object] | None = None) -> kuzu.QueryResult | None:
         try:
             return self._conn.execute(query, params or {})
         except RuntimeError:
