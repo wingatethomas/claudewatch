@@ -36,9 +36,7 @@ def _session_entries(
     files: list[str] | None = None,
     tools: list[str] | None = None,
     pr_url: str | None = None,
-    branch: str | None = None,
 ) -> list[dict]:
-    """Build a realistic set of JSONL entries."""
     files = files or ["/src/main.py"]
     tools = tools or ["Read", "Edit"]
     entries = [
@@ -48,7 +46,7 @@ def _session_entries(
             "message": {"role": "user", "content": "do stuff"},
         },
     ]
-    content_blocks = []
+    content_blocks: list[dict] = []
     for i, tool_name in enumerate(tools):
         block: dict = {"type": "tool_use", "id": f"tu_{i}", "name": tool_name, "input": {}}
         if tool_name in ("Read", "Edit", "Write"):
@@ -90,17 +88,16 @@ def store(tmp_path: str) -> AnalyticsStore:
 
 @pytest.fixture
 def queries(store: AnalyticsStore) -> Queries:
-    return Queries(store.conn)
+    return Queries(store.session)
 
 
 @pytest.fixture
 def ingest(store: AnalyticsStore) -> Ingest:
-    return Ingest(store.conn)
+    return Ingest(store.session)
 
 
 @pytest.fixture
 def populated(store: AnalyticsStore, ingest: Ingest, tmp_path: str) -> str:
-    """Create and ingest two sessions in the same project."""
     proj = os.path.join(tmp_path, "projects", "-proj")
     os.makedirs(proj)
     _write_jsonl(
@@ -152,7 +149,7 @@ class TestFileQueries:
         assert len(result) > 0
         assert isinstance(result[0], FileUsage)
         paths = {r.path for r in result}
-        assert "/src/auth.py" in paths  # touched by both sessions
+        assert "/src/auth.py" in paths
 
     def test_files_for_session(self, queries: Queries, populated: str) -> None:
         result = queries.files_for_session("sess-1")
@@ -252,7 +249,6 @@ class TestRelationshipQueries:
 
     def test_hotspot_files(self, queries: Queries, populated: str) -> None:
         result = queries.hotspot_files(populated)
-        # /src/auth.py is touched by both sessions
         assert len(result) >= 1
         assert isinstance(result[0], FileHotspot)
         assert result[0].session_count >= 2
@@ -269,6 +265,5 @@ class TestRelationshipQueries:
         assert isinstance(result[0], SessionOverview)
 
     def test_branch_activity_empty(self, queries: Queries, populated: str) -> None:
-        # Our test data doesn't set git_branch, so this should be empty
         result = queries.branch_activity(populated)
         assert isinstance(result, list)

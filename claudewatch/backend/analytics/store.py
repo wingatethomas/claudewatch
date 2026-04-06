@@ -1,173 +1,208 @@
-"""Analytics store — SQLite connection, schema DDL, migrations."""
+"""Analytics store — SQLAlchemy ORM models, engine lifecycle, migrations."""
 
 from __future__ import annotations
 
 import logging
-import sqlite3
+
+from sqlalchemy import Float, Index, Integer, Text, UniqueConstraint, create_engine, event
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 log = logging.getLogger("claudewatch")
 
 _SCHEMA_VERSION = 1
 
-_TABLES = """
-CREATE TABLE IF NOT EXISTS events (
-    id              INTEGER PRIMARY KEY,
-    session_id      TEXT NOT NULL,
-    uuid            TEXT UNIQUE,
-    parent_uuid     TEXT,
-    entry_type      TEXT NOT NULL,
-    timestamp       TEXT NOT NULL,
-    ts_epoch        REAL NOT NULL,
-    proj_key        TEXT NOT NULL,
-    git_branch      TEXT,
-    model           TEXT,
-    is_sidechain    INTEGER DEFAULT 0
-);
 
-CREATE TABLE IF NOT EXISTS tools (
-    id              INTEGER PRIMARY KEY,
-    event_id        INTEGER REFERENCES events(id),
-    session_id      TEXT NOT NULL,
-    name            TEXT NOT NULL,
-    tool_use_id     TEXT,
-    file_path       TEXT,
-    command         TEXT,
-    pattern         TEXT,
-    timestamp       TEXT NOT NULL,
-    ts_epoch        REAL NOT NULL,
-    proj_key        TEXT NOT NULL
-);
+class Base(DeclarativeBase):
+    pass
 
-CREATE TABLE IF NOT EXISTS files (
-    id              INTEGER PRIMARY KEY,
-    tool_id         INTEGER REFERENCES tools(id),
-    session_id      TEXT NOT NULL,
-    path            TEXT NOT NULL,
-    access_type     TEXT NOT NULL,
-    timestamp       TEXT NOT NULL,
-    ts_epoch        REAL NOT NULL,
-    proj_key        TEXT NOT NULL
-);
 
-CREATE TABLE IF NOT EXISTS tokens (
-    id              INTEGER PRIMARY KEY,
-    event_id        INTEGER REFERENCES events(id),
-    session_id      TEXT NOT NULL,
-    model           TEXT NOT NULL,
-    input           INTEGER DEFAULT 0,
-    output          INTEGER DEFAULT 0,
-    cache_create    INTEGER DEFAULT 0,
-    cache_read      INTEGER DEFAULT 0,
-    timestamp       TEXT NOT NULL,
-    ts_epoch        REAL NOT NULL,
-    proj_key        TEXT NOT NULL
-);
+class EventRow(Base):
+    __tablename__ = "events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    uuid: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
+    parent_uuid: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entry_type: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[str] = mapped_column(Text, nullable=False)
+    ts_epoch: Mapped[float] = mapped_column(Float, nullable=False)
+    proj_key: Mapped[str] = mapped_column(Text, nullable=False)
+    git_branch: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_sidechain: Mapped[int] = mapped_column(Integer, default=0)
 
-CREATE TABLE IF NOT EXISTS pull_requests (
-    id              INTEGER PRIMARY KEY,
-    session_id      TEXT NOT NULL,
-    number          INTEGER NOT NULL,
-    url             TEXT NOT NULL,
-    repository      TEXT NOT NULL,
-    timestamp       TEXT NOT NULL,
-    ts_epoch        REAL NOT NULL,
-    proj_key        TEXT NOT NULL,
-    UNIQUE(session_id, url)
-);
+    __table_args__ = (
+        Index("idx_events_proj_ts", "proj_key", "ts_epoch"),
+        Index("idx_events_session", "session_id"),
+    )
 
-CREATE TABLE IF NOT EXISTS agents (
-    id              INTEGER PRIMARY KEY,
-    agent_id        TEXT UNIQUE NOT NULL,
-    session_id      TEXT NOT NULL,
-    parent_agent_id TEXT,
-    agent_type      TEXT NOT NULL,
-    description     TEXT DEFAULT '',
-    status          TEXT DEFAULT 'stale',
-    started_at      TEXT,
-    ended_at        TEXT,
-    entry_count     INTEGER DEFAULT 0,
-    proj_key        TEXT NOT NULL
-);
 
-CREATE TABLE IF NOT EXISTS sessions (
-    session_id      TEXT PRIMARY KEY,
-    proj_key        TEXT NOT NULL,
-    first_ts        TEXT,
-    last_ts         TEXT,
-    first_epoch     REAL,
-    last_epoch      REAL,
-    user_messages   INTEGER DEFAULT 0,
-    asst_messages   INTEGER DEFAULT 0,
-    tool_count      INTEGER DEFAULT 0,
-    input_tokens    INTEGER DEFAULT 0,
-    output_tokens   INTEGER DEFAULT 0,
-    cache_tokens    INTEGER DEFAULT 0,
-    primary_model   TEXT,
-    primary_branch  TEXT,
-    agent_count     INTEGER DEFAULT 0,
-    updated_at      REAL DEFAULT 0
-);
+class ToolRow(Base):
+    __tablename__ = "tools"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    tool_use_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    command: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pattern: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timestamp: Mapped[str] = mapped_column(Text, nullable=False)
+    ts_epoch: Mapped[float] = mapped_column(Float, nullable=False)
+    proj_key: Mapped[str] = mapped_column(Text, nullable=False)
 
-CREATE TABLE IF NOT EXISTS checkpoints (
-    file_path       TEXT PRIMARY KEY,
-    byte_offset     INTEGER DEFAULT 0,
-    line_count      INTEGER DEFAULT 0,
-    file_size       INTEGER DEFAULT 0,
-    file_mtime      REAL DEFAULT 0,
-    updated_at      REAL DEFAULT 0
-);
-"""
+    __table_args__ = (
+        Index("idx_tools_proj_name", "proj_key", "name"),
+        Index("idx_tools_session", "session_id"),
+        Index("idx_tools_event", "event_id"),
+    )
 
-_INDEXES = """
-CREATE INDEX IF NOT EXISTS idx_events_proj_ts ON events(proj_key, ts_epoch);
-CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
-CREATE INDEX IF NOT EXISTS idx_tools_proj_name ON tools(proj_key, name);
-CREATE INDEX IF NOT EXISTS idx_tools_session ON tools(session_id);
-CREATE INDEX IF NOT EXISTS idx_tools_event ON tools(event_id);
-CREATE INDEX IF NOT EXISTS idx_files_session ON files(session_id);
-CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
-CREATE INDEX IF NOT EXISTS idx_tokens_session ON tokens(session_id);
-CREATE INDEX IF NOT EXISTS idx_tokens_event ON tokens(event_id);
-CREATE INDEX IF NOT EXISTS idx_pull_requests_session ON pull_requests(session_id);
-CREATE INDEX IF NOT EXISTS idx_agents_session ON agents(session_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_proj ON sessions(proj_key);
-"""
+
+class FileRow(Base):
+    __tablename__ = "files"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tool_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    access_type: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[str] = mapped_column(Text, nullable=False)
+    ts_epoch: Mapped[float] = mapped_column(Float, nullable=False)
+    proj_key: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        Index("idx_files_session", "session_id"),
+        Index("idx_files_path", "path"),
+    )
+
+
+class TokenRow(Base):
+    __tablename__ = "tokens"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    input: Mapped[int] = mapped_column(Integer, default=0)
+    output: Mapped[int] = mapped_column(Integer, default=0)
+    cache_create: Mapped[int] = mapped_column(Integer, default=0)
+    cache_read: Mapped[int] = mapped_column(Integer, default=0)
+    timestamp: Mapped[str] = mapped_column(Text, nullable=False)
+    ts_epoch: Mapped[float] = mapped_column(Float, nullable=False)
+    proj_key: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        Index("idx_tokens_session", "session_id"),
+        Index("idx_tokens_event", "event_id"),
+    )
+
+
+class PullRequestRow(Base):
+    __tablename__ = "pull_requests"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    repository: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[str] = mapped_column(Text, nullable=False)
+    ts_epoch: Mapped[float] = mapped_column(Float, nullable=False)
+    proj_key: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("session_id", "url"),
+        Index("idx_pull_requests_session", "session_id"),
+    )
+
+
+class AgentRow(Base):
+    __tablename__ = "agents"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    parent_agent_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_type: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(Text, default="stale")
+    started_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ended_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entry_count: Mapped[int] = mapped_column(Integer, default=0)
+    proj_key: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (Index("idx_agents_session", "session_id"),)
+
+
+class SessionRow(Base):
+    __tablename__ = "sessions"
+    session_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    proj_key: Mapped[str] = mapped_column(Text, nullable=False)
+    first_ts: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_ts: Mapped[str | None] = mapped_column(Text, nullable=True)
+    first_epoch: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_epoch: Mapped[float | None] = mapped_column(Float, nullable=True)
+    user_messages: Mapped[int] = mapped_column(Integer, default=0)
+    asst_messages: Mapped[int] = mapped_column(Integer, default=0)
+    tool_count: Mapped[int] = mapped_column(Integer, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cache_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    primary_model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    primary_branch: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[float] = mapped_column(Float, default=0)
+
+    __table_args__ = (Index("idx_sessions_proj", "proj_key"),)
+
+
+class CheckpointRow(Base):
+    __tablename__ = "checkpoints"
+    file_path: Mapped[str] = mapped_column(Text, primary_key=True)
+    byte_offset: Mapped[int] = mapped_column(Integer, default=0)
+    line_count: Mapped[int] = mapped_column(Integer, default=0)
+    file_size: Mapped[int] = mapped_column(Integer, default=0)
+    file_mtime: Mapped[float] = mapped_column(Float, default=0)
+    updated_at: Mapped[float] = mapped_column(Float, default=0)
+
+
+class SchemaVersionRow(Base):
+    __tablename__ = "schema_version"
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+
+@event.listens_for(Engine, "connect")
+def _set_sqlite_pragma(dbapi_conn: object, _connection_record: object) -> None:
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
 
 
 class AnalyticsStore:
-    """Manages the analytics SQLite database."""
+    """Manages the analytics SQLite database via SQLAlchemy ORM."""
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._configure()
-        self._create_schema()
+        self._engine = create_engine(f"sqlite:///{db_path}")
+        Base.metadata.create_all(self._engine)
+        self._session_factory = sessionmaker(bind=self._engine)
+        self._init_version()
 
-    def _configure(self) -> None:
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
-
-    def _create_schema(self) -> None:
-        self._conn.executescript(_TABLES)
-        self._conn.executescript(_INDEXES)
-        self._conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)")
-        row = self._conn.execute("SELECT version FROM schema_version").fetchone()
-        if row is None:
-            self._conn.execute(
-                "INSERT INTO schema_version (version) VALUES (?)",
-                (_SCHEMA_VERSION,),
-            )
-            self._conn.commit()
+    def _init_version(self) -> None:
+        with self.session() as s:
+            row = s.query(SchemaVersionRow).first()
+            if row is None:
+                s.add(SchemaVersionRow(version=_SCHEMA_VERSION))
+                s.commit()
 
     @property
-    def conn(self) -> sqlite3.Connection:
-        return self._conn
+    def engine(self) -> Engine:
+        return self._engine
 
     @property
     def db_path(self) -> str:
         return self._db_path
 
+    def session(self) -> Session:
+        """Create a new ORM session."""
+        return self._session_factory()
+
     def close(self) -> None:
-        self._conn.close()
+        self._engine.dispose()

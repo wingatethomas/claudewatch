@@ -6,7 +6,16 @@ import os
 import pytest
 
 from claudewatch.backend.analytics.ingest import Ingest, _parse_epoch
-from claudewatch.backend.analytics.store import AnalyticsStore
+from claudewatch.backend.analytics.store import (
+    AnalyticsStore,
+    CheckpointRow,
+    EventRow,
+    FileRow,
+    PullRequestRow,
+    SessionRow,
+    TokenRow,
+    ToolRow,
+)
 
 
 @pytest.fixture
@@ -16,7 +25,7 @@ def store(tmp_path: str) -> AnalyticsStore:
 
 @pytest.fixture
 def ingest(store: AnalyticsStore) -> Ingest:
-    return Ingest(store.conn)
+    return Ingest(store.session)
 
 
 def _write_jsonl(path: str, entries: list[dict]) -> None:
@@ -76,10 +85,7 @@ def _make_entries() -> list[dict]:
 def projects_dir(tmp_path: str) -> str:
     proj_dir = os.path.join(tmp_path, "projects", "-Users-dev-myapp")
     os.makedirs(proj_dir)
-    _write_jsonl(
-        os.path.join(proj_dir, "abc-1234.jsonl"),
-        _make_entries(),
-    )
+    _write_jsonl(os.path.join(proj_dir, "abc-1234.jsonl"), _make_entries())
     return os.path.join(tmp_path, "projects")
 
 
@@ -92,76 +98,80 @@ class TestIngest:
     def test_events_inserted(self, ingest: Ingest, store: AnalyticsStore, projects_dir: str) -> None:
         path = os.path.join(projects_dir, "-Users-dev-myapp", "abc-1234.jsonl")
         ingest.process_file(path, "abc-1234", "-Users-dev-myapp")
-        events = store.conn.execute("SELECT * FROM events").fetchall()
-        assert len(events) == 4
-        types = [e["entry_type"] for e in events]
-        assert types.count("user") == 2
-        assert types.count("assistant") == 2
+        with store.session() as s:
+            events = s.query(EventRow).all()
+            assert len(events) == 4
+            types = [e.entry_type for e in events]
+            assert types.count("user") == 2
+            assert types.count("assistant") == 2
 
     def test_tools_extracted(self, ingest: Ingest, store: AnalyticsStore, projects_dir: str) -> None:
         path = os.path.join(projects_dir, "-Users-dev-myapp", "abc-1234.jsonl")
         ingest.process_file(path, "abc-1234", "-Users-dev-myapp")
-        tools = store.conn.execute("SELECT * FROM tools ORDER BY id").fetchall()
-        assert len(tools) == 3
-        names = [t["name"] for t in tools]
-        assert "Read" in names
-        assert "Edit" in names
-        assert "Bash" in names
+        with store.session() as s:
+            tool_rows = s.query(ToolRow).order_by(ToolRow.id).all()
+            assert len(tool_rows) == 3
+            names = [t.name for t in tool_rows]
+            assert "Read" in names
+            assert "Edit" in names
+            assert "Bash" in names
 
     def test_files_tracked(self, ingest: Ingest, store: AnalyticsStore, projects_dir: str) -> None:
         path = os.path.join(projects_dir, "-Users-dev-myapp", "abc-1234.jsonl")
         ingest.process_file(path, "abc-1234", "-Users-dev-myapp")
-        files = store.conn.execute("SELECT * FROM files").fetchall()
-        assert len(files) == 2  # Read + Edit on /src/auth.py
-        assert all(f["path"] == "/src/auth.py" for f in files)
+        with store.session() as s:
+            file_rows = s.query(FileRow).all()
+            assert len(file_rows) == 2
+            assert all(f.path == "/src/auth.py" for f in file_rows)
 
     def test_tokens_tracked(self, ingest: Ingest, store: AnalyticsStore, projects_dir: str) -> None:
         path = os.path.join(projects_dir, "-Users-dev-myapp", "abc-1234.jsonl")
         ingest.process_file(path, "abc-1234", "-Users-dev-myapp")
-        tokens = store.conn.execute("SELECT * FROM tokens").fetchall()
-        assert len(tokens) == 2
-        total_input = sum(t["input"] for t in tokens)
-        assert total_input == 1500
+        with store.session() as s:
+            token_rows = s.query(TokenRow).all()
+            assert len(token_rows) == 2
+            total_input = sum(t.input for t in token_rows)
+            assert total_input == 1500
 
     def test_pr_extracted(self, ingest: Ingest, store: AnalyticsStore, projects_dir: str) -> None:
         path = os.path.join(projects_dir, "-Users-dev-myapp", "abc-1234.jsonl")
         ingest.process_file(path, "abc-1234", "-Users-dev-myapp")
-        prs = store.conn.execute("SELECT * FROM pull_requests").fetchall()
-        assert len(prs) == 1
-        assert prs[0]["number"] == 42
-        assert prs[0]["repository"] == "org/repo"
+        with store.session() as s:
+            prs = s.query(PullRequestRow).all()
+            assert len(prs) == 1
+            assert prs[0].number == 42
+            assert prs[0].repository == "org/repo"
 
     def test_session_summary_created(self, ingest: Ingest, store: AnalyticsStore, projects_dir: str) -> None:
         path = os.path.join(projects_dir, "-Users-dev-myapp", "abc-1234.jsonl")
         ingest.process_file(path, "abc-1234", "-Users-dev-myapp")
-        session = store.conn.execute("SELECT * FROM sessions").fetchone()
-        assert session is not None
-        assert session["session_id"] == "abc-1234"
-        assert session["user_messages"] == 2
-        assert session["asst_messages"] == 2
-        assert session["tool_count"] == 3
-        assert session["input_tokens"] == 1500
-        assert session["primary_model"] == "claude-opus-4-6"
+        with store.session() as s:
+            session = s.get(SessionRow, "abc-1234")
+            assert session is not None
+            assert session.user_messages == 2
+            assert session.asst_messages == 2
+            assert session.tool_count == 3
+            assert session.input_tokens == 1500
+            assert session.primary_model == "claude-opus-4-6"
 
     def test_checkpoint_created(self, ingest: Ingest, store: AnalyticsStore, projects_dir: str) -> None:
         path = os.path.join(projects_dir, "-Users-dev-myapp", "abc-1234.jsonl")
         ingest.process_file(path, "abc-1234", "-Users-dev-myapp")
-        cp = store.conn.execute("SELECT * FROM checkpoints").fetchone()
-        assert cp is not None
-        assert cp["file_path"] == path
-        assert cp["byte_offset"] > 0
+        with store.session() as s:
+            cp = s.get(CheckpointRow, path)
+            assert cp is not None
+            assert cp.byte_offset > 0
 
-    def test_incremental_skips_unchanged(self, ingest: Ingest, store: AnalyticsStore, projects_dir: str) -> None:
+    def test_incremental_skips_unchanged(self, ingest: Ingest, projects_dir: str) -> None:
         path = os.path.join(projects_dir, "-Users-dev-myapp", "abc-1234.jsonl")
         count1 = ingest.process_file(path, "abc-1234", "-Users-dev-myapp")
         assert count1 == 4
         count2 = ingest.process_file(path, "abc-1234", "-Users-dev-myapp")
-        assert count2 == 0  # no new data
+        assert count2 == 0
 
-    def test_incremental_picks_up_new_lines(self, ingest: Ingest, store: AnalyticsStore, projects_dir: str) -> None:
+    def test_incremental_picks_up_new_lines(self, ingest: Ingest, projects_dir: str) -> None:
         path = os.path.join(projects_dir, "-Users-dev-myapp", "abc-1234.jsonl")
         ingest.process_file(path, "abc-1234", "-Users-dev-myapp")
-        # Append a new entry
         with open(path, "a") as f:
             f.write(
                 json.dumps(
@@ -184,7 +194,7 @@ class TestIngest:
     def test_incremental_scan(self, ingest: Ingest, projects_dir: str) -> None:
         ingest.full_scan(projects_dir)
         stats = ingest.incremental_scan(projects_dir)
-        assert len(stats) == 0  # nothing changed
+        assert len(stats) == 0
 
     def test_handles_corrupt_jsonl(self, ingest: Ingest, tmp_path: str) -> None:
         path = os.path.join(tmp_path, "bad.jsonl")
@@ -193,7 +203,7 @@ class TestIngest:
             f.write(json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z", "message": {}}) + "\n")
             f.write("{truncated\n")
         count = ingest.process_file(path, "test", "test-proj", incremental=False)
-        assert count == 1  # only the valid line
+        assert count == 1
 
     def test_handles_missing_file(self, ingest: Ingest) -> None:
         count = ingest.process_file("/nonexistent/file.jsonl", "x", "x")
@@ -217,8 +227,9 @@ class TestIngest:
             ],
         )
         ingest.process_file(path, "s1", "p1", incremental=False)
-        tool = store.conn.execute("SELECT command FROM tools").fetchone()
-        assert len(tool["command"]) == 200
+        with store.session() as s:
+            tool = s.query(ToolRow).first()
+            assert len(tool.command) == 200
 
     def test_synthetic_model_ignored(self, ingest: Ingest, store: AnalyticsStore, tmp_path: str) -> None:
         path = os.path.join(tmp_path, "synth.jsonl")
@@ -237,8 +248,9 @@ class TestIngest:
             ],
         )
         ingest.process_file(path, "s1", "p1", incremental=False)
-        event = store.conn.execute("SELECT model FROM events").fetchone()
-        assert event["model"] is None
+        with store.session() as s:
+            event = s.query(EventRow).first()
+            assert event.model is None
 
 
 class TestParseEpoch:

@@ -10,6 +10,7 @@ dependencies = [
     "pyobjc-framework-Cocoa~=12.1",
     "pyobjc-framework-Quartz~=12.1",
     "kuzu>=0.8.0",
+    "sqlalchemy>=2.0",
 ]
 
 [dependency-groups]
@@ -50,6 +51,7 @@ requires = [
     "pyobjc-framework-Cocoa~=12.1",
     "pyobjc-framework-Quartz~=12.1",
     "kuzu>=0.8.0",
+    "sqlalchemy>=2.0",
 ]
 
 [tool.briefcase.app.claudewatch.macOS]

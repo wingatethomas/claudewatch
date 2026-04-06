@@ -6,13 +6,25 @@ import json
 import logging
 import os
 import re
-import sqlite3
 import time
 from datetime import UTC, datetime
 
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from claudewatch.backend.analytics.store import (
+    AgentRow,
+    CheckpointRow,
+    EventRow,
+    FileRow,
+    PullRequestRow,
+    SessionRow,
+    TokenRow,
+    ToolRow,
+)
+
 log = logging.getLogger("claudewatch")
 
-# Tools that operate on files, keyed by the input field that holds the path
 _FILE_TOOLS: dict[str, str] = {
     "Read": "file_path",
     "Edit": "file_path",
@@ -31,20 +43,20 @@ _ACCESS_TYPE: dict[str, str] = {
     "NotebookEdit": "edit",
 }
 
-# PR URL pattern: github.com/owner/repo/pull/123
 _PR_PATTERN = re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)")
 
 
 class Ingest:
     """Reads JSONL session logs and writes normalized rows into SQLite."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
-        self._conn = conn
+    def __init__(self, session_factory: object) -> None:
+        self._session_factory = session_factory
 
     def full_scan(self, projects_dir: str) -> dict[str, int]:
         """Scan all projects, ignoring checkpoints (full re-ingest)."""
-        self._conn.execute("DELETE FROM checkpoints")
-        self._conn.commit()
+        with self._session_factory() as s:
+            s.query(CheckpointRow).delete()
+            s.commit()
         return self._scan(projects_dir, incremental=False)
 
     def incremental_scan(self, projects_dir: str) -> dict[str, int]:
@@ -65,10 +77,10 @@ class Ingest:
             if not os.path.isdir(proj_dir):
                 continue
             try:
-                files = [f for f in os.listdir(proj_dir) if f.endswith(".jsonl")]
+                jsonl_files = [f for f in os.listdir(proj_dir) if f.endswith(".jsonl")]
             except OSError:
                 continue
-            for fname in files:
+            for fname in jsonl_files:
                 path = os.path.join(proj_dir, fname)
                 session_id = fname.removesuffix(".jsonl")
                 try:
@@ -96,56 +108,62 @@ class Ingest:
         mtime = stat.st_mtime
         size = stat.st_size
 
-        byte_offset = 0
-        if incremental:
-            row = self._conn.execute(
-                "SELECT byte_offset, file_size, file_mtime FROM checkpoints WHERE file_path = ?",
-                (path,),
-            ).fetchone()
-            if row:
-                if row["file_mtime"] == mtime and row["file_size"] == size:
-                    return 0  # unchanged
-                byte_offset = row["byte_offset"]
+        with self._session_factory() as s:
+            byte_offset = 0
+            if incremental:
+                cp = s.get(CheckpointRow, path)
+                if cp:
+                    if cp.file_mtime == mtime and cp.file_size == size:
+                        return 0
+                    byte_offset = cp.byte_offset
 
-        count = 0
-        new_offset = byte_offset
-        try:
-            with open(path, "rb") as f:
-                f.seek(byte_offset)
-                for line_bytes in f:
-                    new_offset += len(line_bytes)
-                    line = line_bytes.decode("utf-8", errors="replace").strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except (json.JSONDecodeError, ValueError):
-                        continue
-                    if not isinstance(entry, dict):
-                        continue
-                    self._process_entry(entry, session_id, proj_key)
-                    count += 1
-        except OSError:
-            log.warning("ingest: failed to read %s", path)
-            return 0
+            count = 0
+            new_offset = byte_offset
+            try:
+                with open(path, "rb") as f:
+                    f.seek(byte_offset)
+                    for line_bytes in f:
+                        new_offset += len(line_bytes)
+                        line = line_bytes.decode("utf-8", errors="replace").strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except (json.JSONDecodeError, ValueError):
+                            continue
+                        if not isinstance(entry, dict):
+                            continue
+                        self._process_entry(s, entry, session_id, proj_key)
+                        count += 1
+            except OSError:
+                log.warning("ingest: failed to read %s", path)
+                return 0
 
-        # Update checkpoint
-        self._conn.execute(
-            "INSERT INTO checkpoints (file_path, byte_offset, file_size, file_mtime, updated_at) "
-            "VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(file_path) DO UPDATE SET "
-            "byte_offset=excluded.byte_offset, file_size=excluded.file_size, "
-            "file_mtime=excluded.file_mtime, updated_at=excluded.updated_at",
-            (path, new_offset, size, mtime, time.time()),
-        )
+            # Upsert checkpoint
+            cp = s.get(CheckpointRow, path)
+            if cp:
+                cp.byte_offset = new_offset
+                cp.file_size = size
+                cp.file_mtime = mtime
+                cp.updated_at = time.time()
+            else:
+                s.add(
+                    CheckpointRow(
+                        file_path=path,
+                        byte_offset=new_offset,
+                        file_size=size,
+                        file_mtime=mtime,
+                        updated_at=time.time(),
+                    )
+                )
 
-        if count > 0:
-            self._update_session(session_id, proj_key)
+            if count > 0:
+                self._update_session(s, session_id, proj_key)
 
-        self._conn.commit()
+            s.commit()
         return count
 
-    def _process_entry(self, entry: dict, session_id: str, proj_key: str) -> None:
+    def _process_entry(self, s: Session, entry: dict, session_id: str, proj_key: str) -> None:
         entry_type = entry.get("type", "")
         if not entry_type:
             return
@@ -163,36 +181,29 @@ class Ingest:
         if model == "<synthetic>":
             model = ""
 
-        # Insert event
-        cursor = self._conn.execute(
-            "INSERT INTO events "
-            "(session_id, uuid, parent_uuid, entry_type, timestamp, ts_epoch, "
-            "proj_key, model, is_sidechain) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                session_id,
-                uuid,
-                parent_uuid,
-                entry_type,
-                ts,
-                ts_epoch,
-                proj_key,
-                model if model else None,
-                1 if entry.get("isSidechain") else 0,
-            ),
+        evt = EventRow(
+            session_id=session_id,
+            uuid=uuid,
+            parent_uuid=parent_uuid,
+            entry_type=entry_type,
+            timestamp=ts,
+            ts_epoch=ts_epoch,
+            proj_key=proj_key,
+            model=model if model else None,
+            is_sidechain=1 if entry.get("isSidechain") else 0,
         )
-        event_id = cursor.lastrowid
+        s.add(evt)
+        s.flush()
 
-        # Extract tools from assistant messages
         if entry_type == "assistant":
-            self._extract_tools(message, event_id, session_id, proj_key, ts, ts_epoch)
-            self._extract_tokens(message, event_id, session_id, proj_key, ts, ts_epoch)
+            self._extract_tools(s, message, evt.id, session_id, proj_key, ts, ts_epoch)
+            self._extract_tokens(s, message, evt.id, session_id, proj_key, ts, ts_epoch)
 
-        # Check for PR links in text content
-        self._extract_pr(entry, session_id, proj_key, ts, ts_epoch)
+        self._extract_pr(s, entry, session_id, proj_key, ts, ts_epoch)
 
     def _extract_tools(  # noqa: PLR0913
         self,
+        s: Session,
         message: dict,
         event_id: int,
         session_id: str,
@@ -217,55 +228,50 @@ class Ingest:
             command = None
             pattern = None
 
-            # Extract file path
             path_field = _FILE_TOOLS.get(tool_name)
             if path_field:
                 file_path = tool_input.get(path_field, "")
             elif tool_name == "Bash":
                 command = (tool_input.get("command") or "")[:200]
-            elif tool_name == "Agent":
-                pass  # tracked via agent_spawns
 
-            # Also check generic file_path for tools not in the map
             if not file_path:
                 file_path = tool_input.get("file_path", "")
 
-            # Extract pattern for search tools
             if tool_name in ("Grep", "Glob"):
                 pattern = tool_input.get("pattern", "")
 
-            cursor = self._conn.execute(
-                "INSERT INTO tools "
-                "(event_id, session_id, name, tool_use_id, file_path, command, "
-                "pattern, timestamp, ts_epoch, proj_key) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    event_id,
-                    session_id,
-                    tool_name,
-                    block.get("id"),
-                    file_path or None,
-                    command,
-                    pattern,
-                    ts,
-                    ts_epoch,
-                    proj_key,
-                ),
+            tool_row = ToolRow(
+                event_id=event_id,
+                session_id=session_id,
+                name=tool_name,
+                tool_use_id=block.get("id"),
+                file_path=file_path or None,
+                command=command,
+                pattern=pattern,
+                timestamp=ts,
+                ts_epoch=ts_epoch,
+                proj_key=proj_key,
             )
-            tool_id = cursor.lastrowid
+            s.add(tool_row)
+            s.flush()
 
-            # Insert file access records
             if file_path:
                 access_type = _ACCESS_TYPE.get(tool_name, "read")
-                self._conn.execute(
-                    "INSERT INTO files "
-                    "(tool_id, session_id, path, access_type, timestamp, ts_epoch, proj_key) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (tool_id, session_id, file_path, access_type, ts, ts_epoch, proj_key),
+                s.add(
+                    FileRow(
+                        tool_id=tool_row.id,
+                        session_id=session_id,
+                        path=file_path,
+                        access_type=access_type,
+                        timestamp=ts,
+                        ts_epoch=ts_epoch,
+                        proj_key=proj_key,
+                    )
                 )
 
     def _extract_tokens(  # noqa: PLR0913
         self,
+        s: Session,
         message: dict,
         event_id: int,
         session_id: str,
@@ -286,49 +292,46 @@ class Ingest:
         cache_create = usage.get("cache_creation_input_tokens", 0) or 0
         cache_read = usage.get("cache_read_input_tokens", 0) or 0
         if input_tokens or output_tokens or cache_create or cache_read:
-            self._conn.execute(
-                "INSERT INTO tokens "
-                "(event_id, session_id, model, input, output, cache_create, "
-                "cache_read, timestamp, ts_epoch, proj_key) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    event_id,
-                    session_id,
-                    model,
-                    input_tokens,
-                    output_tokens,
-                    cache_create,
-                    cache_read,
-                    ts,
-                    ts_epoch,
-                    proj_key,
-                ),
+            s.add(
+                TokenRow(
+                    event_id=event_id,
+                    session_id=session_id,
+                    model=model,
+                    input=input_tokens,
+                    output=output_tokens,
+                    cache_create=cache_create,
+                    cache_read=cache_read,
+                    timestamp=ts,
+                    ts_epoch=ts_epoch,
+                    proj_key=proj_key,
+                )
             )
 
-    def _extract_pr(
+    def _extract_pr(  # noqa: PLR0913
         self,
+        s: Session,
         entry: dict,
         session_id: str,
         proj_key: str,
         ts: str,
         ts_epoch: float,
     ) -> None:
-        """Scan entry text content for GitHub PR URLs."""
         message = entry.get("message", {})
         if not isinstance(message, dict):
             return
         content = message.get("content", [])
         if isinstance(content, str):
-            self._find_prs(content, session_id, proj_key, ts, ts_epoch)
+            self._find_prs(s, content, session_id, proj_key, ts, ts_epoch)
         elif isinstance(content, list):
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "text":
                     text = block.get("text", "")
                     if text:
-                        self._find_prs(text, session_id, proj_key, ts, ts_epoch)
+                        self._find_prs(s, text, session_id, proj_key, ts, ts_epoch)
 
-    def _find_prs(
+    def _find_prs(  # noqa: PLR0913
         self,
+        s: Session,
         text: str,
         session_id: str,
         proj_key: str,
@@ -339,97 +342,112 @@ class Ingest:
             repo = match.group(1)
             number = int(match.group(2))
             url = match.group(0)
-            self._conn.execute(
-                "INSERT OR IGNORE INTO pull_requests "
-                "(session_id, number, url, repository, timestamp, ts_epoch, proj_key) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (session_id, number, url, repo, ts, ts_epoch, proj_key),
-            )
+            existing = s.execute(
+                select(PullRequestRow).where(
+                    PullRequestRow.session_id == session_id,
+                    PullRequestRow.url == url,
+                )
+            ).first()
+            if not existing:
+                s.add(
+                    PullRequestRow(
+                        session_id=session_id,
+                        number=number,
+                        url=url,
+                        repository=repo,
+                        timestamp=ts,
+                        ts_epoch=ts_epoch,
+                        proj_key=proj_key,
+                    )
+                )
 
-    def _update_session(self, session_id: str, proj_key: str) -> None:
+    def _update_session(self, s: Session, session_id: str, proj_key: str) -> None:
         """Recompute session summary row from event/tool/token tables."""
-        row = self._conn.execute(
-            "SELECT "
-            "  MIN(timestamp) AS first_ts, MAX(timestamp) AS last_ts, "
-            "  MIN(ts_epoch) AS first_epoch, MAX(ts_epoch) AS last_epoch, "
-            "  SUM(CASE WHEN entry_type='user' THEN 1 ELSE 0 END) AS user_msgs, "
-            "  SUM(CASE WHEN entry_type='assistant' THEN 1 ELSE 0 END) AS asst_msgs "
-            "FROM events WHERE session_id = ?",
-            (session_id,),
-        ).fetchone()
-        if not row or row["first_ts"] is None:
+        row = s.execute(
+            select(
+                func.min(EventRow.timestamp).label("first_ts"),
+                func.max(EventRow.timestamp).label("last_ts"),
+                func.min(EventRow.ts_epoch).label("first_epoch"),
+                func.max(EventRow.ts_epoch).label("last_epoch"),
+                func.sum(func.iif(EventRow.entry_type == "user", 1, 0)).label("user_msgs"),
+                func.sum(func.iif(EventRow.entry_type == "assistant", 1, 0)).label("asst_msgs"),
+            ).where(EventRow.session_id == session_id)
+        ).first()
+        if not row or row.first_ts is None:
             return
 
-        tool_count = self._conn.execute(
-            "SELECT COUNT(*) AS c FROM tools WHERE session_id = ?",
-            (session_id,),
-        ).fetchone()["c"]
+        tool_count = s.query(func.count(ToolRow.id)).filter(ToolRow.session_id == session_id).scalar()
 
-        token_row = self._conn.execute(
-            "SELECT "
-            "  COALESCE(SUM(input), 0) AS inp, "
-            "  COALESCE(SUM(output), 0) AS outp, "
-            "  COALESCE(SUM(cache_create + cache_read), 0) AS cache "
-            "FROM tokens WHERE session_id = ?",
-            (session_id,),
-        ).fetchone()
+        token_row = s.execute(
+            select(
+                func.coalesce(func.sum(TokenRow.input), 0).label("inp"),
+                func.coalesce(func.sum(TokenRow.output), 0).label("outp"),
+                func.coalesce(func.sum(TokenRow.cache_create + TokenRow.cache_read), 0).label("cache"),
+            ).where(TokenRow.session_id == session_id)
+        ).first()
 
-        # Primary model: most frequent model in events
-        model_row = self._conn.execute(
-            "SELECT model, COUNT(*) AS c FROM events "
-            "WHERE session_id = ? AND model IS NOT NULL AND model != '' "
-            "GROUP BY model ORDER BY c DESC LIMIT 1",
-            (session_id,),
-        ).fetchone()
-        primary_model = model_row["model"] if model_row else None
+        model_row = s.execute(
+            select(EventRow.model, func.count().label("c"))
+            .where(EventRow.session_id == session_id, EventRow.model.isnot(None), EventRow.model != "")
+            .group_by(EventRow.model)
+            .order_by(func.count().desc())
+            .limit(1)
+        ).first()
+        primary_model = model_row.model if model_row else None
 
-        # Primary branch: most frequent branch in events
-        branch_row = self._conn.execute(
-            "SELECT git_branch, COUNT(*) AS c FROM events "
-            "WHERE session_id = ? AND git_branch IS NOT NULL AND git_branch != '' "
-            "GROUP BY git_branch ORDER BY c DESC LIMIT 1",
-            (session_id,),
-        ).fetchone()
-        primary_branch = branch_row["git_branch"] if branch_row else None
+        branch_row = s.execute(
+            select(EventRow.git_branch, func.count().label("c"))
+            .where(
+                EventRow.session_id == session_id,
+                EventRow.git_branch.isnot(None),
+                EventRow.git_branch != "",
+            )
+            .group_by(EventRow.git_branch)
+            .order_by(func.count().desc())
+            .limit(1)
+        ).first()
+        primary_branch = branch_row.git_branch if branch_row else None
 
-        agent_count = self._conn.execute(
-            "SELECT COUNT(*) AS c FROM agents WHERE session_id = ?",
-            (session_id,),
-        ).fetchone()["c"]
+        agent_count = s.query(func.count(AgentRow.id)).filter(AgentRow.session_id == session_id).scalar()
 
-        self._conn.execute(
-            "INSERT INTO sessions "
-            "(session_id, proj_key, first_ts, last_ts, first_epoch, last_epoch, "
-            "user_messages, asst_messages, tool_count, input_tokens, output_tokens, "
-            "cache_tokens, primary_model, primary_branch, agent_count, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(session_id) DO UPDATE SET "
-            "first_ts=excluded.first_ts, last_ts=excluded.last_ts, "
-            "first_epoch=excluded.first_epoch, last_epoch=excluded.last_epoch, "
-            "user_messages=excluded.user_messages, asst_messages=excluded.asst_messages, "
-            "tool_count=excluded.tool_count, input_tokens=excluded.input_tokens, "
-            "output_tokens=excluded.output_tokens, cache_tokens=excluded.cache_tokens, "
-            "primary_model=excluded.primary_model, primary_branch=excluded.primary_branch, "
-            "agent_count=excluded.agent_count, updated_at=excluded.updated_at",
-            (
-                session_id,
-                proj_key,
-                row["first_ts"],
-                row["last_ts"],
-                row["first_epoch"],
-                row["last_epoch"],
-                row["user_msgs"],
-                row["asst_msgs"],
-                tool_count,
-                token_row["inp"],
-                token_row["outp"],
-                token_row["cache"],
-                primary_model,
-                primary_branch,
-                agent_count,
-                time.time(),
-            ),
-        )
+        existing = s.get(SessionRow, session_id)
+        if existing:
+            existing.proj_key = proj_key
+            existing.first_ts = row.first_ts
+            existing.last_ts = row.last_ts
+            existing.first_epoch = row.first_epoch
+            existing.last_epoch = row.last_epoch
+            existing.user_messages = row.user_msgs
+            existing.asst_messages = row.asst_msgs
+            existing.tool_count = tool_count
+            existing.input_tokens = token_row.inp
+            existing.output_tokens = token_row.outp
+            existing.cache_tokens = token_row.cache
+            existing.primary_model = primary_model
+            existing.primary_branch = primary_branch
+            existing.agent_count = agent_count
+            existing.updated_at = time.time()
+        else:
+            s.add(
+                SessionRow(
+                    session_id=session_id,
+                    proj_key=proj_key,
+                    first_ts=row.first_ts,
+                    last_ts=row.last_ts,
+                    first_epoch=row.first_epoch,
+                    last_epoch=row.last_epoch,
+                    user_messages=row.user_msgs,
+                    asst_messages=row.asst_msgs,
+                    tool_count=tool_count,
+                    input_tokens=token_row.inp,
+                    output_tokens=token_row.outp,
+                    cache_tokens=token_row.cache,
+                    primary_model=primary_model,
+                    primary_branch=primary_branch,
+                    agent_count=agent_count,
+                    updated_at=time.time(),
+                )
+            )
 
 
 def _parse_epoch(ts: str) -> float:

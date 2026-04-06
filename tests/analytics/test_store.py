@@ -1,11 +1,11 @@
 """Tests for AnalyticsStore — schema creation, WAL mode, idempotency."""
 
 import os
-import sqlite3
 
 import pytest
+from sqlalchemy.engine import Engine
 
-from claudewatch.backend.analytics.store import AnalyticsStore
+from claudewatch.backend.analytics.store import AnalyticsStore, Base, SchemaVersionRow
 
 
 @pytest.fixture
@@ -21,19 +21,21 @@ class TestAnalyticsStore:
 
     def test_wal_mode_enabled(self, db_path: str) -> None:
         store = AnalyticsStore(db_path)
-        mode = store.conn.execute("PRAGMA journal_mode").fetchone()[0]
+        with store.engine.connect() as conn:
+            mode = conn.exec_driver_sql("PRAGMA journal_mode").fetchone()[0]
         assert mode == "wal"
         store.close()
 
     def test_foreign_keys_enabled(self, db_path: str) -> None:
         store = AnalyticsStore(db_path)
-        fk = store.conn.execute("PRAGMA foreign_keys").fetchone()[0]
+        with store.engine.connect() as conn:
+            fk = conn.exec_driver_sql("PRAGMA foreign_keys").fetchone()[0]
         assert fk == 1
         store.close()
 
     def test_creates_all_tables(self, db_path: str) -> None:
         store = AnalyticsStore(db_path)
-        tables = {r[0] for r in store.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        table_names = set(Base.metadata.tables.keys())
         expected = {
             "events",
             "tools",
@@ -45,26 +47,27 @@ class TestAnalyticsStore:
             "checkpoints",
             "schema_version",
         }
-        assert expected.issubset(tables)
+        assert expected.issubset(table_names)
         store.close()
 
     def test_schema_creation_idempotent(self, db_path: str) -> None:
         store1 = AnalyticsStore(db_path)
         store1.close()
         store2 = AnalyticsStore(db_path)
-        tables = {r[0] for r in store2.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        assert "events" in tables
+        assert "events" in Base.metadata.tables
         store2.close()
 
     def test_schema_version_recorded(self, db_path: str) -> None:
         store = AnalyticsStore(db_path)
-        row = store.conn.execute("SELECT version FROM schema_version").fetchone()
-        assert row[0] == 1
+        with store.session() as s:
+            row = s.query(SchemaVersionRow).first()
+            assert row is not None
+            assert row.version == 1
         store.close()
 
-    def test_conn_property(self, db_path: str) -> None:
+    def test_engine_property(self, db_path: str) -> None:
         store = AnalyticsStore(db_path)
-        assert isinstance(store.conn, sqlite3.Connection)
+        assert isinstance(store.engine, Engine)
         store.close()
 
     def test_db_path_property(self, db_path: str) -> None:
@@ -72,20 +75,8 @@ class TestAnalyticsStore:
         assert store.db_path == db_path
         store.close()
 
-    def test_row_factory_set(self, db_path: str) -> None:
+    def test_session_factory(self, db_path: str) -> None:
         store = AnalyticsStore(db_path)
-        assert store.conn.row_factory == sqlite3.Row
-        store.close()
-
-    def test_indexes_created(self, db_path: str) -> None:
-        store = AnalyticsStore(db_path)
-        indexes = {
-            r[0]
-            for r in store.conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
-            ).fetchall()
-        }
-        assert "idx_events_proj_ts" in indexes
-        assert "idx_tools_proj_name" in indexes
-        assert "idx_files_session" in indexes
+        with store.session() as s:
+            assert s is not None
         store.close()

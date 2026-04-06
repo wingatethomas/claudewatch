@@ -29,8 +29,6 @@ def _setup_agent_dir(  # noqa: PLR0913
     meta: dict | None = None,
     jsonl_entries: list[dict] | None = None,
 ) -> str:
-    """Create an agent directory with optional meta.json and JSONL."""
-    # Create the session JSONL (parent)
     proj_dir = os.path.join(projects_dir, proj_key)
     os.makedirs(proj_dir, exist_ok=True)
     session_jsonl = os.path.join(proj_dir, f"{session_id}.jsonl")
@@ -38,7 +36,6 @@ def _setup_agent_dir(  # noqa: PLR0913
         with open(session_jsonl, "w") as f:
             f.write(json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z", "message": {}}) + "\n")
 
-    # Create agent subdirectory
     agent_dir = os.path.join(proj_dir, session_id, agent_id)
     os.makedirs(agent_dir, exist_ok=True)
 
@@ -69,13 +66,13 @@ class TestAgentScanner:
                 "ended_at": "2026-01-01T00:01:00Z",
             },
         )
-        scanner = AgentScanner(store.conn, projects_dir)
+        scanner = AgentScanner(store.session, projects_dir)
         count = scanner.scan_session("-proj", "sess-1")
         assert count == 1
         agents = scanner.agents_for_session("sess-1")
         assert len(agents) == 1
         assert agents[0].agent_type == "Explore"
-        assert agents[0].status == "completed"  # has ended_at
+        assert agents[0].status == "completed"
 
     def test_scan_infers_from_jsonl(self, store: AnalyticsStore, projects_dir: str) -> None:
         _setup_agent_dir(
@@ -93,7 +90,7 @@ class TestAgentScanner:
                 {"type": "assistant", "timestamp": "2026-01-01T00:00:01Z"},
             ],
         )
-        scanner = AgentScanner(store.conn, projects_dir)
+        scanner = AgentScanner(store.session, projects_dir)
         count = scanner.scan_session("-proj", "sess-1")
         assert count == 1
         agents = scanner.agents_for_session("sess-1")
@@ -114,7 +111,7 @@ class TestAgentScanner:
             "agent-b",
             meta={"agent_id": "agent-b", "type": "Plan", "ended_at": "2026-01-01T00:01:00Z"},
         )
-        scanner = AgentScanner(store.conn, projects_dir)
+        scanner = AgentScanner(store.session, projects_dir)
         total = scanner.scan_all()
         assert total == 2
 
@@ -126,7 +123,7 @@ class TestAgentScanner:
             "agent-a",
             meta={"agent_id": "agent-a", "type": "Explore", "ended_at": "x"},
         )
-        scanner = AgentScanner(store.conn, projects_dir)
+        scanner = AgentScanner(store.session, projects_dir)
         scanner.scan_all()
         assert scanner.count_agents("-proj", "sess-1") == 1
         assert scanner.count_agents("-proj", "nonexistent") == 0
@@ -139,14 +136,14 @@ class TestAgentScanner:
             "agent-a",
             meta={"agent_id": "agent-a", "type": "Explore", "description": "hi", "ended_at": "x"},
         )
-        scanner = AgentScanner(store.conn, projects_dir)
+        scanner = AgentScanner(store.session, projects_dir)
         scanner.scan_all()
         agents = scanner.agents_for_session("sess-1")
         assert isinstance(agents[0], AgentInfo)
         assert agents[0].description == "hi"
 
     def test_empty_projects_dir(self, store: AnalyticsStore, tmp_path: str) -> None:
-        scanner = AgentScanner(store.conn, os.path.join(tmp_path, "nonexistent"))
+        scanner = AgentScanner(store.session, os.path.join(tmp_path, "nonexistent"))
         assert scanner.scan_all() == 0
 
     def test_no_agent_dirs(self, store: AnalyticsStore, projects_dir: str) -> None:
@@ -154,7 +151,7 @@ class TestAgentScanner:
         os.makedirs(proj_dir)
         with open(os.path.join(proj_dir, "sess-1.jsonl"), "w") as f:
             f.write("{}\n")
-        scanner = AgentScanner(store.conn, projects_dir)
+        scanner = AgentScanner(store.session, projects_dir)
         assert scanner.scan_session("-proj", "sess-1") == 0
 
     def test_upsert_updates_status(self, store: AnalyticsStore, projects_dir: str) -> None:
@@ -165,16 +162,15 @@ class TestAgentScanner:
             "agent-a",
             meta={"agent_id": "agent-a", "type": "Explore"},
         )
-        scanner = AgentScanner(store.conn, projects_dir)
+        scanner = AgentScanner(store.session, projects_dir)
         scanner.scan_session("-proj", "sess-1")
         agents = scanner.agents_for_session("sess-1")
         first_status = agents[0].status
 
-        # Update meta to mark completed
         meta_path = os.path.join(projects_dir, "-proj", "sess-1", "agent-a", "meta.json")
         with open(meta_path, "w") as f:
             json.dump({"agent_id": "agent-a", "type": "Explore", "ended_at": "2026-01-01T00:01:00Z"}, f)
         scanner.scan_session("-proj", "sess-1")
         agents = scanner.agents_for_session("sess-1")
         assert agents[0].status == "completed"
-        assert first_status != "completed"  # was stale before
+        assert first_status != "completed"

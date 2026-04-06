@@ -59,7 +59,7 @@ class TestAnalyticsService:
     def test_incremental_scan(self, service: AnalyticsService) -> None:
         service.full_scan()
         stats = service.incremental_scan()
-        assert len(stats) == 0  # nothing changed
+        assert len(stats) == 0
 
     def test_queries_property(self, service: AnalyticsService) -> None:
         service.full_scan()
@@ -71,7 +71,6 @@ class TestAnalyticsService:
         assert result == []
 
     def test_agents_for_session_with_data(self, service: AnalyticsService, projects_dir: str) -> None:
-        # Create an agent directory
         agent_dir = os.path.join(projects_dir, "-Users-dev-app", "sess-1", "agent-x")
         os.makedirs(agent_dir)
         with open(os.path.join(agent_dir, "meta.json"), "w") as f:
@@ -90,14 +89,12 @@ class TestAnalyticsService:
         assert isinstance(agents[0], AgentInfo)
 
     def test_enrich_sessions(self, service: AnalyticsService, projects_dir: str) -> None:
-        # Set up agent
         agent_dir = os.path.join(projects_dir, "-Users-dev-app", "sess-1", "agent-x")
         os.makedirs(agent_dir)
         with open(os.path.join(agent_dir, "meta.json"), "w") as f:
             json.dump({"agent_id": "agent-x", "type": "Explore", "ended_at": "x"}, f)
         service.full_scan()
 
-        # Create a mock session object
         class MockSession:
             def __init__(self) -> None:
                 self.cwd = "/Users/dev/app"
@@ -110,4 +107,3 @@ class TestAnalyticsService:
 
     def test_close(self, service: AnalyticsService) -> None:
         service.close()
-        # Should not raise

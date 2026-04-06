@@ -20,9 +20,9 @@ class AnalyticsService(BaseService):
 
     def __init__(self, db_path: str, projects_dir: str) -> None:
         self._store = AnalyticsStore(db_path)
-        self._ingest = Ingest(self._store.conn)
-        self._scanner = AgentScanner(self._store.conn, projects_dir)
-        self._queries = Queries(self._store.conn)
+        self._ingest = Ingest(self._store.session)
+        self._scanner = AgentScanner(self._store.session, projects_dir)
+        self._queries = Queries(self._store.session)
         self._projects_dir = projects_dir
 
     # --- ETL (background thread) ---
