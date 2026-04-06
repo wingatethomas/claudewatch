@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Protocol
 
 from claudewatch.backend.analytics.ingest import Ingest
 from claudewatch.backend.analytics.models import AgentInfo
@@ -13,6 +14,12 @@ from claudewatch.backend.core.paths import cwd_to_proj_key
 from claudewatch.backend.core.service import BaseService
 
 log = logging.getLogger("claudewatch")
+
+
+class _Enrichable(Protocol):
+    cwd: str
+    session_id: str
+    agent_count: int
 
 
 class AnalyticsService(BaseService):
@@ -39,21 +46,18 @@ class AnalyticsService(BaseService):
 
     # --- Enrichment (background thread, called from detection) ---
 
-    def enrich_sessions(self, sessions: list) -> None:
-        """Add agent_count to ClaudeSession objects if they have it."""
+    def enrich_sessions(self, sessions: list[_Enrichable]) -> None:
+        """Add agent_count to session objects."""
         for s in sessions:
-            cwd = getattr(s, "cwd", None)
-            session_id = getattr(s, "session_id", None)
-            if cwd and session_id:
-                try:
-                    count = self._scanner.count_agents(
-                        cwd_to_proj_key(cwd),
-                        session_id,
-                    )
-                    if hasattr(s, "agent_count"):
-                        s.agent_count = count
-                except Exception:
-                    log.debug("enrich_sessions: error for %s", session_id)
+            if not s.cwd or not s.session_id:
+                continue
+            try:
+                s.agent_count = self._scanner.count_agents(
+                    cwd_to_proj_key(s.cwd),
+                    s.session_id,
+                )
+            except Exception:
+                log.debug("enrich_sessions: error for %s", s.session_id)
 
     # --- Agent details (main thread, for menu submenu) ---
 

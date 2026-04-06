@@ -8,7 +8,7 @@ import os
 import time
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from claudewatch.backend.analytics.models import AgentInfo
 from claudewatch.backend.analytics.store import AgentRow
@@ -22,7 +22,7 @@ _STALE_THRESHOLD = 300  # 5 minutes without updates → stale
 class AgentScanner:
     """Scans disk for subagent metadata and writes to the agents table."""
 
-    def __init__(self, session_factory: object, projects_dir: str) -> None:
+    def __init__(self, session_factory: sessionmaker[Session], projects_dir: str) -> None:
         self._session_factory = session_factory
         self.projects_dir = projects_dir
 

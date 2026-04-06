@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import desc, distinct, func, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from claudewatch.backend.analytics.models import (
     BranchActivity,
@@ -34,7 +35,7 @@ from claudewatch.backend.analytics.store import (
 class Queries:
     """All read-only analytics queries via SQLAlchemy ORM."""
 
-    def __init__(self, session_factory: object) -> None:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
     # --- Tools ---

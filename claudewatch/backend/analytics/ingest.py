@@ -10,7 +10,7 @@ import time
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from claudewatch.backend.analytics.store import (
     AgentRow,
@@ -50,7 +50,7 @@ _PR_PATTERN = re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)")
 class Ingest:
     """Reads JSONL session logs and writes normalized rows into SQLite."""
 
-    def __init__(self, session_factory: object) -> None:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
     def full_scan(self, projects_dir: str) -> dict[str, int]:

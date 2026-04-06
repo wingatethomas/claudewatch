@@ -117,7 +117,7 @@ class AgentInfo:
     parent_agent_id: str
     agent_type: str
     description: str
-    status: str
+    status: AgentStatus | str
     started_at: str
     ended_at: str
     entry_count: int
