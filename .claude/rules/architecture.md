@@ -20,9 +20,19 @@ paths:
 
 ## Domain Package Convention
 
-Each domain is a package with:
-- `service.py` — extends `BaseService`, receives dependencies via constructor
-- `dependencies.py` — `@lru_cache(maxsize=1)` factory function `get_*_service()` that wires dependencies
+Each domain is a package under `backend/` with at minimum:
+
+- `service.py` — extends `BaseService`, thin facade that delegates to other modules. Never implements persistence or business logic directly.
+- `dependencies.py` — `@lru_cache(maxsize=1)` factory function `get_*_service()` that wires constructor args and caches the singleton. This is the only entry point for UI code.
+
+Additional modules as needed:
+
+- `repository.py` — persistence layer (JSON file I/O, database access). Service delegates here for reads and writes.
+- `models.py` — domain-specific data types (frozen dataclasses, enums, TypedDicts). Not DTOs — those live in `core/dto.py`.
+- `constants.py` — domain-specific configuration values.
+- `store.py` — database schema (SQLAlchemy ORM models) and connection lifecycle, for domains that use a database instead of JSON files.
+
+Cross-layer DTOs (`BookmarkDTO`, `HistoryEntryDTO`, etc.) live in `core/dto.py` and inherit `BaseDTO`. Domain-internal return types live in the domain's `models.py`.
 
 ## Return Type Convention
 
@@ -30,6 +40,13 @@ Each domain is a package with:
 - Cross-layer types used by UI live in `core/dto.py` and inherit `BaseDTO` (suffixed `DTO`).
 - Domain-internal return types (e.g. `ToolUsage`, `AgentInfo`) are frozen dataclasses in the domain's `models.py` — they don't need `BaseDTO` or the `DTO` suffix.
 - `ClaudeSession` from `core/models.py` is the shared session model (mutable, internal).
+
+## Typing Rules
+
+- All function parameters and return types must have type annotations.
+- Never use bare `dict`, `list`, `tuple`, `set` — always parameterize (`dict[str, int]`, `list[str]`).
+- Never use `Any`. If the type is truly unknown, use `object`. If it's JSON-shaped, use `dict[str, object]`.
+- Use `| None` instead of `Optional`.
 
 ## Threading Rules
 

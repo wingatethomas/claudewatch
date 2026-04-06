@@ -132,7 +132,7 @@ class SessionETL:
 
     def _process_entry(
         self,
-        entry: dict,
+        entry: dict[str, object],
         session_id: str,
         project_path: str,
         prev_action_id: str | None,
@@ -182,7 +182,7 @@ class SessionETL:
 
     def _process_tool(
         self,
-        block: dict,
+        block: dict[str, object],
         session_id: str,
         project_path: str,
         ts: str,
@@ -320,7 +320,7 @@ class SessionETL:
             {"id": session_id, "model": model},
         )
 
-    def _update_session_tokens(self, session_id: str, usage: dict) -> None:
+    def _update_session_tokens(self, session_id: str, usage: dict[str, int]) -> None:
         inp = usage.get("input_tokens", 0) or 0
         outp = usage.get("output_tokens", 0) or 0
         self._safe_execute(
@@ -336,7 +336,7 @@ class SessionETL:
             {"from": from_id, "to": to_id},
         )
 
-    def _safe_execute(self, query: str, params: dict | None = None) -> kuzu.QueryResult | None:
+    def _safe_execute(self, query: str, params: dict[str, object] | None = None) -> kuzu.QueryResult | None:
         try:
             return self._conn.execute(query, params or {})
         except RuntimeError:

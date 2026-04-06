@@ -228,7 +228,7 @@ class GraphQueries:
             sessions.append(result.get_next()[0])
         return sessions
 
-    def _count(self, query: str, params: dict) -> int:
+    def _count(self, query: str, params: dict[str, object]) -> int:
         result = self._safe_execute(query, params)
         if not result or not result.has_next():
             return 0

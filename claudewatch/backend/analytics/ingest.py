@@ -169,7 +169,7 @@ class Ingest:
             s.commit()
         return count
 
-    def _process_entry(self, s: Session, entry: dict, session_id: str, proj_key: str) -> None:
+    def _process_entry(self, s: Session, entry: dict[str, object], session_id: str, proj_key: str) -> None:
         entry_type = entry.get("type", "")
         if not entry_type:
             return
@@ -210,7 +210,7 @@ class Ingest:
     def _extract_tools(  # noqa: PLR0913
         self,
         s: Session,
-        message: dict,
+        message: dict[str, object],
         event_id: int,
         session_id: str,
         proj_key: str,
@@ -278,7 +278,7 @@ class Ingest:
     def _extract_tokens(  # noqa: PLR0913
         self,
         s: Session,
-        message: dict,
+        message: dict[str, object],
         event_id: int,
         session_id: str,
         proj_key: str,
