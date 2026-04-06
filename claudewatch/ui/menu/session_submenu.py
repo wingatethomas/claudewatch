@@ -37,6 +37,7 @@ def build_session_submenu(
     summary: str | None,
     generating: bool = False,
     actions: SessionActions | None = None,
+    agents: list | None = None,
 ) -> NSMenu:
     """Build a session submenu with Summary, Usage, and contextual actions."""
     sub = NSMenu.alloc().init()
@@ -69,6 +70,11 @@ def build_session_submenu(
     usage_item.setSubmenu_(usage_sub)
     sub.addItem_(usage_item)
 
+    # Agents submenu
+    if agents:
+        agents_item = build_agents_submenu(agents, d)
+        sub.addItem_(agents_item)
+
     sub.addItem_(NSMenuItem.separatorItem())
 
     # Contextual actions
@@ -87,3 +93,24 @@ def build_session_submenu(
             sub.addItem_(item)
 
     return sub
+
+
+_MAX_AGENT_DESC = 40
+
+
+def build_agents_submenu(agents: list, delegate: object) -> NSMenuItem:
+    """Build an Agents (N) submenu showing type and status for each agent."""
+    d = delegate
+    agents_item = make_menu_item(f"Agents ({len(agents)})", None, d)
+    agents_sub = NSMenu.alloc().init()
+    for agent in agents:
+        agent_type = getattr(agent, "agent_type", "agent")
+        status = getattr(agent, "status", "")
+        description = getattr(agent, "description", "")
+        label = f"{agent_type} · {status}" if status else agent_type
+        agents_sub.addItem_(make_menu_item(f"  {label}", None, d))
+        if description:
+            short = description[:_MAX_AGENT_DESC] + "…" if len(description) > _MAX_AGENT_DESC else description
+            agents_sub.addItem_(make_menu_item(f"    {short}", None, d))
+    agents_item.setSubmenu_(agents_sub)
+    return agents_item

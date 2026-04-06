@@ -191,10 +191,12 @@ class MenuBuilder:
                     track_summary=lambda cwd=pin.cwd: self._app._summary_service.track_session(cwd),
                     usage_lines=format_tokens_breakdown(token_data),
                 )
+                pin_agents = self._app._analytics_service.agents_for_session(pin.session_id) if pin.session_id else []
                 sub = build_session_submenu(
                     delegate=d,
                     summary=self._app._summary_service.get_cached_summary(pin.cwd),
                     actions=actions,
+                    agents=pin_agents,
                 )
                 item.setSubmenu_(sub)
                 bm_submenu.addItem_(item)
@@ -242,10 +244,14 @@ class MenuBuilder:
                     track_summary=lambda cwd=entry.cwd: self._app._summary_service.track_session(cwd),
                     usage_lines=format_tokens_breakdown(token_data),
                 )
+                entry_agents = (
+                    self._app._analytics_service.agents_for_session(entry.session_id) if entry.session_id else []
+                )
                 item_sub = build_session_submenu(
                     delegate=d,
                     summary=self._app._summary_service.get_cached_summary(entry.cwd),
                     actions=actions,
+                    agents=entry_agents,
                 )
                 item.setSubmenu_(item_sub)
                 recent_submenu.addItem_(item)
@@ -320,11 +326,13 @@ class MenuBuilder:
             ),
             usage_lines=format_tokens_breakdown(token_data),
         )
+        agents = self._app._analytics_service.agents_for_session(s.session_id) if s.session_id else []
         sub = build_session_submenu(
             delegate=d,
             summary=self._app._summary_service.get_cached_summary(s.cwd),
             generating=self._app._summary_service.is_generating(s.cwd),
             actions=actions,
+            agents=agents,
         )
         self._app._summary_service.track_session(s.cwd, urgent=is_active)
         item.setSubmenu_(sub)

@@ -26,6 +26,8 @@ from AppKit import (
 from PyObjCTools import AppHelper
 
 import claudewatch.backend.core.login_item  # noqa: F401 — registers feature
+from claudewatch.backend.analytics.dependencies import get_analytics_service
+from claudewatch.backend.analytics.service import AnalyticsService
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
@@ -77,6 +79,7 @@ class ClaudeWatchApp:
         usage_service: UsageService,
         bookmark_service: BookmarkService,
         history_service: HistoryService,
+        analytics_service: AnalyticsService,
     ) -> None:
         self._delegate = delegate
         self._menu = NSMenu.alloc().init()
@@ -93,8 +96,10 @@ class ClaudeWatchApp:
         self._usage_service = usage_service
         self._bookmark_service = bookmark_service
         self._history_service = history_service
+        self._analytics_service = analytics_service
         self._future: Future | None = None  # type: ignore[type-arg]
         self._last_poll_time = 0.0
+        self._last_scan_time = 0.0
         self._modal_active = False
         self._prev_pids: set[int] = set()
         self._prev_status: dict[int, str] = {}
@@ -194,6 +199,21 @@ class ClaudeWatchApp:
         """Track session count for guide nudge (no notification tips)."""
         pass
 
+    _SCAN_INTERVAL = 30
+
+    def _maybe_bg_scan(self) -> None:
+        """Kick off an analytics scan if enough time has passed."""
+        now = time.time()
+        if now - self._last_scan_time >= self._SCAN_INTERVAL:
+            self._last_scan_time = now
+            threading.Thread(target=self._bg_scan, daemon=True).start()
+
+    def _bg_scan(self) -> None:
+        try:
+            self._analytics_service.incremental_scan()
+        except Exception:
+            log.exception("analytics background scan failed")
+
     def _check_accessibility(self) -> None:
         """Show a warning if Accessibility permissions are not granted."""
         if not is_accessibility_trusted():
@@ -228,6 +248,8 @@ class ClaudeWatchApp:
                 self.sessions = [s for s in self.sessions if s.pid not in self._exiting_pids]
                 self._has_polled = True
                 self._log_changes()
+                self._analytics_service.enrich_sessions(self.sessions)
+                self._maybe_bg_scan()
                 self.update_display()
                 self._notification_service.notify_if_needed(self.sessions)
                 self._check_onboarding_tips()
@@ -571,6 +593,7 @@ def main() -> None:
         usage_service=get_usage_service(),
         bookmark_service=get_bookmark_service(),
         history_service=get_history_service(),
+        analytics_service=get_analytics_service(),
     )
     delegate._app = app
 
