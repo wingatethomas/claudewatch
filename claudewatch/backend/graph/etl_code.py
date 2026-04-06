@@ -18,12 +18,16 @@ class CodeETL:
     def __init__(self, conn: kuzu.Connection) -> None:
         self._conn = conn
 
+    _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
     def index_file(self, file_path: str, project_path: str) -> int:
         """Parse a Python file and insert Symbol nodes + edges. Returns symbol count."""
         if not file_path.endswith(".py") or not os.path.isfile(file_path):
             return 0
 
         try:
+            if os.path.getsize(file_path) > self._MAX_FILE_SIZE:
+                return 0
             with open(file_path) as f:
                 source = f.read()
         except OSError:

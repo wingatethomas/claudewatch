@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from claudewatch.backend.analytics.models import AgentInfo
 from claudewatch.backend.analytics.store import AgentRow
+from claudewatch.backend.core.paths import is_safe_projects_path
 
 log = logging.getLogger("claudewatch")
 
@@ -36,7 +37,7 @@ class AgentScanner:
             return 0
         for proj_key in proj_keys:
             proj_dir = os.path.join(self.projects_dir, proj_key)
-            if not os.path.isdir(proj_dir):
+            if not os.path.isdir(proj_dir) or not is_safe_projects_path(proj_dir, self.projects_dir):
                 continue
             try:
                 entries = os.listdir(proj_dir)
@@ -51,7 +52,7 @@ class AgentScanner:
     def scan_session(self, proj_key: str, session_id: str) -> int:
         """Scan one session directory for subagent metadata. Returns count found."""
         session_dir = os.path.join(self.projects_dir, proj_key, session_id)
-        if not os.path.isdir(session_dir):
+        if not os.path.isdir(session_dir) or not is_safe_projects_path(session_dir, self.projects_dir):
             return 0
         count = 0
         try:
@@ -61,7 +62,7 @@ class AgentScanner:
         with self._session_factory() as s:
             for agent_dir_name in agent_dirs:
                 agent_path = os.path.join(session_dir, agent_dir_name)
-                if not os.path.isdir(agent_path):
+                if not os.path.isdir(agent_path) or not is_safe_projects_path(agent_path, self.projects_dir):
                     continue
                 meta = self._read_meta(agent_path)
                 if meta is None:

@@ -60,6 +60,13 @@ def is_homebrew_install() -> bool:
 CLAUDE_PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
 
+def is_safe_projects_path(path: str, base_dir: str | None = None) -> bool:
+    """Check that a path resolves to within the given base directory. Prevents symlink traversal."""
+    base = os.path.realpath(base_dir or CLAUDE_PROJECTS_DIR)
+    real_path = os.path.realpath(path)
+    return real_path.startswith(base + os.sep) or real_path == base
+
+
 def cwd_to_proj_key(cwd: str) -> str:
     """Convert a CWD path to a Claude projects directory key.
 

@@ -65,11 +65,15 @@ class EditMapper:
         )
         return True
 
+    _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
     def _find_edit_line(self, file_path: str, new_text: str, old_text: str) -> int | None:  # noqa: PLR0911
         """Find the line number of an edit in the current file."""
         if not os.path.isfile(file_path):
             return None
         try:
+            if os.path.getsize(file_path) > self._MAX_FILE_SIZE:
+                return None
             with open(file_path) as f:
                 content = f.read()
         except OSError:

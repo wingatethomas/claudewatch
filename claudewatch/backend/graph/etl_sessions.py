@@ -11,6 +11,8 @@ import uuid
 
 import kuzu
 
+from claudewatch.backend.core.paths import is_safe_projects_path
+
 log = logging.getLogger("claudewatch")
 
 _PR_PATTERN = re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)")
@@ -46,7 +48,7 @@ class SessionETL:
             return stats
         for proj_key in proj_keys:
             proj_dir = os.path.join(projects_dir, proj_key)
-            if not os.path.isdir(proj_dir):
+            if not os.path.isdir(proj_dir) or not is_safe_projects_path(proj_dir, projects_dir):
                 continue
             try:
                 files = [f for f in os.listdir(proj_dir) if f.endswith(".jsonl")]
@@ -54,6 +56,8 @@ class SessionETL:
                 continue
             for fname in files:
                 path = os.path.join(proj_dir, fname)
+                if not is_safe_projects_path(path, projects_dir):
+                    continue
                 session_id = fname.removesuffix(".jsonl")
                 try:
                     count = self._process_file(path, session_id, proj_key)
