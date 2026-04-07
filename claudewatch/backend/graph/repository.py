@@ -895,6 +895,35 @@ class GraphQueries:
             patterns.append(WorkflowPattern(first=row[0] or "", then=row[1] or "", frequency=row[2]))
         return patterns
 
+    def force_graph_data(self, limit: int = 200) -> dict[str, list[dict[str, str]]]:
+        """Get nodes and edges for force-directed graph visualization."""
+        result = self._safe_execute(
+            "MATCH (s:Session)-[:PERFORMS]->(a:Action) "
+            "OPTIONAL MATCH (a)-[:TARGETS]->(f:File) "
+            "RETURN s.id, a.id, a.kind, a.timestamp, f.path "
+            "ORDER BY a.timestamp DESC LIMIT $lim",
+            {"lim": limit},
+        )
+        nodes: dict[str, dict[str, str]] = {}
+        edges: list[dict[str, str]] = []
+        if not result:
+            return {"nodes": [], "edges": []}
+        while result.has_next():
+            row = result.get_next()
+            sid, aid, akind, ats, fpath = row
+            if sid and sid not in nodes:
+                nodes[sid] = {"id": sid, "type": "session", "label": sid[:8]}
+            if aid and aid not in nodes:
+                nodes[aid] = {"id": aid, "type": "action", "label": akind or "action"}
+            if fpath and fpath not in nodes:
+                short = fpath.rsplit("/", 1)[-1] if "/" in fpath else fpath
+                nodes[fpath] = {"id": fpath, "type": "file", "label": short}
+            if sid and aid:
+                edges.append({"source": sid, "target": aid, "type": "performs"})
+            if aid and fpath:
+                edges.append({"source": aid, "target": fpath, "type": "targets"})
+        return {"nodes": list(nodes.values()), "edges": edges}
+
     def pr_blast_radius(self, pr_number: int) -> PRImpactResult:
         """What does this PR actually touch?"""
         result = self._safe_execute(

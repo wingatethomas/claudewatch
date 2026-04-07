@@ -205,6 +205,10 @@ class TestGraphPane:
             WorkflowPattern(first="read", then="edit", frequency=42),
             WorkflowPattern(first="edit", then="bash", frequency=18),
         ]
+        mock_graph.return_value.queries.force_graph_data.return_value = {
+            "nodes": [{"id": "s1", "type": "session", "label": "s1"}],
+            "edges": [],
+        }
         mock_analytics.return_value.queries.hotspot_files_global.return_value = []
         pane = GraphPane(_make_delegate(), 490, 620)
         view = pane.build()
