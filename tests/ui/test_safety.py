@@ -68,14 +68,23 @@ class TestGetRepresentedObject:
         sender.cell.return_value.representedObject.return_value = "cell_value"
         assert get_represented_object(sender) == "cell_value"
 
-    def test_returns_empty_when_neither_works(self) -> None:
+    def test_falls_back_to_identifier(self) -> None:
+        sender = MagicMock()
+        sender.representedObject.return_value = None
+        sender.cell.return_value.representedObject.return_value = None
+        sender.identifier.return_value = "security|config_alerts"
+        assert get_represented_object(sender) == "security|config_alerts"
+
+    def test_returns_empty_when_nothing_works(self) -> None:
         sender = MagicMock()
         sender.representedObject.side_effect = AttributeError
         sender.cell.side_effect = AttributeError
+        sender.identifier.side_effect = AttributeError
         assert get_represented_object(sender) == ""
 
     def test_returns_empty_for_none_values(self) -> None:
         sender = MagicMock()
         sender.representedObject.return_value = None
         sender.cell.return_value.representedObject.return_value = None
+        sender.identifier.return_value = None
         assert get_represented_object(sender) == ""

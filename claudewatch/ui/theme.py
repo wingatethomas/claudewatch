@@ -63,6 +63,10 @@ class Theme:
         return Colors.danger()
 
     @property
+    def warning(self) -> NSColor:
+        return Colors.warning()
+
+    @property
     def accent(self) -> NSColor:
         return Colors.accent()
 

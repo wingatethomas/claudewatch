@@ -82,6 +82,10 @@ class Colors:
         return NSColor.systemRedColor()
 
     @staticmethod
+    def warning() -> NSColor:
+        return NSColor.systemOrangeColor()
+
+    @staticmethod
     def accent() -> NSColor:
         return NSColor.controlAccentColor()
 

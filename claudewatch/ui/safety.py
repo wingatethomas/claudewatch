@@ -58,6 +58,9 @@ def get_represented_object(sender: object) -> str:
     if obj is None:
         with contextlib.suppress(AttributeError, TypeError):
             obj = sender.cell().representedObject()  # type: ignore[union-attr]
+    if obj is None:
+        with contextlib.suppress(AttributeError, TypeError):
+            obj = sender.identifier()  # type: ignore[union-attr]
     return str(obj) if obj is not None else ""
 
 

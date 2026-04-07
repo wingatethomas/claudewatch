@@ -250,6 +250,135 @@ class PrefsDelegate(NSObject):
 
         show_welcome()
 
+    # -- Security --
+
+    @objc_callback
+    def removePermission_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.ui.safety import get_represented_object
+
+        info = get_represented_object(sender)
+        if "|" not in info:
+            return
+        settings_path, rule = info.split("|", 1)
+
+        from claudewatch.backend.security.dependencies import get_security_service
+
+        repo = get_security_service().repository
+        # Show what's being removed in the confirmation
+        from claudewatch.ui.preferences.panes.security import SecurityPane
+
+        display = SecurityPane.format_permission_display(rule)
+        if repo.remove_permission_rule(settings_path, rule):
+            self._show_security_confirmation(f"Removed: {display}")
+
+    @objc_callback
+    def clearPermissions_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.ui.safety import get_represented_object
+
+        settings_path = get_represented_object(sender)
+        if not settings_path:
+            return
+
+        from claudewatch.backend.security.dependencies import get_security_service
+
+        repo = get_security_service().repository
+        if repo.clear_permissions(settings_path):
+            self._show_security_confirmation("All permissions cleared")
+
+    @objc_callback
+    def uninstallPlugin_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from AppKit import NSAlert, NSAlertFirstButtonReturn
+
+        from claudewatch.ui.safety import get_represented_object
+
+        plugin_name = get_represented_object(sender)
+        if not plugin_name:
+            return
+
+        short_name = plugin_name.split("@")[0] if "@" in plugin_name else plugin_name
+
+        # Confirm before uninstalling
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_(f"Uninstall {short_name}?")
+        alert.setInformativeText_("This removes the plugin from Claude Code. You can reinstall it later.")
+        alert.addButtonWithTitle_("Uninstall")
+        alert.addButtonWithTitle_("Cancel")
+        if alert.runModal() != NSAlertFirstButtonReturn:
+            return
+
+        from claudewatch.backend.security.dependencies import get_security_service
+
+        repo = get_security_service().repository
+        if repo.uninstall_plugin(plugin_name):
+            self._show_security_confirmation(f"{short_name} uninstalled")
+
+    @objc_callback
+    def removeDangerousPermissions_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.ui.safety import get_represented_object
+
+        settings_path = get_represented_object(sender)
+        if not settings_path:
+            return
+
+        from claudewatch.backend.security.dependencies import get_security_service
+
+        repo = get_security_service().repository
+        removed = repo.remove_dangerous_permissions(settings_path)
+        if removed > 0:
+            self._show_security_confirmation(f"{removed} dangerous permission(s) removed")
+
+    @objc_callback
+    def openBlocklistSource_(self, sender: objc.objc_object) -> None:  # noqa: N802, ARG002
+        import webbrowser
+
+        webbrowser.open("https://github.com/anthropics/claude-plugins-official")
+
+    def _show_security_confirmation(self, message: str) -> None:
+        """Show confirmation alert then refresh the Security pane preserving scroll."""
+        from AppKit import NSAlert
+
+        # Save scroll position before rebuild
+        scroll_y = self._get_security_scroll_position()
+
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_(message)
+        alert.setInformativeText_("Claude will ask for permission again next time it needs access.")
+        alert.addButtonWithTitle_("OK")
+        alert.runModal()
+
+        self.show_pane({"key": "security"})
+
+        # Restore scroll position after rebuild
+        self._restore_security_scroll_position(scroll_y)
+
+    def _get_security_scroll_position(self) -> float:
+        """Get current scroll Y offset from the Security pane's scroll view."""
+        content_area = getattr(self, "_content_area", None)
+        if not content_area:
+            return 0
+        for subview in content_area.subviews():
+            for child in subview.subviews():
+                if hasattr(child, "documentView") and child.documentView():
+                    doc = child.documentView()
+                    visible = child.documentVisibleRect()
+                    return doc.frame().size.height - visible.origin.y
+        return 0
+
+    def _restore_security_scroll_position(self, saved_y: float) -> None:
+        """Restore scroll position after pane rebuild."""
+        if saved_y <= 0:
+            return
+        content_area = getattr(self, "_content_area", None)
+        if not content_area:
+            return
+        for subview in content_area.subviews():
+            for child in subview.subviews():
+                if hasattr(child, "documentView") and child.documentView():
+                    doc = child.documentView()
+                    new_origin_y = doc.frame().size.height - saved_y
+                    doc.scrollPoint_((0, max(0, new_origin_y)))
+                    return
+
     # -- Window --
 
     @objc_callback

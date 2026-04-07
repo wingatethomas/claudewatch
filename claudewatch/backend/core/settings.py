@@ -44,8 +44,17 @@ def get_setting(key: str) -> object:
 
 
 def set_setting(key: str, value: object) -> None:
-    """Write a setting to NSUserDefaults."""
-    _defaults.setObject_forKey_(value, f"{_SUITE}.{key}")
+    """Write a setting to NSUserDefaults suite domain.
+
+    Also removes the key from standardUserDefaults to prevent stale values
+    from the old bundle-ID-scoped domain from shadowing the suite write.
+    """
+    full_key = f"{_SUITE}.{key}"
+    _defaults.setObject_forKey_(value, full_key)
+    # Clear stale value from standard domain so it doesn't shadow the suite
+    std = NSUserDefaults.standardUserDefaults()
+    if std.objectForKey_(full_key) is not None:
+        std.removeObjectForKey_(full_key)
     log.info("setting changed: %s=%s", key, value)
 
 

@@ -25,15 +25,18 @@ PACKAGE_NAME = "claudewatch"
 # Domain directories (siblings of core/ under backend/)
 DOMAIN_DIRS = frozenset(
     {
+        "activity",
+        "analytics",
+        "bookmark",
         "detection",
-        "summary",
+        "graph",
+        "history",
         "notifications",
         "onboarding",
+        "security",
+        "summary",
         "updates",
         "usage",
-        "activity",
-        "bookmark",
-        "history",
     }
 )
 
