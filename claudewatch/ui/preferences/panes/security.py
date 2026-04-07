@@ -184,7 +184,27 @@ class SecurityPane(BasePane):
             _blocked_row_h = 36
             fetched_at = snapshot.plugins_blocklist.get("fetchedAt", "")
             fetched_date = str(fetched_at)[:10] if fetched_at else "unknown"
-            y = self._add_section_header(inner, f"BLOCKLISTED PLUGINS · synced {fetched_date}", y)
+            y = self._add_section_header(inner, "BLOCKLISTED PLUGINS", y)
+
+            # Source attribution
+            source_text = f"Synced from Anthropic on {fetched_date}"
+            source_label = secondary_label(source_text, size=Font.SMALL)
+            source_label.setFrame_(NSMakeRect(CONTENT_PADDING, y - 14, self.card_width - 40, 14))
+            inner.addSubview_(source_label)
+
+            # Link button to view the source repo
+            link_btn = NSButton.alloc().initWithFrame_(
+                NSMakeRect(CONTENT_PADDING + self.card_width - 40, y - 14, 30, 14)
+            )
+            link_btn.setTitle_("View")
+            link_btn.setBezelStyle_(0)
+            link_btn.setBordered_(False)
+            link_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
+            link_btn.setTarget_(self.delegate)
+            link_btn.setAction_(objc.selector(self.delegate.openBlocklistSource_, signature=b"v@:@"))
+            inner.addSubview_(link_btn)
+
+            y -= 14 + Spacing.XS
 
             blocked_h = _card_pad + len(blocklist_entries) * _blocked_row_h + _card_pad
             blocked_card = card(self.card_width, blocked_h)

@@ -308,6 +308,12 @@ class PrefsDelegate(NSObject):
         if repo.uninstall_plugin(plugin_name):
             self._show_security_confirmation(f"{short_name} uninstalled")
 
+    @objc_callback
+    def openBlocklistSource_(self, sender: objc.objc_object) -> None:  # noqa: N802, ARG002
+        import webbrowser
+
+        webbrowser.open("https://github.com/anthropics/claude-plugins-official")
+
     def _show_security_confirmation(self, message: str) -> None:
         """Show confirmation alert then refresh the Security pane preserving scroll."""
         from AppKit import NSAlert
