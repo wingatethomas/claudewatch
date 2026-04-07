@@ -26,7 +26,7 @@ from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, BasePane
 from claudewatch.ui.theme import theme
 
-_MAX_RULE_LEN = 55
+_MAX_RULE_LEN = 70
 _FEATURE_KEY = "security"
 _ROW_H = 20
 _TALL_ROW_H = 36
@@ -455,11 +455,23 @@ class SecurityPane(BasePane):
     @staticmethod
     def format_permission_rule(rule: str) -> str:  # noqa: PLR0911
         """Make a permission rule human-readable plain English."""
+        # Non-Bash tool permissions
+        if rule == "WebSearch":
+            return "Can search the web"
+        if rule.startswith("WebFetch("):
+            domain = rule[9:-1] if rule.endswith(")") else rule[9:]
+            domain = domain.replace("domain:", "")
+            return f"Can fetch from {domain}"
+        if rule.startswith("Read("):
+            path = rule[5:-1] if rule.endswith(")") else rule[5:]
+            return f"Can read {os.path.basename(path) or path}"
+
         if not (rule.startswith("Bash(") and rule.endswith(")")):
             return rule
 
         inner = rule[5:-1]
 
+        # Wildcard permissions
         if ":*" in inner:
             tool = inner.split(":*")[0]
             known = {
@@ -471,6 +483,7 @@ class SecurityPane(BasePane):
             }
             return known.get(tool, f"Can run {tool} with any arguments")
 
+        # Claude session log paths
         if "/.claude/projects/" in inner:
             parts = inner.split("/.claude/projects/")
             proj_path = parts[1] if len(parts) > 1 else ""
@@ -478,15 +491,19 @@ class SecurityPane(BasePane):
             project_name = proj_segments[-1] if proj_segments else "unknown"
             return f"Can read {project_name} session logs"
 
+        # Common commands
         if inner.startswith("wc "):
             return "Can count lines in files"
         if inner.startswith("cat "):
             return "Can read file contents"
         if inner.startswith("ls "):
             return "Can list directory contents"
-        if inner.startswith("grep "):
+        if inner.startswith("grep ") or inner.startswith("-exec grep"):
             return "Can search file contents"
+        if inner.startswith("find "):
+            return "Can search for files"
 
-        if len(inner) > 40:
-            return inner[:39] + "…"
+        # Fallback: show the raw command, trimmed
+        if len(inner) > _MAX_RULE_LEN:
+            return inner[: _MAX_RULE_LEN - 1] + "…"
         return inner
