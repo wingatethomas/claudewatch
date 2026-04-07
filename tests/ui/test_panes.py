@@ -172,6 +172,45 @@ class TestSecurityPane:
         assert isinstance(view, NSView)
 
 
+class TestGraphPane:
+    @patch("claudewatch.ui.preferences.panes.graph.get_analytics_service")
+    @patch("claudewatch.ui.preferences.panes.graph.get_graph_service")
+    def test_renders_empty(self, mock_graph: MagicMock, mock_analytics: MagicMock) -> None:
+        from claudewatch.backend.graph.models import ProjectGraphResult
+        from claudewatch.ui.preferences.panes.graph import GraphPane
+
+        mock_graph.return_value.queries.project_graph_all.return_value = ProjectGraphResult(
+            files=0,
+            symbols=0,
+            sessions=0,
+            actions=0,
+        )
+        pane = GraphPane(_make_delegate(), 490, 620)
+        view = pane.build()
+        assert isinstance(view, NSView)
+
+    @patch("claudewatch.ui.preferences.panes.graph.get_analytics_service")
+    @patch("claudewatch.ui.preferences.panes.graph.get_graph_service")
+    def test_renders_with_data(self, mock_graph: MagicMock, mock_analytics: MagicMock) -> None:
+        from claudewatch.backend.graph.models import ProjectGraphResult, WorkflowPattern
+        from claudewatch.ui.preferences.panes.graph import GraphPane
+
+        mock_graph.return_value.queries.project_graph_all.return_value = ProjectGraphResult(
+            files=50,
+            symbols=200,
+            sessions=10,
+            actions=300,
+        )
+        mock_graph.return_value.queries.workflow_patterns_all.return_value = [
+            WorkflowPattern(first="read", then="edit", frequency=42),
+            WorkflowPattern(first="edit", then="bash", frequency=18),
+        ]
+        mock_analytics.return_value.queries.hotspot_files_global.return_value = []
+        pane = GraphPane(_make_delegate(), 490, 620)
+        view = pane.build()
+        assert isinstance(view, NSView)
+
+
 class TestSessionsPane:
     @patch("claudewatch.ui.preferences.panes.sessions.get_history_service")
     def test_renders_without_crash(self, mock_history: MagicMock) -> None:

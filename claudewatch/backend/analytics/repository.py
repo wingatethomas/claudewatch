@@ -974,6 +974,26 @@ class Queries:
                 q = q.where(FileRow.ts_epoch >= since.timestamp())
             return [FileHotspot(path=r.path, session_count=r.sess, total_accesses=r.total) for r in s.execute(q)]
 
+    def hotspot_files_global(
+        self,
+        min_sessions: int = 2,
+        limit: int = 20,
+    ) -> list[FileHotspot]:
+        """File hotspots across all projects."""
+        with self._session_factory() as s:
+            q = (
+                select(
+                    FileRow.path,
+                    func.count(distinct(FileRow.session_id)).label("sess"),
+                    func.count().label("total"),
+                )
+                .group_by(FileRow.path)
+                .having(func.count(distinct(FileRow.session_id)) >= min_sessions)
+                .order_by(desc("sess"), desc("total"))
+                .limit(limit)
+            )
+            return [FileHotspot(path=r.path, session_count=r.sess, total_accesses=r.total) for r in s.execute(q)]
+
     def tool_sequences(
         self,
         proj_key: str,

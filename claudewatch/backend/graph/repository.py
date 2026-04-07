@@ -871,6 +871,30 @@ class GraphQueries:
         )
         return ProjectGraphResult(files=files, symbols=symbols, sessions=sessions, actions=actions)
 
+    def project_graph_all(self) -> ProjectGraphResult:
+        """Global counts across all projects."""
+        files = self._count("MATCH (f:File) RETURN count(f)", {})
+        symbols = self._count("MATCH (s:Symbol) RETURN count(s)", {})
+        sessions = self._count("MATCH (s:Session) RETURN count(s)", {})
+        actions = self._count("MATCH (a:Action) RETURN count(a)", {})
+        return ProjectGraphResult(files=files, symbols=symbols, sessions=sessions, actions=actions)
+
+    def workflow_patterns_all(self, limit: int = 10) -> list[WorkflowPattern]:
+        """Global workflow patterns across all projects."""
+        result = self._safe_execute(
+            "MATCH (a1:Action)-[:NEXT]->(a2:Action) "
+            "RETURN a1.kind AS first, a2.kind AS then, count(*) AS frequency "
+            "ORDER BY frequency DESC LIMIT $lim",
+            {"lim": limit},
+        )
+        if not result:
+            return []
+        patterns = []
+        while result.has_next():
+            row = result.get_next()
+            patterns.append(WorkflowPattern(first=row[0] or "", then=row[1] or "", frequency=row[2]))
+        return patterns
+
     def pr_blast_radius(self, pr_number: int) -> PRImpactResult:
         """What does this PR actually touch?"""
         result = self._safe_execute(
