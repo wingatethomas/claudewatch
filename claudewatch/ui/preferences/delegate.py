@@ -263,11 +263,11 @@ class PrefsDelegate(NSObject):
 
         from claudewatch.backend.security.dependencies import get_security_service
 
-        repo = get_security_service()._repo
+        repo = get_security_service().repository
         # Show what's being removed in the confirmation
         from claudewatch.ui.preferences.panes.security import SecurityPane
 
-        display = SecurityPane._format_permission_rule(rule)
+        display = SecurityPane.format_permission_rule(rule)
         if repo.remove_permission_rule(settings_path, rule):
             self._show_security_confirmation(f"Removed: {display}")
 
@@ -281,7 +281,7 @@ class PrefsDelegate(NSObject):
 
         from claudewatch.backend.security.dependencies import get_security_service
 
-        repo = get_security_service()._repo
+        repo = get_security_service().repository
         if repo.clear_permissions(settings_path):
             self._show_security_confirmation("All permissions cleared")
 
@@ -308,7 +308,7 @@ class PrefsDelegate(NSObject):
 
         from claudewatch.backend.security.dependencies import get_security_service
 
-        repo = get_security_service()._repo
+        repo = get_security_service().repository
         if repo.uninstall_plugin(plugin_name):
             self._show_security_confirmation(f"{short_name} uninstalled")
 
@@ -322,7 +322,7 @@ class PrefsDelegate(NSObject):
 
         from claudewatch.backend.security.dependencies import get_security_service
 
-        repo = get_security_service()._repo
+        repo = get_security_service().repository
         removed = repo.remove_dangerous_permissions(settings_path)
         if removed > 0:
             self._show_security_confirmation(f"{removed} dangerous permission(s) removed")

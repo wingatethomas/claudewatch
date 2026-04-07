@@ -1,7 +1,5 @@
 """Tests for SecurityService — facade wiring, alert dispatch, deduplication."""
 
-import io
-import json
 from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.security.models import ConfigSnapshot, SecurityAlert, SuspiciousPattern
@@ -201,9 +199,3 @@ class TestSuspiciousPatterns:
         pattern = SuspiciousPattern(r"rm\s+-rf\s+/", "Recursive delete", "critical")
         assert not pattern.matches("ls -la")
         assert not pattern.matches("rm file.txt")
-
-
-def _fake_jsonl(entries: list[dict[str, object]]) -> io.StringIO:
-    """Create a file-like object with JSONL content."""
-    content = "\n".join(json.dumps(e) for e in entries) + "\n"
-    return io.StringIO(content)

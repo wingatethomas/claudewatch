@@ -113,7 +113,7 @@ class TestSecurityPane:
         repo.get_blocklist_entries.return_value = []
         repo.get_global_permissions.return_value = ("", [])
         repo.get_all_project_permissions.return_value = []
-        mock_svc.return_value._repo = repo
+        mock_svc.return_value.repository = repo
 
         pane = SecurityPane(_make_delegate(), 490, 620)
         view = pane.build()
@@ -144,7 +144,7 @@ class TestSecurityPane:
         repo.get_all_project_permissions.return_value = [("myproject", "/fake/proj", ["Bash(git:*)"])]
         repo.get_plugin_keys.return_value = {"test-plugin@official"}
         repo.get_policy_value.return_value = False
-        mock_svc.return_value._repo = repo
+        mock_svc.return_value.repository = repo
 
         pane = SecurityPane(_make_delegate(), 490, 620)
         view = pane.build()
@@ -165,7 +165,7 @@ class TestSecurityPane:
         repo.get_global_permissions.return_value = ("", [])
         repo.get_all_project_permissions.return_value = []
         repo.get_policy_value.return_value = False
-        mock_svc.return_value._repo = repo
+        mock_svc.return_value.repository = repo
 
         pane = SecurityPane(_make_delegate(), 490, 620)
         view = pane.build()

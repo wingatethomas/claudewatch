@@ -8,6 +8,7 @@ import os
 import time
 
 from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, proj_key_to_cwd
+from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.core.settings import get_setting, set_setting
 from claudewatch.backend.security.models import (
     DEFAULT_SUSPICIOUS_PATTERNS,
@@ -27,7 +28,7 @@ class SecurityRepository:
 
     _PROJECT_CACHE_TTL = 30.0  # seconds
 
-    def __init__(self, claude_dir: str = _CLAUDE_DIR, session_log: object | None = None) -> None:
+    def __init__(self, claude_dir: str = _CLAUDE_DIR, session_log: SessionLogService | None = None) -> None:
         self._claude_dir = claude_dir
         self._session_log = session_log
         self._project_perms_cache: list[tuple[str, str, list[str]]] | None = None

@@ -45,7 +45,7 @@ class SecurityPane(BasePane):
         return "Claude Code plugins, policies, and permissions"
 
     def build_content(self, view: NSView, content_top: float) -> None:
-        repo = get_security_service()._repo
+        repo = get_security_service().repository
         snapshot = repo.capture_snapshot()
 
         plugins_data = snapshot.plugins_installed.get("plugins", {})
@@ -387,7 +387,7 @@ class SecurityPane(BasePane):
     def _add_permission_row(self, content: NSView, rule: str, settings_path: str, row_y: float, pad: float) -> None:
         dangerous = is_dangerous_permission(rule)
         is_broad = ":*" in rule
-        display_rule = self._format_permission_rule(rule)
+        display_rule = self.format_permission_rule(rule)
         if dangerous:
             display_rule = f"{display_rule}  — {dangerous.description}"
         if len(display_rule) > _MAX_RULE_LEN:
@@ -439,7 +439,7 @@ class SecurityPane(BasePane):
         return " · ".join(parts)
 
     @staticmethod
-    def _format_permission_rule(rule: str) -> str:  # noqa: PLR0911
+    def format_permission_rule(rule: str) -> str:  # noqa: PLR0911
         """Make a permission rule human-readable plain English."""
         if not (rule.startswith("Bash(") and rule.endswith(")")):
             return rule

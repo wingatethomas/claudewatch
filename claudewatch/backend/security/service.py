@@ -100,6 +100,11 @@ class SecurityService(BaseService):
 
         return self._deduplicate(alerts)
 
+    @property
+    def repository(self) -> SecurityRepository:
+        """Public access to the repository for UI code."""
+        return self._repo
+
     def process_alerts(self, alerts: list[SecurityAlert]) -> None:
         """Send each alert as a macOS notification."""
         if not features.is_enabled(_FEATURE_KEY):

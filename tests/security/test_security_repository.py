@@ -2,6 +2,7 @@
 
 import json
 import os
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -323,6 +324,88 @@ class TestDiffSnapshots:
         types = {a.alert_type for a in alerts}
         assert "plugin_installed" in types
         assert "policy_changed" in types
+
+
+class TestCheckPermissionMode:
+    def test_detects_unrestricted(self, tmp_path: str) -> None:
+        jsonl_path = os.path.join(tmp_path, "session.jsonl")
+        with open(jsonl_path, "w") as f:
+            f.write(json.dumps({"permissionMode": "bypasstool", "type": "user"}) + "\n")
+
+        session_log = MagicMock()
+        session_log.find_most_recent.return_value = jsonl_path
+        repo = SecurityRepository(str(tmp_path), session_log=session_log)
+
+        assert repo.check_permission_mode("/project") == "bypasstool"
+
+    def test_returns_default(self, tmp_path: str) -> None:
+        jsonl_path = os.path.join(tmp_path, "session.jsonl")
+        with open(jsonl_path, "w") as f:
+            f.write(json.dumps({"permissionMode": "default", "type": "user"}) + "\n")
+
+        session_log = MagicMock()
+        session_log.find_most_recent.return_value = jsonl_path
+        repo = SecurityRepository(str(tmp_path), session_log=session_log)
+
+        assert repo.check_permission_mode("/project") == "default"
+
+    def test_returns_none_when_no_jsonl(self, tmp_path: str) -> None:
+        session_log = MagicMock()
+        session_log.find_most_recent.return_value = None
+        repo = SecurityRepository(str(tmp_path), session_log=session_log)
+
+        assert repo.check_permission_mode("/project") is None
+
+    def test_returns_none_without_session_log(self, tmp_path: str) -> None:
+        repo = SecurityRepository(str(tmp_path))
+        assert repo.check_permission_mode("/project") is None
+
+
+class TestCheckSuspiciousCommands:
+    def test_detects_rm_rf(self, tmp_path: str) -> None:
+        jsonl_path = os.path.join(tmp_path, "session.jsonl")
+        entry = {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "rm -rf /tmp/all"}}],
+            },
+        }
+        with open(jsonl_path, "w") as f:
+            f.write(json.dumps(entry) + "\n")
+
+        session_log = MagicMock()
+        session_log.find_most_recent.return_value = jsonl_path
+        session_log.read_tail.return_value = json.dumps(entry)
+        repo = SecurityRepository(str(tmp_path), session_log=session_log)
+
+        alerts = repo.check_suspicious_commands("/project", "myproject")
+        assert len(alerts) == 1
+        assert alerts[0].alert_type == "suspicious_command"
+
+    def test_no_alert_for_safe_command(self, tmp_path: str) -> None:
+        jsonl_path = os.path.join(tmp_path, "session.jsonl")
+        entry = {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}}],
+            },
+        }
+        with open(jsonl_path, "w") as f:
+            f.write(json.dumps(entry) + "\n")
+
+        session_log = MagicMock()
+        session_log.find_most_recent.return_value = jsonl_path
+        session_log.read_tail.return_value = json.dumps(entry)
+        repo = SecurityRepository(str(tmp_path), session_log=session_log)
+
+        alerts = repo.check_suspicious_commands("/project", "myproject")
+        assert alerts == []
+
+    def test_returns_empty_without_session_log(self, tmp_path: str) -> None:
+        repo = SecurityRepository(str(tmp_path))
+        assert repo.check_suspicious_commands("/project", "myproject") == []
 
 
 class TestRemovePermissionRule:
