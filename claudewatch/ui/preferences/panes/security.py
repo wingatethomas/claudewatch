@@ -419,7 +419,6 @@ class SecurityPane(BasePane):
             prefix = "  "
         rule_label = label(prefix + display_rule, size=Font.SMALL, color=color)
         rule_label.setFrame_(NSMakeRect(pad + 8, row_y, self.card_width - pad * 2 - 30, 16))
-        rule_label.setToolTip_(self.format_permission_tooltip(rule))
         content.addSubview_(rule_label)
 
         remove_btn = NSButton.alloc().initWithFrame_(NSMakeRect(self.card_width - pad - 20, row_y, 16, 16))
@@ -457,11 +456,17 @@ class SecurityPane(BasePane):
     @staticmethod
     @staticmethod
     def format_permission_display(rule: str) -> str:
-        """Format a permission rule for display — show the raw command, trimmed."""
+        """Format a permission rule for display — raw command + whatis description for wildcards."""
         if rule.startswith("Bash(") and rule.endswith(")"):
             inner = rule[5:-1]
             if ":*" in inner:
-                return inner.replace(":*", " *")
+                cmd = inner.replace(":*", " *")
+                base = inner.split(":*")[0].split(maxsplit=1)[0]
+                desc = SecurityRepository.get_command_description(base)
+                display = f"{cmd}  —  {desc}" if desc else cmd
+                if len(display) > _MAX_RULE_LEN:
+                    return display[: _MAX_RULE_LEN - 1] + "…"
+                return display
             if len(inner) > _MAX_RULE_LEN:
                 return inner[: _MAX_RULE_LEN - 1] + "…"
             return inner
