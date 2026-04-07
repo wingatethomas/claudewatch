@@ -303,33 +303,50 @@ class SecurityPane(BasePane):
         return " · ".join(parts)
 
     @staticmethod
-    def _format_permission_rule(rule: str) -> str:
-        """Make a permission rule human-readable.
+    def _format_permission_rule(rule: str) -> str:  # noqa: PLR0911
+        """Make a permission rule human-readable plain English.
 
-        'Bash(python3:*)' → 'python3 — any arguments'
-        'Bash(wc -l /Users/.../projects/-Users-dev-myapp/*.jsonl)' → 'wc -l — myapp session logs'
+        'Bash(python3:*)' → 'Can run any Python script'
+        'Bash(wc -l /Users/.../projects/-Users-dev-myapp/*.jsonl)' → 'Can count lines in backend-api logs'
         """
         if not (rule.startswith("Bash(") and rule.endswith(")")):
             return rule
 
         inner = rule[5:-1]
 
-        # Wildcard: 'python3:*' → broad permission
+        # Wildcard permissions
         if ":*" in inner:
             tool = inner.split(":*")[0]
-            return f"{tool} — any arguments"
+            known = {
+                "python3": "Can run any Python script",
+                "node": "Can run any Node.js script",
+                "npm": "Can run any npm command",
+                "git": "Can run any git command",
+                "docker": "Can run any Docker command",
+            }
+            return known.get(tool, f"Can run {tool} with any arguments")
 
-        # Path-based: extract the meaningful part
+        # Claude session log access
         if "/.claude/projects/" in inner:
-            # Extract project name from Claude projects path
             parts = inner.split("/.claude/projects/")
-            command = parts[0].strip()
             proj_path = parts[1] if len(parts) > 1 else ""
-            # Project key looks like -Users-dev-myapp, extract last segment
             proj_segments = proj_path.split("/")[0].split("-")
-            project_name = proj_segments[-1] if proj_segments else proj_path
-            return f"{command} — {project_name} session logs"
+            project_name = proj_segments[-1] if proj_segments else "unknown"
+            return f"Can read {project_name} session logs"
 
+        # Generic bash command — show a simplified version
+        if inner.startswith("wc "):
+            return "Can count lines in files"
+        if inner.startswith("cat "):
+            return "Can read file contents"
+        if inner.startswith("ls "):
+            return "Can list directory contents"
+        if inner.startswith("grep "):
+            return "Can search file contents"
+
+        # Fallback: truncate the raw command
+        if len(inner) > 40:
+            return inner[:39] + "…"
         return inner
 
     @staticmethod
