@@ -77,9 +77,6 @@ class GraphPane(BasePane):
             NSMakeRect(CONTENT_PADDING, 0, content_w, content_top),
             config,
         )
-        web_view.setOpaque_(False)
-        web_view.setValue_forKey_(False, "drawsBackground")
-
         base_url = NSURL.fileURLWithPath_(_ASSETS_DIR + "/")
         web_view.loadHTMLString_baseURL_(html, base_url)
         view.addSubview_(web_view)
