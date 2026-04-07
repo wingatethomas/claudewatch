@@ -59,6 +59,9 @@ class SecurityService(BaseService):
         if alerts:
             self._repo.save_baseline(current)
 
+        # Pre-warm command description cache for tooltip display
+        self._warm_command_cache()
+
         return self._deduplicate(alerts)
 
     def check_runtime(self, sessions: list[ClaudeSession]) -> list[SecurityAlert]:
@@ -119,6 +122,26 @@ class SecurityService(BaseService):
                 alert.severity,
                 alert.message[:80],
             )
+
+    def _warm_command_cache(self) -> None:
+        """Pre-warm whatis cache with commands from all permission rules."""
+        try:
+            _, global_rules = self._repo.get_global_permissions()
+            project_perms = self._repo.get_all_project_permissions()
+            all_commands: list[str] = list(global_rules)
+            for _name, _path, rules in project_perms:
+                all_commands.extend(rules)
+            # Extract base commands from Bash(...) rules
+            bases: list[str] = []
+            for rule in all_commands:
+                if rule.startswith("Bash(") and rule.endswith(")"):
+                    inner = rule[5:-1]
+                    cmd = inner.split(":*")[0] if ":*" in inner else inner
+                    bases.append(cmd)
+            if bases:
+                SecurityRepository.warm_whatis_cache(bases)
+        except Exception:
+            log.debug("failed to warm whatis cache", exc_info=True)
 
     def _deduplicate(self, alerts: list[SecurityAlert]) -> list[SecurityAlert]:
         """Filter out alerts that have already been emitted."""

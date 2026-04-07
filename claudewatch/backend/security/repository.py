@@ -543,35 +543,53 @@ class SecurityRepository:
     # -- Command descriptions (via man whatis) --
 
     _whatis_cache: dict[str, str] = {}
+    _whatis_warming: bool = False
 
     @classmethod
     def get_command_description(cls, command: str) -> str:
-        """Get a one-line description for a command via whatis. Cached."""
+        """Get a one-line description for a command via whatis. Returns from cache only — never blocks."""
         parts = command.split(maxsplit=1)
         base = parts[0] if parts else command
-        if base in cls._whatis_cache:
-            return cls._whatis_cache[base]
+        return cls._whatis_cache.get(base, "")
 
+    @classmethod
+    def warm_whatis_cache(cls, commands: list[str]) -> None:
+        """Pre-warm the whatis cache for a list of commands. Call from background thread."""
+        if cls._whatis_warming:
+            return
+        cls._whatis_warming = True
         try:
-            result = subprocess.run(
-                ["whatis", base],
-                capture_output=True,
-                text=True,
-                timeout=2,
-                check=False,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                # Take first line, extract description after " - "
-                first_line = result.stdout.strip().splitlines()[0]
-                if " - " in first_line:
-                    desc = first_line.split(" - ", 1)[1].strip()
-                    cls._whatis_cache[base] = desc
-                    return desc
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-
-        cls._whatis_cache[base] = ""
-        return ""
+            unique_bases = {cmd.split(maxsplit=1)[0] for cmd in commands if cmd.split()}
+            uncached = [b for b in unique_bases if b not in cls._whatis_cache]
+            if not uncached:
+                return
+            # Batch whatis call — all commands at once
+            try:
+                result = subprocess.run(
+                    ["whatis", *uncached],  # noqa: S603, S607
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+                if result.stdout:
+                    for line in result.stdout.strip().splitlines():
+                        if " - " in line:
+                            name_part = line.split("(")[0].strip() if "(" in line else line.split(" - ")[0].strip()
+                            desc = line.split(" - ", 1)[1].strip()
+                            # Match against our uncached list
+                            for base in uncached:
+                                if name_part == base or line.startswith(f"{base}("):
+                                    cls._whatis_cache[base] = desc
+                                    break
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            # Fill empty entries for commands whatis didn't know
+            for base in uncached:
+                if base not in cls._whatis_cache:
+                    cls._whatis_cache[base] = ""
+        finally:
+            cls._whatis_warming = False
 
     # -- Helpers --
 
