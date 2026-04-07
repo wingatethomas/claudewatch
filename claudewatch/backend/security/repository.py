@@ -264,7 +264,10 @@ class SecurityRepository:
 
             rules = self._read_permission_rules(settings_path)
             if rules:
-                project_name = os.path.basename(cwd)
+                # Use parent/project to disambiguate projects with the same name
+                parent = os.path.basename(os.path.dirname(cwd))
+                basename = os.path.basename(cwd)
+                project_name = f"{parent}/{basename}" if parent and parent != "/" else basename
                 results.append((project_name, settings_path, rules))
 
         return sorted(results, key=lambda x: x[0])
