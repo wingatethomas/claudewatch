@@ -6,8 +6,10 @@ import os
 
 import objc
 from AppKit import (
+    NSButton,
     NSControlStateValueOff,
     NSControlStateValueOn,
+    NSFont,
     NSScrollView,
     NSSwitch,
     NSView,
@@ -57,7 +59,8 @@ class SecurityPane(BasePane):
         content_h += _card_pad + 2 * 36 + _card_pad + 30  # policies (taller rows)
         if blocklist_entries:
             content_h += _card_pad + len(blocklist_entries) * 36 + _card_pad + 30
-        project_perms_count = sum(1 + min(len(r), 5) for _, r in self._get_project_permissions())
+        project_perms_for_height = repo.get_all_project_permissions()
+        project_perms_count = sum(1 + min(len(r), 5) for _, _, r in project_perms_for_height)
         perm_total = (1 + len(perm_rules) if perm_rules else 0) + project_perms_count
         if perm_total:
             content_h += _card_pad + perm_total * _row_h + _card_pad + 30
@@ -209,14 +212,15 @@ class SecurityPane(BasePane):
         y = self._add_section_header(inner, "PERMISSIONS", y)
 
         # Global permissions (from ~/.claude/settings.local.json)
-        global_rules = perm_rules
-        # Per-project permissions (from active session CWDs)
-        project_perms = self._get_project_permissions()
+        global_path, global_rules_list = repo.get_global_permissions()
+        global_rules = set(global_rules_list)
+        # Per-project permissions (crawl all known Claude projects)
+        project_perms = repo.get_all_project_permissions()
 
         total_rows = 0
         if global_rules:
             total_rows += 1 + len(global_rules)  # header + rules
-        for _proj_name, rules in project_perms:
+        for _proj_name, _path, rules in project_perms:
             total_rows += 1 + min(len(rules), 5)  # header + capped rules
 
         if total_rows == 0:
@@ -235,23 +239,47 @@ class SecurityPane(BasePane):
             if global_rules:
                 rules_y -= _row_h
                 scope_label = label("Global (all projects)", size=Font.SMALL, bold=True, color=theme.tertiary)
-                scope_label.setFrame_(NSMakeRect(_card_pad, rules_y, self.card_width - _card_pad * 2, 16))
+                scope_label.setFrame_(NSMakeRect(_card_pad, rules_y, 200, 16))
                 rules_content.addSubview_(scope_label)
+
+                clear_btn = NSButton.alloc().initWithFrame_(
+                    NSMakeRect(self.card_width - _card_pad - 60, rules_y, 55, 16)
+                )
+                clear_btn.setTitle_("Clear All")
+                clear_btn.setBezelStyle_(0)
+                clear_btn.setBordered_(False)
+                clear_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
+                clear_btn.setTarget_(self.delegate)
+                clear_btn.setAction_(objc.selector(self.delegate.clearPermissions_, signature=b"v@:@"))
+                clear_btn.cell().setRepresentedObject_(global_path)
+                rules_content.addSubview_(clear_btn)
 
                 for rule in sorted(global_rules, key=lambda r: (":*" not in r, r)):
                     rules_y -= _row_h
-                    rules_y = self._add_permission_row(rules_content, rule, rules_y, _card_pad)
+                    rules_y = self._add_permission_row(rules_content, rule, global_path, rules_y, _card_pad)
 
-            for proj_name, rules in project_perms:
+            for proj_name, settings_path, rules in project_perms:
                 rules_y -= _row_h
                 scope_label = label(proj_name, size=Font.SMALL, bold=True, color=theme.tertiary)
-                scope_label.setFrame_(NSMakeRect(_card_pad, rules_y, self.card_width - _card_pad * 2, 16))
+                scope_label.setFrame_(NSMakeRect(_card_pad, rules_y, 200, 16))
                 rules_content.addSubview_(scope_label)
+
+                clear_btn = NSButton.alloc().initWithFrame_(
+                    NSMakeRect(self.card_width - _card_pad - 60, rules_y, 55, 16)
+                )
+                clear_btn.setTitle_("Clear All")
+                clear_btn.setBezelStyle_(0)
+                clear_btn.setBordered_(False)
+                clear_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
+                clear_btn.setTarget_(self.delegate)
+                clear_btn.setAction_(objc.selector(self.delegate.clearPermissions_, signature=b"v@:@"))
+                clear_btn.cell().setRepresentedObject_(settings_path)
+                rules_content.addSubview_(clear_btn)
 
                 display_rules = sorted(rules, key=lambda r: (":*" not in r, r))[:5]
                 for rule in display_rules:
                     rules_y -= _row_h
-                    rules_y = self._add_permission_row(rules_content, rule, rules_y, _card_pad)
+                    rules_y = self._add_permission_row(rules_content, rule, settings_path, rules_y, _card_pad)
 
             y -= rules_h + Spacing.MD
 
@@ -325,8 +353,8 @@ class SecurityPane(BasePane):
         parts = [p for p in [scope_display, installed] if p]
         return " · ".join(parts)
 
-    def _add_permission_row(self, content: NSView, rule: str, row_y: float, pad: float) -> float:
-        """Add a single permission rule row. Returns the y position (unchanged)."""
+    def _add_permission_row(self, content: NSView, rule: str, settings_path: str, row_y: float, pad: float) -> float:
+        """Add a single permission rule row with delete button."""
         is_broad = ":*" in rule
         display_rule = self._format_permission_rule(rule)
         if len(display_rule) > _MAX_RULE_LEN:
@@ -335,41 +363,21 @@ class SecurityPane(BasePane):
         color = theme.danger if is_broad else theme.secondary
         prefix = "⚠ " if is_broad else "  "
         rule_label = label(prefix + display_rule, size=Font.SMALL, color=color)
-        rule_label.setFrame_(NSMakeRect(pad + 8, row_y, self.card_width - pad * 2 - 8, 16))
+        rule_label.setFrame_(NSMakeRect(pad + 8, row_y, self.card_width - pad * 2 - 30, 16))
         content.addSubview_(rule_label)
+
+        # X button to remove this rule
+        remove_btn = NSButton.alloc().initWithFrame_(NSMakeRect(self.card_width - pad - 20, row_y, 16, 16))
+        remove_btn.setTitle_("✕")
+        remove_btn.setBezelStyle_(0)
+        remove_btn.setBordered_(False)
+        remove_btn.setFont_(NSFont.systemFontOfSize_(9.0))
+        remove_btn.setTarget_(self.delegate)
+        remove_btn.setAction_(objc.selector(self.delegate.removePermission_, signature=b"v@:@"))
+        remove_btn.cell().setRepresentedObject_(f"{settings_path}|{rule}")
+        content.addSubview_(remove_btn)
+
         return row_y
-
-    @staticmethod
-    def _get_project_permissions() -> list[tuple[str, list[str]]]:
-        """Find per-project permission rules from .claude/settings.local.json files."""
-        import json  # noqa: PLC0415
-
-        results: list[tuple[str, list[str]]] = []
-        home = os.path.expanduser("~")
-        develop_dir = os.path.join(home, "Develop")
-
-        if not os.path.isdir(develop_dir):
-            return results
-
-        try:
-            for entry in os.listdir(develop_dir):
-                settings_path = os.path.join(develop_dir, entry, ".claude", "settings.local.json")
-                if not os.path.isfile(settings_path):
-                    continue
-                try:
-                    with open(settings_path) as f:
-                        data = json.load(f)
-                    perms = data.get("permissions", {})
-                    if isinstance(perms, dict):
-                        allow = perms.get("allow", [])
-                        if isinstance(allow, list) and allow:
-                            results.append((entry, [str(r) for r in allow]))
-                except (OSError, json.JSONDecodeError, ValueError):
-                    continue
-        except OSError:
-            pass
-
-        return sorted(results, key=lambda x: x[0])
 
     @staticmethod
     def _format_permission_rule(rule: str) -> str:  # noqa: PLR0911

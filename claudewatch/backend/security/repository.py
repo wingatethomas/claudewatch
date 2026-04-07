@@ -228,6 +228,123 @@ class SecurityRepository:
 
         return alerts
 
+    # -- Permission management --
+
+    def get_all_project_permissions(self) -> list[tuple[str, str, list[str]]]:
+        """Find permission rules for all known Claude projects.
+
+        Scans ~/.claude/projects/ for all project keys, resolves each to a CWD,
+        and reads .claude/settings.local.json from that CWD.
+
+        Returns list of (project_name, settings_path, rules).
+        """
+        from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, proj_key_to_cwd  # noqa: PLC0415
+
+        results: list[tuple[str, str, list[str]]] = []
+        try:
+            entries = os.listdir(CLAUDE_PROJECTS_DIR)
+        except OSError:
+            return results
+
+        seen_cwds: set[str] = set()
+        for proj_key in entries:
+            if not os.path.isdir(os.path.join(CLAUDE_PROJECTS_DIR, proj_key)):
+                continue
+            # Skip worktree entries
+            if "--claude-worktrees-" in proj_key:
+                continue
+            cwd = proj_key_to_cwd(proj_key)
+            if cwd in seen_cwds or not os.path.isdir(cwd):
+                continue
+            seen_cwds.add(cwd)
+
+            settings_path = os.path.join(cwd, ".claude", "settings.local.json")
+            if not os.path.isfile(settings_path):
+                continue
+
+            rules = self._read_permission_rules(settings_path)
+            if rules:
+                project_name = os.path.basename(cwd)
+                results.append((project_name, settings_path, rules))
+
+        return sorted(results, key=lambda x: x[0])
+
+    def get_global_permissions(self) -> tuple[str, list[str]]:
+        """Get global permission rules from ~/.claude/settings.local.json.
+
+        Returns (settings_path, rules).
+        """
+        path = os.path.join(self._claude_dir, "settings.local.json")
+        rules = self._read_permission_rules(path)
+        return (path, rules)
+
+    def remove_permission_rule(self, settings_path: str, rule: str) -> bool:
+        """Remove a single permission rule from a settings.local.json file."""
+        try:
+            with open(settings_path) as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return False
+
+        perms = data.get("permissions", {})
+        if not isinstance(perms, dict):
+            return False
+        allow = perms.get("allow", [])
+        if not isinstance(allow, list) or rule not in allow:
+            return False
+
+        allow.remove(rule)
+        perms["allow"] = allow
+        data["permissions"] = perms
+
+        try:
+            with open(settings_path, "w") as f:
+                json.dump(data, f, indent=2)
+            log.info("security: removed permission rule '%s' from %s", rule[:50], settings_path)
+            return True
+        except OSError:
+            log.warning("security: failed to write %s", settings_path)
+            return False
+
+    def clear_permissions(self, settings_path: str) -> bool:
+        """Clear all permission rules from a settings.local.json file."""
+        try:
+            with open(settings_path) as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return False
+
+        perms = data.get("permissions", {})
+        if not isinstance(perms, dict):
+            return False
+
+        perms["allow"] = []
+        data["permissions"] = perms
+
+        try:
+            with open(settings_path, "w") as f:
+                json.dump(data, f, indent=2)
+            log.info("security: cleared all permissions from %s", settings_path)
+            return True
+        except OSError:
+            log.warning("security: failed to write %s", settings_path)
+            return False
+
+    @staticmethod
+    def _read_permission_rules(path: str) -> list[str]:
+        """Read permission allow rules from a settings.local.json file."""
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            perms = data.get("permissions", {})
+            if isinstance(perms, dict):
+                allow = perms.get("allow", [])
+                if isinstance(allow, list):
+                    return [str(r) for r in allow]
+        except (OSError, json.JSONDecodeError, ValueError):
+            pass
+        return []
+
     # -- Helpers --
 
     @staticmethod

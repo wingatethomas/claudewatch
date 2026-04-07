@@ -250,6 +250,37 @@ class PrefsDelegate(NSObject):
 
         show_welcome()
 
+    # -- Security --
+
+    @objc_callback
+    def removePermission_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.ui.safety import get_represented_object
+
+        info = get_represented_object(sender)
+        if "|" not in info:
+            return
+        settings_path, rule = info.split("|", 1)
+
+        from claudewatch.backend.security.dependencies import get_security_service
+
+        repo = get_security_service()._repo
+        if repo.remove_permission_rule(settings_path, rule):
+            self.show_pane({"key": "security"})
+
+    @objc_callback
+    def clearPermissions_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.ui.safety import get_represented_object
+
+        settings_path = get_represented_object(sender)
+        if not settings_path:
+            return
+
+        from claudewatch.backend.security.dependencies import get_security_service
+
+        repo = get_security_service()._repo
+        if repo.clear_permissions(settings_path):
+            self.show_pane({"key": "security"})
+
     # -- Window --
 
     @objc_callback
