@@ -74,6 +74,8 @@ class SecurityPane(BasePane):
 
         # Policies
         stack.add(self._build_section_header("POLICIES"), height=14)
+        policy_note = secondary_label("Managed by Claude Code · edit in ~/.claude/policy-limits.json", size=Font.SMALL)
+        stack.add(policy_note, height=14)
         policies = [
             ("allow_remote_control", "Remote Control", "External tools can send commands to Claude"),
             ("allow_quick_web_setup", "Quick Web Setup", "Browser-based Claude configuration"),
