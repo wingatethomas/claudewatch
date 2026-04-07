@@ -454,9 +454,14 @@ class SummaryService(BaseService):
         if not conversation:
             return ""
 
+        # Read model and effort from feature settings
+        model = str(features.get_facet("background_summaries", "model") or "haiku")
+        effort = str(features.get_facet("background_summaries", "effort") or "low")
+
+        cmd = [claude_path, "-p", _PROMPT + conversation, "--model", model, "--effort", effort]
         try:
             proc = subprocess.Popen(
-                [claude_path, "-p", _PROMPT + conversation],
+                cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
