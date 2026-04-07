@@ -85,3 +85,30 @@ DEFAULT_SUSPICIOUS_PATTERNS: tuple[SuspiciousPattern, ...] = (
     SuspiciousPattern(r"mkfs\.", "Formatting filesystem", "critical"),
     SuspiciousPattern(r"dd\s+if=.*of=/dev/", "dd to raw device", "critical"),
 )
+
+# Patterns for permission rules that should never be "always allowed".
+# These match against the Bash(...) permission format, not raw commands.
+DANGEROUS_PERMISSION_PATTERNS: tuple[SuspiciousPattern, ...] = (
+    SuspiciousPattern(r"Bash\(rm\s+-rf:\*\)", "Can delete anything recursively", "critical"),
+    SuspiciousPattern(r"Bash\(rm:\*\)", "Can delete any file", "critical"),
+    SuspiciousPattern(r"Bash\(chmod:\*\)", "Can change any file permissions", "critical"),
+    SuspiciousPattern(r"Bash\(sudo:\*\)", "Can run any command as root", "critical"),
+    SuspiciousPattern(r"Bash\(curl:\*\)", "Can download from any URL", "warning"),
+    SuspiciousPattern(r"Bash\(wget:\*\)", "Can download from any URL", "warning"),
+    SuspiciousPattern(r"Bash\(dd:\*\)", "Can write to raw devices", "critical"),
+    SuspiciousPattern(r"Bash\(eval:\*\)", "Can evaluate arbitrary code", "critical"),
+    SuspiciousPattern(r"Bash\(source:\*\)", "Can source any script", "warning"),
+    SuspiciousPattern(r"Bash\(sh:\*\)", "Can run any shell command", "critical"),
+    SuspiciousPattern(r"Bash\(bash:\*\)", "Can run any shell command", "critical"),
+    SuspiciousPattern(r"Bash\(cat:\*\)", "Can read any file", "warning"),
+    SuspiciousPattern(r"Bash\(mv:\*\)", "Can move any file", "warning"),
+    SuspiciousPattern(r"Bash\(cp:\*\)", "Can copy any file", "warning"),
+)
+
+
+def is_dangerous_permission(rule: str) -> SuspiciousPattern | None:
+    """Check if a permission rule matches a dangerous pattern. Returns the pattern or None."""
+    for pattern in DANGEROUS_PERMISSION_PATTERNS:
+        if pattern.matches(rule):
+            return pattern
+    return None

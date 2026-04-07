@@ -7,7 +7,7 @@ import logging
 import os
 
 from claudewatch.backend.core.settings import get_setting, set_setting
-from claudewatch.backend.security.models import ConfigSnapshot, SecurityAlert
+from claudewatch.backend.security.models import ConfigSnapshot, SecurityAlert, is_dangerous_permission
 
 log = logging.getLogger("claudewatch")
 
@@ -347,6 +347,38 @@ class SecurityRepository:
         except (OSError, json.JSONDecodeError, ValueError):
             pass
         return []
+
+    def remove_dangerous_permissions(self, settings_path: str) -> int:
+        """Remove all dangerous permissions from a settings.local.json file. Returns count removed."""
+        try:
+            with open(settings_path) as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return 0
+
+        perms = data.get("permissions", {})
+        if not isinstance(perms, dict):
+            return 0
+        allow = perms.get("allow", [])
+        if not isinstance(allow, list):
+            return 0
+
+        original_count = len(allow)
+        safe_rules = [r for r in allow if not is_dangerous_permission(str(r))]
+        removed = original_count - len(safe_rules)
+
+        if removed > 0:
+            perms["allow"] = safe_rules
+            data["permissions"] = perms
+            try:
+                with open(settings_path, "w") as f:
+                    json.dump(data, f, indent=2)
+                log.info("security: removed %d dangerous permissions from %s", removed, settings_path)
+            except OSError:
+                log.warning("security: failed to write %s", settings_path)
+                return 0
+
+        return removed
 
     # -- Plugin management --
 

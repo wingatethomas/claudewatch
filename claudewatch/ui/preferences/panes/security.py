@@ -18,6 +18,7 @@ from Foundation import NSMakeRect
 
 from claudewatch.backend.core import features
 from claudewatch.backend.security.dependencies import get_security_service
+from claudewatch.backend.security.models import is_dangerous_permission
 from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
@@ -275,44 +276,16 @@ class SecurityPane(BasePane):
 
             if global_rules:
                 rules_y -= _row_h
-                scope_label = label("Global (all projects)", size=Font.SMALL, bold=True, color=theme.tertiary)
-                scope_label.setFrame_(NSMakeRect(_card_pad, rules_y, 200, 16))
-                rules_content.addSubview_(scope_label)
-
-                clear_btn = NSButton.alloc().initWithFrame_(
-                    NSMakeRect(self.card_width - _card_pad - 60, rules_y, 55, 16)
+                rules_y = self._add_scope_header(
+                    rules_content, "Global (all projects)", global_path, list(global_rules), rules_y, _card_pad
                 )
-                clear_btn.setTitle_("Clear All")
-                clear_btn.setBezelStyle_(0)
-                clear_btn.setBordered_(False)
-                clear_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
-                clear_btn.setTarget_(self.delegate)
-                clear_btn.setAction_(objc.selector(self.delegate.clearPermissions_, signature=b"v@:@"))
-                clear_btn.cell().setRepresentedObject_(global_path)
-                rules_content.addSubview_(clear_btn)
-
                 for rule in sorted(global_rules, key=lambda r: (":*" not in r, r)):
                     rules_y -= _row_h
                     rules_y = self._add_permission_row(rules_content, rule, global_path, rules_y, _card_pad)
 
             for proj_name, settings_path, rules in project_perms:
                 rules_y -= _row_h
-                scope_label = label(proj_name, size=Font.SMALL, bold=True, color=theme.tertiary)
-                scope_label.setFrame_(NSMakeRect(_card_pad, rules_y, 200, 16))
-                rules_content.addSubview_(scope_label)
-
-                clear_btn = NSButton.alloc().initWithFrame_(
-                    NSMakeRect(self.card_width - _card_pad - 60, rules_y, 55, 16)
-                )
-                clear_btn.setTitle_("Clear All")
-                clear_btn.setBezelStyle_(0)
-                clear_btn.setBordered_(False)
-                clear_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
-                clear_btn.setTarget_(self.delegate)
-                clear_btn.setAction_(objc.selector(self.delegate.clearPermissions_, signature=b"v@:@"))
-                clear_btn.cell().setRepresentedObject_(settings_path)
-                rules_content.addSubview_(clear_btn)
-
+                rules_y = self._add_scope_header(rules_content, proj_name, settings_path, rules, rules_y, _card_pad)
                 display_rules = sorted(rules, key=lambda r: (":*" not in r, r))
                 for rule in display_rules:
                     rules_y -= _row_h
@@ -390,15 +363,63 @@ class SecurityPane(BasePane):
         parts = [p for p in [scope_display, installed] if p]
         return " · ".join(parts)
 
+    def _add_scope_header(  # noqa: PLR0913
+        self, content: NSView, scope_name: str, settings_path: str, rules: list[str], row_y: float, pad: float
+    ) -> float:
+        """Add a scope header with Clear All and optional Remove Dangerous buttons."""
+        scope_label = label(scope_name, size=Font.SMALL, bold=True, color=theme.tertiary)
+        scope_label.setFrame_(NSMakeRect(pad, row_y, 200, 16))
+        content.addSubview_(scope_label)
+
+        btn_x = self.card_width - pad
+
+        # Clear All button
+        btn_x -= 60
+        clear_btn = NSButton.alloc().initWithFrame_(NSMakeRect(btn_x, row_y, 55, 16))
+        clear_btn.setTitle_("Clear All")
+        clear_btn.setBezelStyle_(0)
+        clear_btn.setBordered_(False)
+        clear_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
+        clear_btn.setTarget_(self.delegate)
+        clear_btn.setAction_(objc.selector(self.delegate.clearPermissions_, signature=b"v@:@"))
+        clear_btn.cell().setRepresentedObject_(settings_path)
+        content.addSubview_(clear_btn)
+
+        # Remove Dangerous button — only if dangerous rules exist
+        has_dangerous = any(is_dangerous_permission(r) for r in rules)
+        if has_dangerous:
+            btn_x -= 110
+            danger_btn = NSButton.alloc().initWithFrame_(NSMakeRect(btn_x, row_y, 105, 16))
+            danger_btn.setTitle_("Remove Dangerous")
+            danger_btn.setBezelStyle_(0)
+            danger_btn.setBordered_(False)
+            danger_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
+            danger_btn.setTarget_(self.delegate)
+            danger_btn.setAction_(objc.selector(self.delegate.removeDangerousPermissions_, signature=b"v@:@"))
+            danger_btn.cell().setRepresentedObject_(settings_path)
+            content.addSubview_(danger_btn)
+
+        return row_y
+
     def _add_permission_row(self, content: NSView, rule: str, settings_path: str, row_y: float, pad: float) -> float:
         """Add a single permission rule row with delete button."""
+        dangerous = is_dangerous_permission(rule)
         is_broad = ":*" in rule
         display_rule = self._format_permission_rule(rule)
+        if dangerous:
+            display_rule = f"{display_rule}  — {dangerous.description}"
         if len(display_rule) > _MAX_RULE_LEN:
             display_rule = display_rule[: _MAX_RULE_LEN - 1] + "…"
 
-        color = theme.danger if is_broad else theme.secondary
-        prefix = "⚠ " if is_broad else "  "
+        if dangerous:
+            color = theme.danger
+            prefix = "🚫 "
+        elif is_broad:
+            color = theme.danger
+            prefix = "⚠ "
+        else:
+            color = theme.secondary
+            prefix = "  "
         rule_label = label(prefix + display_rule, size=Font.SMALL, color=color)
         rule_label.setFrame_(NSMakeRect(pad + 8, row_y, self.card_width - pad * 2 - 30, 16))
         content.addSubview_(rule_label)

@@ -309,6 +309,21 @@ class PrefsDelegate(NSObject):
             self._show_security_confirmation(f"{short_name} uninstalled")
 
     @objc_callback
+    def removeDangerousPermissions_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.ui.safety import get_represented_object
+
+        settings_path = get_represented_object(sender)
+        if not settings_path:
+            return
+
+        from claudewatch.backend.security.dependencies import get_security_service
+
+        repo = get_security_service()._repo
+        removed = repo.remove_dangerous_permissions(settings_path)
+        if removed > 0:
+            self._show_security_confirmation(f"{removed} dangerous permission(s) removed")
+
+    @objc_callback
     def openBlocklistSource_(self, sender: objc.objc_object) -> None:  # noqa: N802, ARG002
         import webbrowser
 
