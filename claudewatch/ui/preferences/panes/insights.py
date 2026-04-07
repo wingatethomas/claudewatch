@@ -1,4 +1,4 @@
-"""Insights pane — aggregated session metrics and tool usage breakdown."""
+"""Insights pane — aggregated analytics and tool usage breakdown."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ log = logging.getLogger("claudewatch")
 
 
 class InsightsPane(BasePane):
-    """Insights pane showing aggregated session metrics."""
+    """Insights pane showing aggregated session analytics."""
 
     _bootstrap_running = False
 
@@ -30,7 +30,7 @@ class InsightsPane(BasePane):
 
     @property
     def subtitle(self) -> str:
-        return "Aggregated metrics across all sessions"
+        return "Aggregated analytics across all sessions"
 
     def build_content(self, view: NSView, content_top: float) -> None:  # noqa: PLR0915
         analytics_svc = get_analytics_service()
