@@ -560,26 +560,63 @@ class SecurityRepository:
 
     @classmethod
     def get_command_description(cls, command: str) -> str:
-        """Get a one-line description for a command via whatis. Returns from cache only — never blocks."""
+        """Get a one-line description for a command via whatis. Returns from cache only — never blocks.
+
+        Tries full command ('git fetch') first, then base ('git').
+        Caps description at 40 chars to avoid overflow.
+        """
+        _max_desc = 40
         cache = cls._load_whatis_cache()
         parts = command.split(maxsplit=1)
+        # Try full two-word key first
+        if len(parts) >= 2:  # noqa: PLR2004
+            full = f"{parts[0]} {parts[1]}"
+            desc = cache.get(full, "")
+            if desc:
+                return desc[:_max_desc] if len(desc) > _max_desc else desc
         base = parts[0] if parts else command
-        return cache.get(base, "")
+        desc = cache.get(base, "")
+        return desc[:_max_desc] if len(desc) > _max_desc else desc
 
     @classmethod
     def warm_whatis_cache(cls, commands: list[str]) -> None:
-        """Pre-warm the whatis cache for a list of commands. Call from background thread."""
+        """Pre-warm the whatis cache for a list of commands. Call from background thread.
+
+        For multi-word commands like 'git fetch', tries the hyphenated form
+        'git-fetch' first (more specific), then falls back to the base command.
+        """
         if cls._whatis_warming:
             return
         cls._whatis_warming = True
         try:
             cache = cls._load_whatis_cache()
-            unique_bases = {cmd.split(maxsplit=1)[0] for cmd in commands if cmd.split()}
-            uncached = [b for b in unique_bases if b not in cache]
-            if not uncached:
-                return
-            for base in uncached:
-                cache[base] = cls._lookup_whatis(base)
+            # Build lookup keys — both base and full hyphenated forms
+            keys_to_lookup: dict[str, str] = {}  # cache_key -> whatis_query
+            for cmd in commands:
+                parts = cmd.split()
+                if not parts:
+                    continue
+                base = parts[0]
+                if base not in cache:
+                    # For multi-word commands, try hyphenated form first
+                    if len(parts) >= 2:  # noqa: PLR2004
+                        hyphenated = f"{parts[0]}-{parts[1]}"
+                        keys_to_lookup[base] = hyphenated
+                    else:
+                        keys_to_lookup[base] = base
+                # Also cache the full command for multi-word lookups
+                full = " ".join(parts[:2]) if len(parts) >= 2 else parts[0]  # noqa: PLR2004
+                if full not in cache and full != base:
+                    keys_to_lookup[full] = f"{parts[0]}-{parts[1]}" if len(parts) >= 2 else full  # noqa: PLR2004
+
+            for cache_key, query in keys_to_lookup.items():
+                if cache_key in cache:
+                    continue
+                desc = cls._lookup_whatis(query)
+                if not desc and query != cache_key.split()[0]:
+                    # Hyphenated lookup failed, try base command
+                    desc = cls._lookup_whatis(cache_key.split()[0])
+                cache[cache_key] = desc
             cls._save_whatis_cache()
         finally:
             cls._whatis_warming = False
