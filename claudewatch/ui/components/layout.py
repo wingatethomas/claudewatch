@@ -89,7 +89,7 @@ class VStack:
         return container
 
     def to_scroll_view(self, max_height: float) -> NSView:
-        """Wrap in a scroll view if content exceeds max_height."""
+        """Wrap in a scroll view if content exceeds max_height. Scrolls to top."""
         if self.content_height <= max_height:
             return self.to_view(min_height=max_height)
         inner = self.to_view()
@@ -98,4 +98,5 @@ class VStack:
         scroll.setAutohidesScrollers_(True)
         scroll.setDrawsBackground_(False)
         scroll.setDocumentView_(inner)
+        inner.scrollPoint_((0, inner.frame().size.height))
         return scroll
