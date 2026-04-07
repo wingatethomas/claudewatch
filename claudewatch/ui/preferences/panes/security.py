@@ -244,21 +244,14 @@ class SecurityPane(BasePane):
         return policy_card
 
     def _build_blocklist_source(self, fetched_date: str) -> NSView:
-        container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 0, 14))
-        source_text = f"Synced from Anthropic on {fetched_date}"
-        source_label = secondary_label(source_text, size=Font.SMALL)
-        source_label.setFrame_(NSMakeRect(0, 0, 220, 14))
-        container.addSubview_(source_label)
-
-        link_btn = NSButton.alloc().initWithFrame_(NSMakeRect(222, 0, 50, 14))
-        link_btn.setTitle_("· View ↗")
+        link_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 0, 14))
+        link_btn.setTitle_(f"Synced from Anthropic on {fetched_date} ↗")
         link_btn.setBezelStyle_(0)
         link_btn.setBordered_(False)
         link_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
         link_btn.setTarget_(self.delegate)
         link_btn.setAction_(objc.selector(self.delegate.openBlocklistSource_, signature=b"v@:@"))
-        container.addSubview_(link_btn)
-        return container
+        return link_btn
 
     def _build_blocklist_card(self, repo: object, snapshot: object, entries: list[dict[str, str]]) -> NSView:
         card_h = _CARD_PAD + len(entries) * _TALL_ROW_H + _CARD_PAD
