@@ -31,12 +31,14 @@ _FEATURE_DETAILS: dict[str, str] = {
     "auto_updates": "Check GitHub for new releases periodically.",
     "launch_at_login": "Start ClaudeWatch automatically when you log in.",
     "accessibility": "Color scheme for status dots in the menu bar.",
+    "security": "Monitor Claude Code config for plugin installs, policy changes, and unsafe sessions.",
 }
 
 # Feature groups — defines section order and which features belong to each
 _FEATURE_GROUPS: list[tuple[str, list[str]]] = [
     ("Sessions", ["bookmarks", "background_summaries"]),
     ("Notifications", ["notifications"]),
+    ("Security", ["security"]),
     ("App", ["launch_at_login", "auto_updates", "accessibility"]),
 ]
 

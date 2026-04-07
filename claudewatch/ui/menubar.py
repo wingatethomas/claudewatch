@@ -43,6 +43,8 @@ from claudewatch.backend.notifications.dependencies import get_notification_serv
 from claudewatch.backend.notifications.service import NotificationService, set_focus_callback
 from claudewatch.backend.onboarding.dependencies import get_onboarding_service
 from claudewatch.backend.onboarding.service import OnboardingService
+from claudewatch.backend.security.dependencies import get_security_service
+from claudewatch.backend.security.service import SecurityService
 from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.summary.service import SummaryService
 from claudewatch.backend.updates.dependencies import get_update_service
@@ -80,6 +82,7 @@ class ClaudeWatchApp:
         bookmark_service: BookmarkService,
         history_service: HistoryService,
         analytics_service: AnalyticsService,
+        security_service: SecurityService,
     ) -> None:
         self._delegate = delegate
         self._menu = NSMenu.alloc().init()
@@ -97,9 +100,11 @@ class ClaudeWatchApp:
         self._bookmark_service = bookmark_service
         self._history_service = history_service
         self._analytics_service = analytics_service
+        self._security_service = security_service
         self._future: Future | None = None  # type: ignore[type-arg]
         self._last_poll_time = 0.0
         self._last_scan_time = 0.0
+        self._last_security_check = 0.0
         self._scan_lock = threading.Lock()
         self._scan_running = False
         self._modal_active = False
@@ -201,6 +206,23 @@ class ClaudeWatchApp:
         """Track session count for guide nudge (no notification tips)."""
         pass
 
+    _SECURITY_CHECK_INTERVAL = 30
+
+    def _run_security_checks(self) -> None:
+        """Run throttled security config + runtime checks."""
+        now = time.time()
+        if now - self._last_security_check < self._SECURITY_CHECK_INTERVAL:
+            return
+        self._last_security_check = now
+        try:
+            config_alerts = self._security_service.check_config()
+            runtime_alerts = self._security_service.check_runtime(self.sessions)
+            all_alerts = config_alerts + runtime_alerts
+            if all_alerts:
+                self._security_service.process_alerts(all_alerts)
+        except Exception:
+            log.debug("security check failed", exc_info=True)
+
     _SCAN_INTERVAL = 30
 
     def _maybe_bg_scan(self) -> None:
@@ -262,6 +284,7 @@ class ClaudeWatchApp:
                 self._maybe_bg_scan()
                 self.update_display()
                 self._notification_service.notify_if_needed(self.sessions)
+                self._run_security_checks()
                 self._check_onboarding_tips()
                 self._consecutive_errors = 0
             except Exception:
@@ -604,6 +627,7 @@ def main() -> None:
         bookmark_service=get_bookmark_service(),
         history_service=get_history_service(),
         analytics_service=get_analytics_service(),
+        security_service=get_security_service(),
     )
     delegate._app = app
 
