@@ -71,8 +71,8 @@ class SecurityPane(BasePane):
         # Policies
         stack.add(self._build_section_header("POLICIES"), height=14)
         policies = [
-            ("allow_remote_control", "Remote Control", "Allow external tools to send commands to Claude Code"),
-            ("allow_quick_web_setup", "Quick Web Setup", "Allow browser-based configuration of Claude Code"),
+            ("allow_remote_control", "Remote Control", "External tools can send commands to Claude"),
+            ("allow_quick_web_setup", "Quick Web Setup", "Browser-based Claude configuration"),
         ]
         policy_h = _CARD_PAD + len(policies) * _TALL_ROW_H + _CARD_PAD
         stack.add(self._build_policies_card(repo, snapshot, policies), height=policy_h)
@@ -184,6 +184,9 @@ class SecurityPane(BasePane):
         content = policy_card.contentView()
         row_y = card_h - _CARD_PAD
 
+        status_w = 70
+        desc_w = self.card_width - _CARD_PAD * 2 - status_w
+
         for key, display_name, description in policies:
             row_y -= _TALL_ROW_H
             val = repo.get_policy_value(snapshot, key)
@@ -191,28 +194,28 @@ class SecurityPane(BasePane):
             color = theme.danger if val else theme.secondary
 
             key_label = label(display_name, size=Font.SECONDARY, bold=True)
-            key_label.setFrame_(NSMakeRect(_CARD_PAD, row_y + 16, 260, 16))
+            key_label.setFrame_(NSMakeRect(_CARD_PAD, row_y + 16, desc_w, 16))
             content.addSubview_(key_label)
 
             desc_label = secondary_label(description, size=Font.SMALL)
-            desc_label.setFrame_(NSMakeRect(_CARD_PAD, row_y, 260, 14))
+            desc_label.setFrame_(NSMakeRect(_CARD_PAD, row_y, desc_w, 14))
             content.addSubview_(desc_label)
 
             val_label = label(status, size=Font.SECONDARY, bold=True, color=color)
-            val_label.setFrame_(NSMakeRect(self.card_width - _CARD_PAD - 80, row_y + 10, 80, 16))
+            val_label.setFrame_(NSMakeRect(self.card_width - _CARD_PAD - status_w, row_y + 10, status_w, 16))
             content.addSubview_(val_label)
 
         return policy_card
 
     def _build_blocklist_source(self, fetched_date: str) -> NSView:
         container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 0, 14))
-        source_text = f"Synced from Anthropic on {fetched_date}"
+        source_text = f"Synced from Anthropic on {fetched_date}  ·"
         source_label = secondary_label(source_text, size=Font.SMALL)
-        source_label.setFrame_(NSMakeRect(0, 0, self.card_width - 40, 14))
+        source_label.setFrame_(NSMakeRect(0, 0, 250, 14))
         container.addSubview_(source_label)
 
-        link_btn = NSButton.alloc().initWithFrame_(NSMakeRect(self.card_width - 40, 0, 30, 14))
-        link_btn.setTitle_("View")
+        link_btn = NSButton.alloc().initWithFrame_(NSMakeRect(252, 0, 40, 14))
+        link_btn.setTitle_("View ↗")
         link_btn.setBezelStyle_(0)
         link_btn.setBordered_(False)
         link_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
@@ -250,7 +253,7 @@ class SecurityPane(BasePane):
             content.addSubview_(reason_label)
 
             if reason:
-                badge_label = label(reason, size=Font.SMALL, color=theme.danger)
+                badge_label = label(reason, size=Font.SMALL, color=theme.tertiary)
                 badge_label.setFrame_(NSMakeRect(self.card_width - _CARD_PAD - 80, row_y + 16, 80, 16))
                 content.addSubview_(badge_label)
 
