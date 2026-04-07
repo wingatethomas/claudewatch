@@ -31,9 +31,10 @@ from Foundation import NSMakeRect
 class VStack:
     """Vertical stack layout — items placed top-to-bottom."""
 
-    def __init__(self, width: float, padding: float = 0, spacing: float = 0) -> None:
+    def __init__(self, width: float, padding: float = 0, spacing: float = 0, *, v_padding: float | None = None) -> None:
         self._width = width
-        self._padding = padding
+        self._padding = padding  # horizontal padding (and vertical if v_padding not set)
+        self._v_padding = v_padding if v_padding is not None else padding
         self._spacing = spacing
         self._items: list[tuple[NSView, float]] = []
         self._gaps: list[float] = []
@@ -64,8 +65,8 @@ class VStack:
 
     @property
     def content_height(self) -> float:
-        """Total height including padding."""
-        return self._padding + self._total_content + self._padding
+        """Total height including vertical padding."""
+        return self._v_padding + self._total_content + self._v_padding
 
     def to_view(self, *, min_height: float = 0) -> NSView:
         """Create an NSView with all items laid out top-to-bottom.
@@ -76,7 +77,7 @@ class VStack:
         h = max(self.content_height, min_height)
         container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, self._width, h))
         content_w = self._width - self._padding * 2
-        y = h - self._padding  # anchor to top of container
+        y = h - self._v_padding  # anchor to top of container
         for i, (view, item_h) in enumerate(self._items):
             y -= item_h
             view_w = view.frame().size.width

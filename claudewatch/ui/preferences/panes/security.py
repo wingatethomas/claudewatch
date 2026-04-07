@@ -55,7 +55,7 @@ class SecurityPane(BasePane):
         global_rules = set(global_rules_list)
         project_perms = repo.get_all_project_permissions()
 
-        stack = VStack(width=self.width, padding=CONTENT_PADDING, spacing=Spacing.SM)
+        stack = VStack(width=self.width, padding=CONTENT_PADDING, spacing=Spacing.SM, v_padding=Spacing.XS)
 
         # Monitoring toggles
         stack.add(self._build_section_header("MONITORING"), height=14)
