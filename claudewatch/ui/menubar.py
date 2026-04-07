@@ -38,6 +38,8 @@ from claudewatch.backend.core.session_log.dependencies import get_session_log_se
 from claudewatch.backend.core.settings import ensure_defaults_migrated, get_setting
 from claudewatch.backend.detection.dependencies import get_detection_service
 from claudewatch.backend.detection.service import DetectionService
+from claudewatch.backend.graph.dependencies import get_graph_service
+from claudewatch.backend.graph.service import GraphService
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.history.service import HistoryService
 from claudewatch.backend.notifications.dependencies import get_notification_service
@@ -83,6 +85,7 @@ class ClaudeWatchApp:
         bookmark_service: BookmarkService,
         history_service: HistoryService,
         analytics_service: AnalyticsService,
+        graph_service: GraphService,
         security_service: SecurityService,
     ) -> None:
         self._delegate = delegate
@@ -101,6 +104,7 @@ class ClaudeWatchApp:
         self._bookmark_service = bookmark_service
         self._history_service = history_service
         self._analytics_service = analytics_service
+        self._graph_service = graph_service
         self._security_service = security_service
         self._future: Future | None = None  # type: ignore[type-arg]
         self._last_poll_time = 0.0
@@ -244,8 +248,9 @@ class ClaudeWatchApp:
     def _bg_scan(self) -> None:
         try:
             self._analytics_service.incremental_scan()
+            self._graph_service.ingest_sessions()
         except Exception:
-            log.exception("analytics background scan failed")
+            log.exception("background scan failed")
         finally:
             with self._scan_lock:
                 self._scan_running = False
@@ -631,6 +636,7 @@ def main() -> None:
         bookmark_service=get_bookmark_service(),
         history_service=get_history_service(),
         analytics_service=get_analytics_service(),
+        graph_service=get_graph_service(),
         security_service=get_security_service(),
     )
     delegate._app = app
