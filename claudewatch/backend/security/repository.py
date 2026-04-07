@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
 import time
 
 from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, proj_key_to_cwd
@@ -538,6 +539,39 @@ class SecurityRepository:
                         )
                         break
         return alerts
+
+    # -- Command descriptions (via man whatis) --
+
+    _whatis_cache: dict[str, str] = {}
+
+    @classmethod
+    def get_command_description(cls, command: str) -> str:
+        """Get a one-line description for a command via whatis. Cached."""
+        parts = command.split(maxsplit=1)
+        base = parts[0] if parts else command
+        if base in cls._whatis_cache:
+            return cls._whatis_cache[base]
+
+        try:
+            result = subprocess.run(
+                ["whatis", base],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                # Take first line, extract description after " - "
+                first_line = result.stdout.strip().splitlines()[0]
+                if " - " in first_line:
+                    desc = first_line.split(" - ", 1)[1].strip()
+                    cls._whatis_cache[base] = desc
+                    return desc
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+        cls._whatis_cache[base] = ""
+        return ""
 
     # -- Helpers --
 

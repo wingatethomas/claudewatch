@@ -19,6 +19,7 @@ from Foundation import NSMakeRect
 from claudewatch.backend.core import features
 from claudewatch.backend.security.dependencies import get_security_service
 from claudewatch.backend.security.models import is_dangerous_permission
+from claudewatch.backend.security.repository import SecurityRepository
 from claudewatch.ui.components.layout import VStack
 from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.cards import card
@@ -470,19 +471,30 @@ class SecurityPane(BasePane):
         return rule
 
     @staticmethod
-    def format_permission_tooltip(rule: str) -> str:
-        """Generate a tooltip explaining what the permission allows."""
+    def format_permission_tooltip(rule: str) -> str:  # noqa: PLR0911
+        """Generate a tooltip explaining what the permission allows. Uses man whatis for descriptions."""
         if rule == "WebSearch":
-            return "Allows searching the web"
+            return "Allows Claude to search the web"
         if rule.startswith("WebFetch("):
-            return "Allows fetching content from a URL"
+            domain = rule[9:-1] if rule.endswith(")") else rule[9:]
+            return f"Allows Claude to fetch content from {domain.replace('domain:', '')}"
         if rule.startswith("Read("):
             return "Allows reading files matching this pattern"
         if not (rule.startswith("Bash(") and rule.endswith(")")):
             return rule
 
         inner = rule[5:-1]
+        base_cmd = inner.split(":*")[0] if ":*" in inner else inner.split()[0] if inner.split() else inner
+
+        # Look up man page description
+        desc = SecurityRepository.get_command_description(base_cmd)
+
         if ":*" in inner:
             tool = inner.split(":*")[0]
+            if desc:
+                return f"{tool} — {desc}\nAlways allowed without asking"
             return f"Can run '{tool}' with any arguments — always allowed without asking"
+
+        if desc:
+            return f"{base_cmd} — {desc}"
         return f"Always allowed: {inner}"
