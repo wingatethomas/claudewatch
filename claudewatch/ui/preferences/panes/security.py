@@ -116,14 +116,27 @@ class SecurityPane(BasePane):
                 row_y -= _row_h
                 short_name = name.split("@")[0] if "@" in name else name
                 name_label = label(short_name, size=Font.SECONDARY)
-                name_label.setFrame_(NSMakeRect(_card_pad, row_y, 140, 16))
+                name_label.setFrame_(NSMakeRect(_card_pad, row_y, 120, 16))
                 plugins_content.addSubview_(name_label)
 
                 meta = self._format_plugin_meta(entries)
                 if meta:
                     meta_label = secondary_label(meta, size=Font.SMALL)
-                    meta_label.setFrame_(NSMakeRect(150, row_y, self.card_width - 170, 16))
+                    meta_label.setFrame_(NSMakeRect(130, row_y, self.card_width - 200, 16))
                     plugins_content.addSubview_(meta_label)
+
+                # Uninstall button
+                uninstall_btn = NSButton.alloc().initWithFrame_(
+                    NSMakeRect(self.card_width - _card_pad - 16, row_y, 16, 16)
+                )
+                uninstall_btn.setTitle_("✕")
+                uninstall_btn.setBezelStyle_(0)
+                uninstall_btn.setBordered_(False)
+                uninstall_btn.setFont_(NSFont.systemFontOfSize_(9.0))
+                uninstall_btn.setTarget_(self.delegate)
+                uninstall_btn.setAction_(objc.selector(self.delegate.uninstallPlugin_, signature=b"v@:@"))
+                uninstall_btn.cell().setRepresentedObject_(name)
+                plugins_content.addSubview_(uninstall_btn)
 
             y -= card_h + Spacing.MD
         else:

@@ -345,6 +345,45 @@ class SecurityRepository:
             pass
         return []
 
+    # -- Plugin management --
+
+    def uninstall_plugin(self, plugin_name: str) -> bool:
+        """Remove a plugin from installed_plugins.json and settings.json."""
+        success = False
+
+        # Remove from installed_plugins.json
+        installed_path = os.path.join(self._claude_dir, "plugins", "installed_plugins.json")
+        try:
+            with open(installed_path) as f:
+                data = json.load(f)
+            plugins = data.get("plugins", {})
+            if isinstance(plugins, dict) and plugin_name in plugins:
+                del plugins[plugin_name]
+                data["plugins"] = plugins
+                with open(installed_path, "w") as f:
+                    json.dump(data, f, indent=2)
+                success = True
+        except (OSError, json.JSONDecodeError):
+            log.warning("security: failed to update installed_plugins.json")
+
+        # Remove from enabledPlugins in settings.json
+        settings_path = os.path.join(self._claude_dir, "settings.json")
+        try:
+            with open(settings_path) as f:
+                data = json.load(f)
+            enabled = data.get("enabledPlugins", {})
+            if isinstance(enabled, dict) and plugin_name in enabled:
+                del enabled[plugin_name]
+                data["enabledPlugins"] = enabled
+                with open(settings_path, "w") as f:
+                    json.dump(data, f, indent=2)
+        except (OSError, json.JSONDecodeError):
+            log.warning("security: failed to update settings.json")
+
+        if success:
+            log.info("security: uninstalled plugin '%s'", plugin_name)
+        return success
+
     # -- Helpers --
 
     @staticmethod

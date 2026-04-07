@@ -281,6 +281,33 @@ class PrefsDelegate(NSObject):
         if repo.clear_permissions(settings_path):
             self._show_security_confirmation("All permissions cleared")
 
+    @objc_callback
+    def uninstallPlugin_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from AppKit import NSAlert, NSAlertFirstButtonReturn
+
+        from claudewatch.ui.safety import get_represented_object
+
+        plugin_name = get_represented_object(sender)
+        if not plugin_name:
+            return
+
+        short_name = plugin_name.split("@")[0] if "@" in plugin_name else plugin_name
+
+        # Confirm before uninstalling
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_(f"Uninstall {short_name}?")
+        alert.setInformativeText_("This removes the plugin from Claude Code. You can reinstall it later.")
+        alert.addButtonWithTitle_("Uninstall")
+        alert.addButtonWithTitle_("Cancel")
+        if alert.runModal() != NSAlertFirstButtonReturn:
+            return
+
+        from claudewatch.backend.security.dependencies import get_security_service
+
+        repo = get_security_service()._repo
+        if repo.uninstall_plugin(plugin_name):
+            self._show_security_confirmation(f"{short_name} uninstalled")
+
     def _show_security_confirmation(self, message: str) -> None:
         """Show confirmation alert then refresh the Security pane preserving scroll."""
         from AppKit import NSAlert
