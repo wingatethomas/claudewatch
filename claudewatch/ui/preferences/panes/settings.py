@@ -203,7 +203,7 @@ def _build_feature_card(  # noqa: PLR0912, PLR0913, PLR0915
             facet_switch = NSSwitch.alloc().initWithFrame_(NSMakeRect(card_w - Spacing.LG - 46, facet_y + 9, 46, 22))
             val = features.get_facet(key, facet.name)
             facet_switch.setState_(NSControlStateValueOn if val else NSControlStateValueOff)
-            facet_switch.cell().setRepresentedObject_(f"{key}|{facet.name}")
+            facet_switch.setIdentifier_(f"{key}|{facet.name}")
             facet_switch.setTarget_(delegate)
             facet_switch.setAction_(objc.selector(delegate.facetBoolChanged_, signature=b"v@:@"))
             facet_switch.setEnabled_(enabled)
