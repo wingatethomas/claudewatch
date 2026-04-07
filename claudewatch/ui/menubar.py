@@ -221,7 +221,7 @@ class ClaudeWatchApp:
             if all_alerts:
                 self._security_service.process_alerts(all_alerts)
         except Exception:
-            log.debug("security check failed", exc_info=True)
+            log.warning("security check failed", exc_info=True)
 
     _SCAN_INTERVAL = 30
 

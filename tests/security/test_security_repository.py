@@ -28,7 +28,7 @@ def claude_dir(tmp_path: str) -> str:
     _write_json(
         os.path.join(plugins_dir, "blocklist.json"),
         {
-            "entries": [{"id": "malicious@evil", "reason": "security"}],
+            "plugins": [{"plugin": "malicious@evil", "reason": "security"}],
         },
     )
     _write_json(
@@ -70,7 +70,7 @@ class TestCaptureSnapshot:
         snap = repo.capture_snapshot()
 
         assert "plugins" in snap.plugins_installed
-        assert "entries" in snap.plugins_blocklist
+        assert "plugins" in snap.plugins_blocklist
         assert "enabledPlugins" in snap.settings
         assert "permissions" in snap.settings_local
         assert "allow_remote_control" in snap.policy_limits
@@ -198,7 +198,7 @@ class TestDiffSnapshots:
         repo = SecurityRepository(claude_dir)
         old = repo.capture_snapshot()
 
-        _write_json(os.path.join(claude_dir, "plugins/blocklist.json"), {"entries": []})
+        _write_json(os.path.join(claude_dir, "plugins/blocklist.json"), {"plugins": []})
         new = repo.capture_snapshot()
         alerts = repo.diff_snapshots(old, new)
 

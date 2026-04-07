@@ -47,21 +47,15 @@ class SecurityService(BaseService):
             return []
 
         current = self._repo.capture_snapshot()
+        baseline = self._repo.load_baseline()
 
-        if not self._initialized:
-            baseline = self._repo.load_baseline()
-            if baseline is None:
-                self._repo.save_baseline(current)
-                self._initialized = True
-                return []
+        if baseline is None:
+            self._repo.save_baseline(current)
             self._initialized = True
-            alerts = self._repo.diff_snapshots(baseline, current)
-        else:
-            baseline = self._repo.load_baseline()
-            if baseline is None:
-                self._repo.save_baseline(current)
-                return []
-            alerts = self._repo.diff_snapshots(baseline, current)
+            return []
+
+        self._initialized = True
+        alerts = self._repo.diff_snapshots(baseline, current)
 
         if alerts:
             self._repo.save_baseline(current)

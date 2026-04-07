@@ -248,10 +248,17 @@ class SecurityRepository:
 
     @staticmethod
     def _blocklist_keys(blocklist_data: dict[str, object]) -> list[str]:
-        """Extract blocked plugin identifiers."""
-        entries = blocklist_data.get("entries", [])
+        """Extract blocked plugin identifiers.
+
+        Real format: {"plugins": [{"plugin": "name@marketplace", ...}]}
+        """
+        entries = blocklist_data.get("plugins", [])
         if isinstance(entries, list):
-            return [e.get("id", "") for e in entries if isinstance(e, dict) and e.get("id")]
+            return [
+                e.get("plugin", "") or e.get("id", "")
+                for e in entries
+                if isinstance(e, dict) and (e.get("plugin") or e.get("id"))
+            ]
         return []
 
     @staticmethod
