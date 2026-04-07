@@ -264,8 +264,12 @@ class PrefsDelegate(NSObject):
         from claudewatch.backend.security.dependencies import get_security_service
 
         repo = get_security_service()._repo
+        # Show what's being removed in the confirmation
+        from claudewatch.ui.preferences.panes.security import SecurityPane
+
+        display = SecurityPane._format_permission_rule(rule)
         if repo.remove_permission_rule(settings_path, rule):
-            self._show_security_confirmation("Permission removed")
+            self._show_security_confirmation(f"Removed: {display}")
 
     @objc_callback
     def clearPermissions_(self, sender: objc.objc_object) -> None:  # noqa: N802

@@ -18,9 +18,13 @@ _BASELINE_KEY = "security.last_config_snapshot"
 class SecurityRepository:
     """Reads Claude config files, persists baselines, and diffs snapshots."""
 
+    _PROJECT_CACHE_TTL = 30.0  # seconds
+
     def __init__(self, claude_dir: str = _CLAUDE_DIR, session_log: object | None = None) -> None:
         self._claude_dir = claude_dir
         self._session_log = session_log
+        self._project_perms_cache: list[tuple[str, str, list[str]]] | None = None
+        self._project_perms_cache_time: float = 0.0
 
     # -- Config capture --
 
@@ -231,14 +235,24 @@ class SecurityRepository:
 
     # -- Permission management --
 
-    def get_all_project_permissions(self) -> list[tuple[str, str, list[str]]]:
+    def get_all_project_permissions(self, *, force: bool = False) -> list[tuple[str, str, list[str]]]:
         """Find permission rules for all known Claude projects.
 
         Scans ~/.claude/projects/ for all project keys, resolves each to a CWD,
-        and reads .claude/settings.local.json from that CWD.
+        and reads .claude/settings.local.json from that CWD. Cached for 30 seconds.
 
         Returns list of (project_name, settings_path, rules).
         """
+        import time as _time  # noqa: PLC0415
+
+        now = _time.time()
+        if (
+            not force
+            and self._project_perms_cache is not None
+            and now - self._project_perms_cache_time < self._PROJECT_CACHE_TTL
+        ):
+            return self._project_perms_cache
+
         from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, proj_key_to_cwd  # noqa: PLC0415
 
         results: list[tuple[str, str, list[str]]] = []
@@ -271,7 +285,13 @@ class SecurityRepository:
                 project_name = f"{parent}/{basename}" if parent and parent != "/" else basename
                 results.append((project_name, settings_path, rules))
 
-        return sorted(results, key=lambda x: x[0])
+        self._project_perms_cache = sorted(results, key=lambda x: x[0])
+        self._project_perms_cache_time = now
+        return self._project_perms_cache
+
+    def invalidate_project_cache(self) -> None:
+        """Force refresh on next get_all_project_permissions call."""
+        self._project_perms_cache = None
 
     def get_global_permissions(self) -> tuple[str, list[str]]:
         """Get global permission rules from ~/.claude/settings.local.json.
@@ -305,6 +325,7 @@ class SecurityRepository:
             with open(settings_path, "w") as f:
                 json.dump(data, f, indent=2)
             log.info("security: removed permission rule '%s' from %s", rule[:50], settings_path)
+            self.invalidate_project_cache()
             return True
         except OSError:
             log.warning("security: failed to write %s", settings_path)
@@ -329,6 +350,7 @@ class SecurityRepository:
             with open(settings_path, "w") as f:
                 json.dump(data, f, indent=2)
             log.info("security: cleared all permissions from %s", settings_path)
+            self.invalidate_project_cache()
             return True
         except OSError:
             log.warning("security: failed to write %s", settings_path)
@@ -375,6 +397,7 @@ class SecurityRepository:
                 with open(settings_path, "w") as f:
                     json.dump(data, f, indent=2)
                 log.info("security: removed %d dangerous permissions from %s", removed, settings_path)
+                self.invalidate_project_cache()
             except OSError:
                 log.warning("security: failed to write %s", settings_path)
                 return 0
