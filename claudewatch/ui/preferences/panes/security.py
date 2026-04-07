@@ -244,13 +244,13 @@ class SecurityPane(BasePane):
 
     def _build_blocklist_source(self, fetched_date: str) -> NSView:
         container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 0, 14))
-        source_text = f"Synced from Anthropic on {fetched_date}  ·"
+        source_text = f"Synced from Anthropic on {fetched_date}"
         source_label = secondary_label(source_text, size=Font.SMALL)
-        source_label.setFrame_(NSMakeRect(0, 0, 250, 14))
+        source_label.setFrame_(NSMakeRect(0, 0, 220, 14))
         container.addSubview_(source_label)
 
-        link_btn = NSButton.alloc().initWithFrame_(NSMakeRect(252, 0, 40, 14))
-        link_btn.setTitle_("View ↗")
+        link_btn = NSButton.alloc().initWithFrame_(NSMakeRect(222, 0, 50, 14))
+        link_btn.setTitle_("· View ↗")
         link_btn.setBezelStyle_(0)
         link_btn.setBordered_(False)
         link_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
@@ -274,10 +274,15 @@ class SecurityPane(BasePane):
             explanation = entry.get("text", "")
 
             is_conflict = plugin_name in installed_plugins
-            name_display = f"⚠ {short}" if is_conflict else short
+            if is_conflict:
+                name_color = theme.danger
+                name_display = f"⚠ {short}  (installed)"
+            else:
+                name_color = theme.secondary
+                name_display = short
 
-            name_label = label(name_display, size=Font.SECONDARY, bold=True, color=theme.danger)
-            name_label.setFrame_(NSMakeRect(_CARD_PAD, row_y + 16, 200, 16))
+            name_label = label(name_display, size=Font.SECONDARY, bold=True, color=name_color)
+            name_label.setFrame_(NSMakeRect(_CARD_PAD, row_y + 16, self.card_width - _CARD_PAD * 2 - 80, 16))
             content.addSubview_(name_label)
 
             reason_display = explanation or reason or "No reason given"
