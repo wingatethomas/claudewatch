@@ -170,8 +170,8 @@ class SecurityRepository:
         alerts: list[SecurityAlert] = []
 
         for key in ("allow_remote_control", "allow_quick_web_setup"):
-            old_val = old.policy_limits.get(key)
-            new_val = new.policy_limits.get(key)
+            old_val = self._get_policy_value(old.policy_limits, key)
+            new_val = self._get_policy_value(new.policy_limits, key)
             if old_val != new_val and new_val is True:
                 readable = key.replace("_", " ").title()
                 alerts.append(
@@ -185,6 +185,29 @@ class SecurityRepository:
                 )
 
         return alerts
+
+    @staticmethod
+    def _get_policy_value(policy_data: dict[str, object], key: str) -> bool | None:
+        """Extract a policy value, handling both flat and nested formats.
+
+        Flat:   {"allow_remote_control": false}
+        Nested: {"restrictions": {"allow_remote_control": {"allowed": false}}}
+        """
+        # Try flat format first
+        val = policy_data.get(key)
+        if isinstance(val, bool):
+            return val
+
+        # Try nested format
+        restrictions = policy_data.get("restrictions")
+        if isinstance(restrictions, dict):
+            entry = restrictions.get(key)
+            if isinstance(entry, dict):
+                allowed = entry.get("allowed")
+                if isinstance(allowed, bool):
+                    return allowed
+
+        return None
 
     def _diff_permissions(self, old: ConfigSnapshot, new: ConfigSnapshot) -> list[SecurityAlert]:
         alerts: list[SecurityAlert] = []

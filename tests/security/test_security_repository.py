@@ -225,7 +225,7 @@ class TestDiffSnapshots:
         assert any(a.alert_type == "marketplace_added" for a in alerts)
         assert any("sketchy-marketplace" in a.message for a in alerts)
 
-    def test_remote_control_enabled(self, claude_dir: str) -> None:
+    def test_remote_control_enabled_flat(self, claude_dir: str) -> None:
         repo = SecurityRepository(claude_dir)
         old = repo.capture_snapshot()
 
@@ -234,6 +234,36 @@ class TestDiffSnapshots:
             {
                 "allow_remote_control": True,
                 "allow_quick_web_setup": False,
+            },
+        )
+        new = repo.capture_snapshot()
+        alerts = repo.diff_snapshots(old, new)
+
+        assert len(alerts) == 1
+        assert alerts[0].alert_type == "policy_changed"
+        assert alerts[0].severity == "critical"
+
+    def test_remote_control_enabled_nested(self, claude_dir: str) -> None:
+        """Real format: restrictions.allow_remote_control.allowed."""
+        _write_json(
+            os.path.join(claude_dir, "policy-limits.json"),
+            {
+                "restrictions": {
+                    "allow_remote_control": {"allowed": False},
+                    "allow_quick_web_setup": {"allowed": False},
+                },
+            },
+        )
+        repo = SecurityRepository(claude_dir)
+        old = repo.capture_snapshot()
+
+        _write_json(
+            os.path.join(claude_dir, "policy-limits.json"),
+            {
+                "restrictions": {
+                    "allow_remote_control": {"allowed": True},
+                    "allow_quick_web_setup": {"allowed": False},
+                },
             },
         )
         new = repo.capture_snapshot()
