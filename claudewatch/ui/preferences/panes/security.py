@@ -205,8 +205,8 @@ class SecurityPane(BasePane):
 
         # Permission rules — categorized as broad (wildcard) vs specific
         if perm_rules:
-            broad = sorted(r for r in perm_rules if "*" in r)
-            specific = sorted(r for r in perm_rules if "*" not in r)
+            broad = sorted(r for r in perm_rules if ":*" in r)
+            specific = sorted(r for r in perm_rules if ":*" not in r)
             all_rules = broad + specific
 
             y = self._add_section_header(inner, "PERMISSION RULES", y)
@@ -219,8 +219,7 @@ class SecurityPane(BasePane):
 
             for rule in all_rules:
                 rules_y -= _row_h
-                is_broad = "*" in rule
-                # Parse tool name from Bash(...) format
+                is_broad = ":*" in rule  # only wildcard args, not paths with *
                 display_rule = self._format_permission_rule(rule)
                 if len(display_rule) > _MAX_RULE_LEN:
                     display_rule = display_rule[: _MAX_RULE_LEN - 1] + "…"
@@ -307,16 +306,31 @@ class SecurityPane(BasePane):
     def _format_permission_rule(rule: str) -> str:
         """Make a permission rule human-readable.
 
-        'Bash(python3:*)' → 'Bash: python3 (any args)'
-        'Bash(wc -l /path/...)' → 'Bash: wc -l /path/...'
+        'Bash(python3:*)' → 'python3 — any arguments'
+        'Bash(wc -l /Users/.../projects/-Users-dev-myapp/*.jsonl)' → 'wc -l — myapp session logs'
         """
-        if rule.startswith("Bash(") and rule.endswith(")"):
-            inner = rule[5:-1]
-            if ":*" in inner:
-                tool = inner.split(":*")[0]
-                return f"Bash: {tool} (any args)"
-            return f"Bash: {inner}"
-        return rule
+        if not (rule.startswith("Bash(") and rule.endswith(")")):
+            return rule
+
+        inner = rule[5:-1]
+
+        # Wildcard: 'python3:*' → broad permission
+        if ":*" in inner:
+            tool = inner.split(":*")[0]
+            return f"{tool} — any arguments"
+
+        # Path-based: extract the meaningful part
+        if "/.claude/projects/" in inner:
+            # Extract project name from Claude projects path
+            parts = inner.split("/.claude/projects/")
+            command = parts[0].strip()
+            proj_path = parts[1] if len(parts) > 1 else ""
+            # Project key looks like -Users-dev-myapp, extract last segment
+            proj_segments = proj_path.split("/")[0].split("-")
+            project_name = proj_segments[-1] if proj_segments else proj_path
+            return f"{command} — {project_name} session logs"
+
+        return inner
 
     @staticmethod
     def _get_blocklist_entries(snapshot: object) -> list[dict[str, str]]:
