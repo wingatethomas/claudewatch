@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from claudewatch.backend.graph.etl_code import CodeETL
-from claudewatch.backend.graph.store import GraphStore
+from claudewatch.backend.graph.models import GraphStore
+from claudewatch.backend.graph.repository import CodeETL
 
 
 @pytest.fixture

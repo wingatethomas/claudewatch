@@ -5,9 +5,8 @@ import os
 
 import pytest
 
-from claudewatch.backend.analytics.models import AgentInfo
-from claudewatch.backend.analytics.scanner import AgentScanner
-from claudewatch.backend.analytics.store import AnalyticsStore
+from claudewatch.backend.analytics.models import AgentInfo, AnalyticsStore
+from claudewatch.backend.analytics.repository import AgentScanner
 
 
 @pytest.fixture

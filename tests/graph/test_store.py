@@ -5,7 +5,7 @@ import os
 import kuzu
 import pytest
 
-from claudewatch.backend.graph.store import GraphStore
+from claudewatch.backend.graph.models import GraphStore
 
 
 @pytest.fixture

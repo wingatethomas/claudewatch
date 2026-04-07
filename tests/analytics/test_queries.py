@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from claudewatch.backend.analytics.ingest import Ingest
 from claudewatch.backend.analytics.models import (
+    AnalyticsStore,
     FileHotspot,
     FileUsage,
     GlobalSummary,
@@ -20,8 +20,7 @@ from claudewatch.backend.analytics.models import (
     ToolSequence,
     ToolUsage,
 )
-from claudewatch.backend.analytics.queries import Queries
-from claudewatch.backend.analytics.store import AnalyticsStore
+from claudewatch.backend.analytics.repository import Ingest, Queries
 
 
 def _write_jsonl(path: str, entries: list[dict]) -> None:

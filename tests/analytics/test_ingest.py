@@ -5,8 +5,7 @@ import os
 
 import pytest
 
-from claudewatch.backend.analytics.ingest import Ingest, _parse_epoch
-from claudewatch.backend.analytics.store import (
+from claudewatch.backend.analytics.models import (
     AnalyticsStore,
     CheckpointRow,
     EventRow,
@@ -16,6 +15,7 @@ from claudewatch.backend.analytics.store import (
     TokenRow,
     ToolRow,
 )
+from claudewatch.backend.analytics.repository import Ingest, _parse_epoch
 
 
 @pytest.fixture

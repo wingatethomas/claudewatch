@@ -27,10 +27,8 @@ Each domain is a package under `backend/` with at minimum:
 
 Additional modules as needed:
 
-- `repository.py` — persistence layer (JSON file I/O, database access). Service delegates here for reads and writes.
-- `models.py` — domain-specific data types (frozen dataclasses, enums, TypedDicts). Not DTOs — those live in `core/dto.py`.
-- `constants.py` — domain-specific configuration values.
-- `store.py` — database schema (SQLAlchemy ORM models) and connection lifecycle, for domains that use a database instead of JSON files.
+- `repository.py` — persistence layer (JSON file I/O, database access). Service delegates here for all reads and writes.
+- `models.py` — domain-specific data types (ORM model classes, frozen dataclasses, enums, store lifecycle). For DB-backed domains, this includes the SQLAlchemy `Base`, `*Row` classes, and the `Store` class.
 
 Cross-layer DTOs (`BookmarkDTO`, `HistoryEntryDTO`, etc.) live in `core/dto.py` and inherit `BaseDTO`. Domain-internal return types live in the domain's `models.py`.
 

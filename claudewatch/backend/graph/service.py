@@ -1,4 +1,4 @@
-"""Graph service — orchestrates ETLs, mapper, queries, background lifecycle."""
+"""Graph service — orchestrates repository operations and background lifecycle."""
 
 from __future__ import annotations
 
@@ -6,11 +6,8 @@ import logging
 import os
 
 from claudewatch.backend.core.service import BaseService
-from claudewatch.backend.graph.etl_code import CodeETL
-from claudewatch.backend.graph.etl_sessions import SessionETL
-from claudewatch.backend.graph.mapper import EditMapper
-from claudewatch.backend.graph.queries import GraphQueries
-from claudewatch.backend.graph.store import GraphStore
+from claudewatch.backend.graph.models import GraphStore
+from claudewatch.backend.graph.repository import CodeETL, EditMapper, GraphQueries, SessionETL
 
 log = logging.getLogger("claudewatch")
 

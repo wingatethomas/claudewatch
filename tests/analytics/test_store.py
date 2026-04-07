@@ -5,7 +5,7 @@ import os
 import pytest
 from sqlalchemy.engine import Engine
 
-from claudewatch.backend.analytics.store import AnalyticsStore, Base, SchemaVersionRow
+from claudewatch.backend.analytics.models import AnalyticsStore, Base, SchemaVersionRow
 
 
 @pytest.fixture

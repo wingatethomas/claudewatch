@@ -5,15 +5,14 @@ import os
 
 import pytest
 
-from claudewatch.backend.graph.etl_sessions import SessionETL
 from claudewatch.backend.graph.models import (
     ActionStep,
+    GraphStore,
     ImpactResult,
     ProjectGraphResult,
     WorkflowPattern,
 )
-from claudewatch.backend.graph.queries import GraphQueries
-from claudewatch.backend.graph.store import GraphStore
+from claudewatch.backend.graph.repository import GraphQueries, SessionETL
 
 
 def _write_jsonl(path: str, entries: list[dict]) -> None:

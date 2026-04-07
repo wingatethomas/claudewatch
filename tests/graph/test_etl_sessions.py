@@ -5,8 +5,8 @@ import os
 
 import pytest
 
-from claudewatch.backend.graph.etl_sessions import SessionETL
-from claudewatch.backend.graph.store import GraphStore
+from claudewatch.backend.graph.models import GraphStore
+from claudewatch.backend.graph.repository import SessionETL
 
 
 def _write_jsonl(path: str, entries: list[dict]) -> None:

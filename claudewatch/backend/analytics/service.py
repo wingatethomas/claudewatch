@@ -1,15 +1,12 @@
-"""Analytics service — thin facade coordinating store, ingest, scanner, queries."""
+"""Analytics service — thin facade coordinating repository operations."""
 
 from __future__ import annotations
 
 import logging
 from typing import Protocol
 
-from claudewatch.backend.analytics.ingest import Ingest
-from claudewatch.backend.analytics.models import AgentInfo
-from claudewatch.backend.analytics.queries import Queries
-from claudewatch.backend.analytics.scanner import AgentScanner
-from claudewatch.backend.analytics.store import AnalyticsStore
+from claudewatch.backend.analytics.models import AgentInfo, AnalyticsStore
+from claudewatch.backend.analytics.repository import AgentScanner, Ingest, Queries
 from claudewatch.backend.core.paths import cwd_to_proj_key
 from claudewatch.backend.core.service import BaseService
 
