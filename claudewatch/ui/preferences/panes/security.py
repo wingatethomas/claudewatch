@@ -454,7 +454,6 @@ class SecurityPane(BasePane):
         return " · ".join(parts)
 
     @staticmethod
-    @staticmethod
     def format_permission_display(rule: str) -> str:
         """Format a permission rule for display — raw command + whatis description for wildcards."""
         if rule.startswith("Bash(") and rule.endswith(")"):
