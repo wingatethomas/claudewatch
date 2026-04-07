@@ -43,3 +43,11 @@ paths:
 14. **NSSwitch has no cell()**: `NSSwitch.cell()` returns None. Use `setIdentifier_()` to store represented objects on NSSwitch, and `get_represented_object()` in safety.py handles the fallback to `identifier()`. Never call `.cell().setRepresentedObject_()` on NSSwitch.
 
 15. **Scroll position resets on pane rebuild**: `show_pane()` rebuilds the entire pane, resetting scroll to top. If you need to preserve scroll after a user action (like deleting a row), save the scroll position before the action, run the action, rebuild, then restore.
+
+16. **Build minimal UI first, then polish**: Don't over-build on the first pass. Ship a functional version, user-test it, then iterate on spacing/colors/descriptions. Trying to get UX perfect in one commit leads to 12+ fix commits.
+
+17. **Static lookup tables over subprocess calls**: For display data (command descriptions, label translations), use a built-in dict. Only use subprocess (`whatis`, `man`) as a background fallback for unknown entries. Never block the main thread with subprocess for UI rendering.
+
+18. **Smoke-test new AppKit widgets**: Before using any AppKit class for the first time (NSSwitch, NSPopUpButton, etc.), verify in a test script that `cell()`, `setToolTip_()`, `representedObject()`, and other methods you plan to use actually work on that class. Don't assume API parity between widget types.
+
+19. **Color semantics**: Red (`theme.danger`) = dangerous/critical only. Amber (`theme.warning`) = broad/wildcard but not dangerous. Gray (`theme.secondary`) = normal/specific. Don't use red for informational warnings.

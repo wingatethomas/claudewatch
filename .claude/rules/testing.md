@@ -29,3 +29,11 @@ Every pane registered in `window.py` must have at least one test in `tests/ui/te
 ## Verify real file formats before writing parsers
 
 Never assume the structure of Claude Code config files (plugins, blocklist, settings, policy). Read the actual file from `~/.claude/` first and confirm the keys, nesting, and value types. Document the real format in code comments when it differs from what you'd expect.
+
+## Smoke-test before committing
+
+Before committing a new UI feature:
+- Launch the app (`uv run claudewatch`) and verify it doesn't crash on the new pane/view
+- Test with both empty data and populated data
+- Verify scroll behavior if the content exceeds the viewport
+- Check that text doesn't truncate unexpectedly at the actual window width

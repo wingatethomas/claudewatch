@@ -52,6 +52,7 @@ Cross-layer DTOs (`BookmarkDTO`, `HistoryEntryDTO`, etc.) live in `core/dto.py` 
 - Never access private methods (`_method`) across module boundaries. If a UI pane needs data from a repository, the repository must expose a public method for it.
 - The service layer is the public API for each domain. UI code calls the service, the service delegates to the repository. UI should never reach through the service into the repository's internals (`service._repo._private_method()` is a violation).
 - When adding new data accessors, add them to the repository as public methods and expose through the service if needed.
+- If UI needs direct repository access (e.g., for a preferences pane), expose a `repository` property on the service. Never access `service._repo` from outside the service module.
 
 ## Typing Rules
 
