@@ -14,7 +14,7 @@ paths:
 
 3. **Cards own their internals**: Cards position their own children using manual coordinates inside `contentView()`. VStack only positions the card itself.
 
-4. **No manual pixel math outside cards**: Pane layout (between header and bottom) goes through VStack. Manual y-tracking is only allowed inside card content views.
+4. **No manual pixel math outside cards**: Pane layout (between header and bottom) MUST go through VStack. Manual y-tracking is only allowed inside card content views. If you find yourself writing `y -= height + spacing` at the pane level, you're doing it wrong — use `stack.add(view, height=h)`. New panes that don't use VStack will be rejected in review.
 
 ## Component Architecture
 
@@ -37,3 +37,9 @@ paths:
 12. **No `import X as Y`**: Naming should be clear enough without aliasing. If a name clashes, rename the local variable instead.
 
 13. **Use design tokens**: Import `Spacing`, `Font`, `Colors` from `components.tokens` instead of hardcoding pixel values, font sizes, or color constructors.
+
+## AppKit Gotchas
+
+14. **NSSwitch has no cell()**: `NSSwitch.cell()` returns None. Use `setIdentifier_()` to store represented objects on NSSwitch, and `get_represented_object()` in safety.py handles the fallback to `identifier()`. Never call `.cell().setRepresentedObject_()` on NSSwitch.
+
+15. **Scroll position resets on pane rebuild**: `show_pane()` rebuilds the entire pane, resetting scroll to top. If you need to preserve scroll after a user action (like deleting a row), save the scroll position before the action, run the action, rebuild, then restore.

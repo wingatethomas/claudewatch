@@ -11,3 +11,21 @@ paths:
 - Use `tmp_path` fixture for tests that need filesystem state.
 - When mocking `CLAUDE_PROJECTS_DIR`, patch at `claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR` (the module that reads it). If a function also imports it directly, patch both.
 - Reset module-level state between tests (e.g. `_host_app_cache.clear()` in `setup_method`).
+
+## Write operations MUST have tests
+
+Any code that writes to user files (JSON config, SQLite, plist) must have tests covering:
+- The happy path (write succeeds, file reflects change)
+- Missing file (returns False or raises gracefully)
+- Preservation (other data in the file is not lost)
+- Idempotency where applicable
+
+Never merge code that modifies files in `~/.claude/` or `~/Library/` without test coverage on the write path.
+
+## New preference panes MUST have render tests
+
+Every pane registered in `window.py` must have at least one test in `tests/ui/test_panes.py` that calls `pane.build()` and asserts it returns `NSView` without crashing. Test with both empty data and populated data.
+
+## Verify real file formats before writing parsers
+
+Never assume the structure of Claude Code config files (plugins, blocklist, settings, policy). Read the actual file from `~/.claude/` first and confirm the keys, nesting, and value types. Document the real format in code comments when it differs from what you'd expect.
