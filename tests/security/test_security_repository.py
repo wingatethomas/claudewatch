@@ -323,3 +323,143 @@ class TestDiffSnapshots:
         types = {a.alert_type for a in alerts}
         assert "plugin_installed" in types
         assert "policy_changed" in types
+
+
+class TestRemovePermissionRule:
+    def test_removes_single_rule(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        settings_path = os.path.join(claude_dir, "settings.local.json")
+        assert repo.remove_permission_rule(settings_path, "Bash(python3:*)")
+
+        rules = repo._read_permission_rules(settings_path)
+        assert "Bash(python3:*)" not in rules
+
+    def test_returns_false_for_missing_rule(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        settings_path = os.path.join(claude_dir, "settings.local.json")
+        assert not repo.remove_permission_rule(settings_path, "Bash(nonexistent:*)")
+
+    def test_returns_false_for_missing_file(self, tmp_path: str) -> None:
+        repo = SecurityRepository(str(tmp_path))
+        assert not repo.remove_permission_rule("/nonexistent/path.json", "rule")
+
+    def test_preserves_other_rules(self, tmp_path: str) -> None:
+        path = os.path.join(tmp_path, "settings.local.json")
+        _write_json(path, {"permissions": {"allow": ["rule1", "rule2", "rule3"]}})
+        repo = SecurityRepository(str(tmp_path))
+        repo.remove_permission_rule(path, "rule2")
+
+        rules = repo._read_permission_rules(path)
+        assert rules == ["rule1", "rule3"]
+
+
+class TestClearPermissions:
+    def test_clears_all_rules(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        settings_path = os.path.join(claude_dir, "settings.local.json")
+        assert repo.clear_permissions(settings_path)
+
+        rules = repo._read_permission_rules(settings_path)
+        assert rules == []
+
+    def test_returns_false_for_missing_file(self, tmp_path: str) -> None:
+        repo = SecurityRepository(str(tmp_path))
+        assert not repo.clear_permissions("/nonexistent/path.json")
+
+    def test_preserves_other_settings(self, tmp_path: str) -> None:
+        path = os.path.join(tmp_path, "settings.local.json")
+        _write_json(path, {"permissions": {"allow": ["rule1"]}, "other_key": "value"})
+        repo = SecurityRepository(str(tmp_path))
+        repo.clear_permissions(path)
+
+        with open(path) as f:
+            data = json.load(f)
+        assert data["other_key"] == "value"
+        assert data["permissions"]["allow"] == []
+
+
+class TestRemoveDangerousPermissions:
+    def test_removes_dangerous_only(self, tmp_path: str) -> None:
+        path = os.path.join(tmp_path, "settings.local.json")
+        _write_json(
+            path,
+            {
+                "permissions": {
+                    "allow": [
+                        "Bash(rm:*)",
+                        "Bash(sudo:*)",
+                        "Bash(uv run pytest:*)",
+                        "Bash(git checkout:*)",
+                    ],
+                },
+            },
+        )
+        repo = SecurityRepository(str(tmp_path))
+        removed = repo.remove_dangerous_permissions(path)
+
+        assert removed == 2
+        rules = repo._read_permission_rules(path)
+        assert "Bash(uv run pytest:*)" in rules
+        assert "Bash(git checkout:*)" in rules
+        assert "Bash(rm:*)" not in rules
+        assert "Bash(sudo:*)" not in rules
+
+    def test_returns_zero_when_no_dangerous(self, tmp_path: str) -> None:
+        path = os.path.join(tmp_path, "settings.local.json")
+        _write_json(path, {"permissions": {"allow": ["Bash(uv run:*)"]}})
+        repo = SecurityRepository(str(tmp_path))
+        assert repo.remove_dangerous_permissions(path) == 0
+
+    def test_returns_zero_for_missing_file(self, tmp_path: str) -> None:
+        repo = SecurityRepository(str(tmp_path))
+        assert repo.remove_dangerous_permissions("/nonexistent.json") == 0
+
+
+class TestUninstallPlugin:
+    def test_removes_from_installed(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        assert repo.uninstall_plugin("swift-lsp@official")
+
+        snap = repo.capture_snapshot()
+        plugins = snap.plugins_installed.get("plugins", {})
+        assert "swift-lsp@official" not in plugins
+        assert "code-review@official" in plugins  # others preserved
+
+    def test_removes_from_enabled(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        repo.uninstall_plugin("swift-lsp@official")
+
+        snap = repo.capture_snapshot()
+        enabled = snap.settings.get("enabledPlugins", {})
+        assert "swift-lsp@official" not in enabled
+
+    def test_returns_false_for_unknown_plugin(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        assert not repo.uninstall_plugin("nonexistent@fake")
+
+
+class TestPublicAPI:
+    def test_get_plugin_keys(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        snap = repo.capture_snapshot()
+        keys = repo.get_plugin_keys(snap)
+        assert "code-review@official" in keys
+        assert "swift-lsp@official" in keys
+
+    def test_get_policy_value(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        snap = repo.capture_snapshot()
+        assert repo.get_policy_value(snap, "allow_remote_control") is False
+
+    def test_get_blocklist_entries(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        snap = repo.capture_snapshot()
+        entries = repo.get_blocklist_entries(snap)
+        assert len(entries) == 1
+        assert entries[0]["plugin"] == "malicious@evil"
+
+    def test_get_global_permissions(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        path, rules = repo.get_global_permissions()
+        assert "Bash(python3:*)" in rules
+        assert path.endswith("settings.local.json")

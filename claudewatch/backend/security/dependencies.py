@@ -33,8 +33,9 @@ register(
 
 @lru_cache(maxsize=1)
 def get_security_service() -> SecurityService:
+    session_log = get_session_log_service()
     return SecurityService(
-        repository=SecurityRepository(),
+        repository=SecurityRepository(session_log=session_log),
         notification_service=get_notification_service(),
-        session_log_service=get_session_log_service(),
+        session_log_service=session_log,
     )

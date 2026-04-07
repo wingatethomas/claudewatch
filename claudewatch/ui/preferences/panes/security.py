@@ -50,7 +50,7 @@ class SecurityPane(BasePane):
         scroll_h = content_top
         plugins_data = snapshot.plugins_installed.get("plugins", {})
         plugin_count = len(plugins_data) if isinstance(plugins_data, dict) else 0
-        blocklist_entries = self._get_blocklist_entries(snapshot)
+        blocklist_entries = repo.get_blocklist_entries(snapshot)
         global_path, global_rules_list = repo.get_global_permissions()
         global_rules = set(global_rules_list)
         project_perms = repo.get_all_project_permissions()
@@ -167,7 +167,7 @@ class SecurityPane(BasePane):
 
         for key, display_name, description in _policies:
             policy_y -= _policy_row_h
-            val = repo._get_policy_value(snapshot.policy_limits, key)
+            val = repo.get_policy_value(snapshot, key)
             status = "Enabled" if val else "Disabled"
             color = theme.danger if val else theme.secondary
 
@@ -219,7 +219,7 @@ class SecurityPane(BasePane):
             blocked_content = blocked_card.contentView()
             blocked_y = blocked_h - _card_pad
 
-            installed_plugins = repo._plugin_keys(snapshot.plugins_installed)
+            installed_plugins = repo.get_plugin_keys(snapshot)
 
             for entry in blocklist_entries:
                 blocked_y -= _blocked_row_h
@@ -483,14 +483,3 @@ class SecurityPane(BasePane):
         if len(inner) > 40:
             return inner[:39] + "…"
         return inner
-
-    @staticmethod
-    def _get_blocklist_entries(snapshot: object) -> list[dict[str, str]]:
-        """Get blocklist entries with plugin name and reason."""
-        blocklist = snapshot.plugins_blocklist
-        if not isinstance(blocklist, dict):
-            return []
-        plugins = blocklist.get("plugins", [])
-        if not isinstance(plugins, list):
-            return []
-        return [e for e in plugins if isinstance(e, dict) and e.get("plugin")]

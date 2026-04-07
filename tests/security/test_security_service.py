@@ -95,29 +95,18 @@ class TestCheckConfig:
 
 class TestCheckRuntime:
     def test_detects_unrestricted(self) -> None:
-        session_log = MagicMock()
-        session_log.find_most_recent.return_value = "/fake/path.jsonl"
+        repo = MagicMock()
+        repo.check_permission_mode.return_value = "bypasstool"
+        repo.check_suspicious_commands.return_value = []
 
-        svc = _make_service(session_log=session_log)
+        svc = _make_service(repo=repo)
 
         session = MagicMock()
         session.pid = 1234
         session.cwd = "/project"
         session.project = "myproject"
 
-        with (
-            patch(f"{_MOD}.features") as mock_features,
-            patch(
-                "builtins.open",
-                MagicMock(
-                    return_value=_fake_jsonl(
-                        [
-                            {"permissionMode": "bypasstool"},
-                        ]
-                    )
-                ),
-            ),
-        ):
+        with patch(f"{_MOD}.features") as mock_features:
             mock_features.is_enabled.return_value = True
             mock_features.get_facet.return_value = True
             alerts = svc.check_runtime([session])
@@ -127,29 +116,18 @@ class TestCheckRuntime:
         assert alerts[0].severity == "critical"
 
     def test_no_alert_for_default_mode(self) -> None:
-        session_log = MagicMock()
-        session_log.find_most_recent.return_value = "/fake/path.jsonl"
+        repo = MagicMock()
+        repo.check_permission_mode.return_value = "default"
+        repo.check_suspicious_commands.return_value = []
 
-        svc = _make_service(session_log=session_log)
+        svc = _make_service(repo=repo)
 
         session = MagicMock()
         session.pid = 1234
         session.cwd = "/project"
         session.project = "myproject"
 
-        with (
-            patch(f"{_MOD}.features") as mock_features,
-            patch(
-                "builtins.open",
-                MagicMock(
-                    return_value=_fake_jsonl(
-                        [
-                            {"permissionMode": "default"},
-                        ]
-                    )
-                ),
-            ),
-        ):
+        with patch(f"{_MOD}.features") as mock_features:
             mock_features.is_enabled.return_value = True
             mock_features.get_facet.return_value = True
             alerts = svc.check_runtime([session])
@@ -157,29 +135,18 @@ class TestCheckRuntime:
         assert alerts == []
 
     def test_alerts_once_per_pid(self) -> None:
-        session_log = MagicMock()
-        session_log.find_most_recent.return_value = "/fake/path.jsonl"
+        repo = MagicMock()
+        repo.check_permission_mode.return_value = "bypasstool"
+        repo.check_suspicious_commands.return_value = []
 
-        svc = _make_service(session_log=session_log)
+        svc = _make_service(repo=repo)
 
         session = MagicMock()
         session.pid = 1234
         session.cwd = "/project"
         session.project = "myproject"
 
-        with (
-            patch(f"{_MOD}.features") as mock_features,
-            patch(
-                "builtins.open",
-                MagicMock(
-                    return_value=_fake_jsonl(
-                        [
-                            {"permissionMode": "bypasstool"},
-                        ]
-                    )
-                ),
-            ),
-        ):
+        with patch(f"{_MOD}.features") as mock_features:
             mock_features.is_enabled.return_value = True
             mock_features.get_facet.return_value = True
             first = svc.check_runtime([session])

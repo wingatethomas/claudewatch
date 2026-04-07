@@ -18,8 +18,9 @@ _BASELINE_KEY = "security.last_config_snapshot"
 class SecurityRepository:
     """Reads Claude config files, persists baselines, and diffs snapshots."""
 
-    def __init__(self, claude_dir: str = _CLAUDE_DIR) -> None:
+    def __init__(self, claude_dir: str = _CLAUDE_DIR, session_log: object | None = None) -> None:
         self._claude_dir = claude_dir
+        self._session_log = session_log
 
     # -- Config capture --
 
@@ -418,6 +419,100 @@ class SecurityRepository:
         if success:
             log.info("security: uninstalled plugin '%s'", plugin_name)
         return success
+
+    # -- Public API for pane (no private method access needed) --
+
+    def get_plugin_keys(self, snapshot: ConfigSnapshot) -> set[str]:
+        """Get all installed plugin names."""
+        return self._plugin_keys(snapshot.plugins_installed)
+
+    def get_policy_value(self, snapshot: ConfigSnapshot, key: str) -> bool | None:
+        """Get a policy value from a snapshot."""
+        return self._get_policy_value(snapshot.policy_limits, key)
+
+    def get_blocklist_entries(self, snapshot: ConfigSnapshot) -> list[dict[str, str]]:
+        """Get blocklist entries with plugin name and reason."""
+        plugins = snapshot.plugins_blocklist.get("plugins", [])
+        if not isinstance(plugins, list):
+            return []
+        return [e for e in plugins if isinstance(e, dict) and e.get("plugin")]
+
+    # -- Runtime checks (delegated from service) --
+
+    def check_permission_mode(self, cwd: str) -> str | None:
+        """Read the permission mode from the first few lines of the session JSONL."""
+        path = self._session_log.find_most_recent(cwd) if self._session_log else None
+        if not path:
+            return None
+        try:
+            with open(path) as f:
+                for i, line in enumerate(f):
+                    if i > 10:  # noqa: PLR2004
+                        break
+                    try:
+                        entry = json.loads(line)
+                        mode = entry.get("permissionMode")
+                        if mode:
+                            return str(mode)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+        except OSError:
+            pass
+        return None
+
+    def check_suspicious_commands(self, cwd: str, project: str) -> list[SecurityAlert]:  # noqa: PLR0912
+        """Scan recent Bash commands in a session's JSONL for suspicious patterns."""
+        from claudewatch.backend.security.models import DEFAULT_SUSPICIOUS_PATTERNS  # noqa: PLC0415
+
+        if not self._session_log:
+            return []
+        path = self._session_log.find_most_recent(cwd)
+        if not path:
+            return []
+
+        tail = self._session_log.read_tail(path, tail_bytes=5120)
+        if not tail:
+            return []
+
+        alerts: list[SecurityAlert] = []
+        for line in tail.strip().splitlines():
+            try:
+                entry = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+            msg = entry.get("message", {})
+            if not isinstance(msg, dict):
+                continue
+            content = msg.get("content", [])
+            if not isinstance(content, list):
+                continue
+
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_use":
+                    continue
+                if block.get("name") != "Bash":
+                    continue
+                inp = block.get("input", {})
+                if not isinstance(inp, dict):
+                    continue
+                command = inp.get("command", "")
+                if not isinstance(command, str):
+                    continue
+
+                for pattern in DEFAULT_SUSPICIOUS_PATTERNS:
+                    if pattern.matches(command):
+                        alerts.append(
+                            SecurityAlert(
+                                alert_type="suspicious_command",
+                                severity=pattern.severity,
+                                title="Claude Security",
+                                subtitle="Suspicious Command",
+                                message=f"{pattern.description} in '{project}'",
+                            )
+                        )
+                        break
+        return alerts
 
     # -- Helpers --
 
