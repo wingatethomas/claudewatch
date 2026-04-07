@@ -38,7 +38,6 @@ _FEATURE_DETAILS: dict[str, str] = {
 _FEATURE_GROUPS: list[tuple[str, list[str]]] = [
     ("Sessions", ["bookmarks", "background_summaries"]),
     ("Notifications", ["notifications"]),
-    ("Security", ["security"]),
     ("App", ["launch_at_login", "auto_updates", "accessibility"]),
 ]
 

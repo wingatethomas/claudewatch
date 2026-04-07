@@ -57,8 +57,10 @@ class SecurityPane(BasePane):
         content_h += _card_pad + 2 * 36 + _card_pad + 30  # policies (taller rows)
         if blocklist_entries:
             content_h += _card_pad + len(blocklist_entries) * 36 + _card_pad + 30
-        if perm_rules:
-            content_h += _card_pad + len(perm_rules) * _row_h + _card_pad + 30
+        project_perms_count = sum(1 + min(len(r), 5) for _, r in self._get_project_permissions())
+        perm_total = (1 + len(perm_rules) if perm_rules else 0) + project_perms_count
+        if perm_total:
+            content_h += _card_pad + perm_total * _row_h + _card_pad + 30
         marketplaces_data = snapshot.known_marketplaces
         if isinstance(marketplaces_data, dict) and marketplaces_data:
             content_h += _card_pad + len(marketplaces_data) * 36 + _card_pad + 30
@@ -203,32 +205,53 @@ class SecurityPane(BasePane):
 
             y -= blocked_h + Spacing.MD
 
-        # Permission rules — categorized as broad (wildcard) vs specific
-        if perm_rules:
-            broad = sorted(r for r in perm_rules if ":*" in r)
-            specific = sorted(r for r in perm_rules if ":*" not in r)
-            all_rules = broad + specific
+        # Permission rules — global + per-project
+        y = self._add_section_header(inner, "PERMISSIONS", y)
 
-            y = self._add_section_header(inner, "PERMISSION RULES", y)
-            rules_h = _card_pad + len(all_rules) * _row_h + _card_pad
+        # Global permissions (from ~/.claude/settings.local.json)
+        global_rules = perm_rules
+        # Per-project permissions (from active session CWDs)
+        project_perms = self._get_project_permissions()
+
+        total_rows = 0
+        if global_rules:
+            total_rows += 1 + len(global_rules)  # header + rules
+        for _proj_name, rules in project_perms:
+            total_rows += 1 + min(len(rules), 5)  # header + capped rules
+
+        if total_rows == 0:
+            empty = secondary_label("No permission rules configured", size=Font.SECONDARY)
+            empty.setFrame_(NSMakeRect(CONTENT_PADDING, y - 20, self.card_width, 16))
+            inner.addSubview_(empty)
+            y -= 20 + Spacing.MD
+        else:
+            rules_h = _card_pad + total_rows * _row_h + _card_pad
             rules_card = card(self.card_width, rules_h)
             rules_card.setFrame_(NSMakeRect(CONTENT_PADDING, y - rules_h, self.card_width, rules_h))
             inner.addSubview_(rules_card)
             rules_content = rules_card.contentView()
             rules_y = rules_h - _card_pad
 
-            for rule in all_rules:
+            if global_rules:
                 rules_y -= _row_h
-                is_broad = ":*" in rule  # only wildcard args, not paths with *
-                display_rule = self._format_permission_rule(rule)
-                if len(display_rule) > _MAX_RULE_LEN:
-                    display_rule = display_rule[: _MAX_RULE_LEN - 1] + "…"
+                scope_label = label("Global (all projects)", size=Font.SMALL, bold=True, color=theme.tertiary)
+                scope_label.setFrame_(NSMakeRect(_card_pad, rules_y, self.card_width - _card_pad * 2, 16))
+                rules_content.addSubview_(scope_label)
 
-                color = theme.danger if is_broad else theme.secondary
-                prefix = "⚠ " if is_broad else "  "
-                rule_label = label(prefix + display_rule, size=Font.SMALL, color=color)
-                rule_label.setFrame_(NSMakeRect(_card_pad, rules_y, self.card_width - _card_pad * 2, 16))
-                rules_content.addSubview_(rule_label)
+                for rule in sorted(global_rules, key=lambda r: (":*" not in r, r)):
+                    rules_y -= _row_h
+                    rules_y = self._add_permission_row(rules_content, rule, rules_y, _card_pad)
+
+            for proj_name, rules in project_perms:
+                rules_y -= _row_h
+                scope_label = label(proj_name, size=Font.SMALL, bold=True, color=theme.tertiary)
+                scope_label.setFrame_(NSMakeRect(_card_pad, rules_y, self.card_width - _card_pad * 2, 16))
+                rules_content.addSubview_(scope_label)
+
+                display_rules = sorted(rules, key=lambda r: (":*" not in r, r))[:5]
+                for rule in display_rules:
+                    rules_y -= _row_h
+                    rules_y = self._add_permission_row(rules_content, rule, rules_y, _card_pad)
 
             y -= rules_h + Spacing.MD
 
@@ -301,6 +324,52 @@ class SecurityPane(BasePane):
 
         parts = [p for p in [scope_display, installed] if p]
         return " · ".join(parts)
+
+    def _add_permission_row(self, content: NSView, rule: str, row_y: float, pad: float) -> float:
+        """Add a single permission rule row. Returns the y position (unchanged)."""
+        is_broad = ":*" in rule
+        display_rule = self._format_permission_rule(rule)
+        if len(display_rule) > _MAX_RULE_LEN:
+            display_rule = display_rule[: _MAX_RULE_LEN - 1] + "…"
+
+        color = theme.danger if is_broad else theme.secondary
+        prefix = "⚠ " if is_broad else "  "
+        rule_label = label(prefix + display_rule, size=Font.SMALL, color=color)
+        rule_label.setFrame_(NSMakeRect(pad + 8, row_y, self.card_width - pad * 2 - 8, 16))
+        content.addSubview_(rule_label)
+        return row_y
+
+    @staticmethod
+    def _get_project_permissions() -> list[tuple[str, list[str]]]:
+        """Find per-project permission rules from .claude/settings.local.json files."""
+        import json  # noqa: PLC0415
+
+        results: list[tuple[str, list[str]]] = []
+        home = os.path.expanduser("~")
+        develop_dir = os.path.join(home, "Develop")
+
+        if not os.path.isdir(develop_dir):
+            return results
+
+        try:
+            for entry in os.listdir(develop_dir):
+                settings_path = os.path.join(develop_dir, entry, ".claude", "settings.local.json")
+                if not os.path.isfile(settings_path):
+                    continue
+                try:
+                    with open(settings_path) as f:
+                        data = json.load(f)
+                    perms = data.get("permissions", {})
+                    if isinstance(perms, dict):
+                        allow = perms.get("allow", [])
+                        if isinstance(allow, list) and allow:
+                            results.append((entry, [str(r) for r in allow]))
+                except (OSError, json.JSONDecodeError, ValueError):
+                    continue
+        except OSError:
+            pass
+
+        return sorted(results, key=lambda x: x[0])
 
     @staticmethod
     def _format_permission_rule(rule: str) -> str:  # noqa: PLR0911
