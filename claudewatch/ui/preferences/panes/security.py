@@ -179,10 +179,13 @@ class SecurityPane(BasePane):
 
         y -= policy_h + Spacing.MD
 
-        # Blocklisted plugins — name, reason, and human-readable explanation
+        # Blocklisted plugins — managed by Anthropic, fetched centrally
         if blocklist_entries:
             _blocked_row_h = 36
-            y = self._add_section_header(inner, "BLOCKLISTED PLUGINS", y)
+            fetched_at = snapshot.plugins_blocklist.get("fetchedAt", "")
+            fetched_date = str(fetched_at)[:10] if fetched_at else "unknown"
+            y = self._add_section_header(inner, f"BLOCKLISTED PLUGINS · synced {fetched_date}", y)
+
             blocked_h = _card_pad + len(blocklist_entries) * _blocked_row_h + _card_pad
             blocked_card = card(self.card_width, blocked_h)
             blocked_card.setFrame_(NSMakeRect(CONTENT_PADDING, y - blocked_h, self.card_width, blocked_h))

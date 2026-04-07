@@ -312,14 +312,47 @@ class PrefsDelegate(NSObject):
         """Show confirmation alert then refresh the Security pane preserving scroll."""
         from AppKit import NSAlert
 
+        # Save scroll position before rebuild
+        scroll_y = self._get_security_scroll_position()
+
         alert = NSAlert.alloc().init()
         alert.setMessageText_(message)
         alert.setInformativeText_("Claude will ask for permission again next time it needs access.")
         alert.addButtonWithTitle_("OK")
         alert.runModal()
 
-        # Rebuild pane — scroll position resets but that's acceptable after a modal
         self.show_pane({"key": "security"})
+
+        # Restore scroll position after rebuild
+        self._restore_security_scroll_position(scroll_y)
+
+    def _get_security_scroll_position(self) -> float:
+        """Get current scroll Y offset from the Security pane's scroll view."""
+        content_area = getattr(self, "_content_area", None)
+        if not content_area:
+            return 0
+        for subview in content_area.subviews():
+            for child in subview.subviews():
+                if hasattr(child, "documentView") and child.documentView():
+                    doc = child.documentView()
+                    visible = child.documentVisibleRect()
+                    return doc.frame().size.height - visible.origin.y
+        return 0
+
+    def _restore_security_scroll_position(self, saved_y: float) -> None:
+        """Restore scroll position after pane rebuild."""
+        if saved_y <= 0:
+            return
+        content_area = getattr(self, "_content_area", None)
+        if not content_area:
+            return
+        for subview in content_area.subviews():
+            for child in subview.subviews():
+                if hasattr(child, "documentView") and child.documentView():
+                    doc = child.documentView()
+                    new_origin_y = doc.frame().size.height - saved_y
+                    doc.scrollPoint_((0, max(0, new_origin_y)))
+                    return
 
     # -- Window --
 
