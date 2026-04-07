@@ -50,24 +50,29 @@ class SecurityPane(BasePane):
         plugins_data = snapshot.plugins_installed.get("plugins", {})
         plugin_count = len(plugins_data) if isinstance(plugins_data, dict) else 0
         blocklist_entries = self._get_blocklist_entries(snapshot)
-        perm_rules = repo._permission_rules(snapshot.settings_local)
+        global_path, global_rules_list = repo.get_global_permissions()
+        global_rules = set(global_rules_list)
+        project_perms = repo.get_all_project_permissions()
 
-        # Estimate content height
+        # Calculate content height — every section, header, and row
+        _sec = 30  # section header + spacing overhead
         content_h = 0
-        content_h += 80  # toggles section
-        content_h += _card_pad + max(plugin_count, 1) * _row_h + _card_pad + 30
-        content_h += _card_pad + 2 * 36 + _card_pad + 30  # policies (taller rows)
+        content_h += _card_pad + 2 * 28 + _card_pad + _sec  # monitoring toggles
+        content_h += _card_pad + max(plugin_count, 1) * _row_h + _card_pad + _sec  # plugins
+        content_h += _card_pad + 2 * 36 + _card_pad + _sec  # policies
         if blocklist_entries:
-            content_h += _card_pad + len(blocklist_entries) * 36 + _card_pad + 30
-        project_perms_for_height = repo.get_all_project_permissions()
-        project_perms_count = sum(1 + min(len(r), 5) for _, _, r in project_perms_for_height)
-        perm_total = (1 + len(perm_rules) if perm_rules else 0) + project_perms_count
-        if perm_total:
-            content_h += _card_pad + perm_total * _row_h + _card_pad + 30
+            content_h += _card_pad + len(blocklist_entries) * 36 + _card_pad + _sec + 24  # +24 source attribution
+        total_perm_rows = 0
+        if global_rules:
+            total_perm_rows += 1 + len(global_rules)
+        for _name, _path, rules in project_perms:
+            total_perm_rows += 1 + len(rules)
+        if total_perm_rows:
+            content_h += _card_pad + total_perm_rows * _row_h + _card_pad + _sec
         marketplaces_data = snapshot.known_marketplaces
         if isinstance(marketplaces_data, dict) and marketplaces_data:
-            content_h += _card_pad + len(marketplaces_data) * 36 + _card_pad + 30
-        content_h += Spacing.XL * 6
+            content_h += _card_pad + len(marketplaces_data) * 36 + _card_pad + _sec
+        content_h += Spacing.XL  # bottom breathing room
 
         inner_h = max(scroll_h, content_h)
         inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, self.width, inner_h))
@@ -247,11 +252,7 @@ class SecurityPane(BasePane):
         # Permission rules — global + per-project
         y = self._add_section_header(inner, "PERMISSIONS", y)
 
-        # Global permissions (from ~/.claude/settings.local.json)
-        global_path, global_rules_list = repo.get_global_permissions()
-        global_rules = set(global_rules_list)
-        # Per-project permissions (crawl all known Claude projects)
-        project_perms = repo.get_all_project_permissions()
+        # Permissions already fetched above for height calculation
 
         total_rows = 0
         if global_rules:
