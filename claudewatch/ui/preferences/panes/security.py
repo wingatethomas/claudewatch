@@ -91,13 +91,15 @@ class SecurityPane(BasePane):
 
         # Permissions
         total_perm_rows = 0
+        scope_count = (1 if global_rules else 0) + len(project_perms)
         if global_rules:
             total_perm_rows += 1 + len(global_rules)
         for _name, _path, rules in project_perms:
             total_perm_rows += 1 + len(rules)
         if total_perm_rows > 0:
             stack.add(self._build_section_header("PERMISSIONS"), height=14)
-            perm_h = _CARD_PAD + total_perm_rows * _ROW_H + _CARD_PAD
+            scope_gaps = max(scope_count - 1, 0) * Spacing.SM
+            perm_h = _CARD_PAD + total_perm_rows * _ROW_H + scope_gaps + _CARD_PAD
             stack.add(
                 self._build_permissions_card(global_path, global_rules, project_perms),
                 height=perm_h,
@@ -298,16 +300,19 @@ class SecurityPane(BasePane):
         global_rules: set[str],
         project_perms: list[tuple[str, str, list[str]]],
     ) -> NSView:
+        _scope_gap = Spacing.SM  # breathing room between scope groups
+        scope_count = (1 if global_rules else 0) + len(project_perms)
         total_rows = 0
         if global_rules:
             total_rows += 1 + len(global_rules)
         for _name, _path, rules in project_perms:
             total_rows += 1 + len(rules)
 
-        card_h = _CARD_PAD + total_rows * _ROW_H + _CARD_PAD
+        card_h = _CARD_PAD + total_rows * _ROW_H + max(scope_count - 1, 0) * _scope_gap + _CARD_PAD
         perm_card = card(self.card_width, card_h)
         content = perm_card.contentView()
         row_y = card_h - _CARD_PAD
+        is_first_scope = True
 
         if global_rules:
             row_y -= _ROW_H
@@ -315,13 +320,17 @@ class SecurityPane(BasePane):
             for rule in sorted(global_rules, key=lambda r: (":*" not in r, r)):
                 row_y -= _ROW_H
                 self._add_permission_row(content, rule, global_path, row_y, _CARD_PAD)
+            is_first_scope = False
 
         for proj_name, settings_path, rules in project_perms:
+            if not is_first_scope:
+                row_y -= _scope_gap
             row_y -= _ROW_H
             self._add_scope_header(content, proj_name, settings_path, rules, row_y, _CARD_PAD)
             for rule in sorted(rules, key=lambda r: (":*" not in r, r)):
                 row_y -= _ROW_H
                 self._add_permission_row(content, rule, settings_path, row_y, _CARD_PAD)
+            is_first_scope = False
 
         return perm_card
 
