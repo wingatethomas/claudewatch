@@ -267,7 +267,7 @@ class PrefsDelegate(NSObject):
         # Show what's being removed in the confirmation
         from claudewatch.ui.preferences.panes.security import SecurityPane
 
-        display = SecurityPane.format_permission_rule(rule)
+        display = SecurityPane.format_permission_display(rule)
         if repo.remove_permission_rule(settings_path, rule):
             self._show_security_confirmation(f"Removed: {display}")
 

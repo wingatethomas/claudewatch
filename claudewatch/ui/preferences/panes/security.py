@@ -401,7 +401,7 @@ class SecurityPane(BasePane):
     def _add_permission_row(self, content: NSView, rule: str, settings_path: str, row_y: float, pad: float) -> None:
         dangerous = is_dangerous_permission(rule)
         is_broad = ":*" in rule
-        display_rule = self.format_permission_rule(rule)
+        display_rule = self.format_permission_display(rule)
         if dangerous:
             display_rule = f"{display_rule}  — {dangerous.description}"
         if len(display_rule) > _MAX_RULE_LEN:
@@ -418,6 +418,7 @@ class SecurityPane(BasePane):
             prefix = "  "
         rule_label = label(prefix + display_rule, size=Font.SMALL, color=color)
         rule_label.setFrame_(NSMakeRect(pad + 8, row_y, self.card_width - pad * 2 - 30, 16))
+        rule_label.setToolTip_(self.format_permission_tooltip(rule))
         content.addSubview_(rule_label)
 
         remove_btn = NSButton.alloc().initWithFrame_(NSMakeRect(self.card_width - pad - 20, row_y, 16, 16))
@@ -453,57 +454,35 @@ class SecurityPane(BasePane):
         return " · ".join(parts)
 
     @staticmethod
-    def format_permission_rule(rule: str) -> str:  # noqa: PLR0911
-        """Make a permission rule human-readable plain English."""
-        # Non-Bash tool permissions
-        if rule == "WebSearch":
-            return "Can search the web"
-        if rule.startswith("WebFetch("):
-            domain = rule[9:-1] if rule.endswith(")") else rule[9:]
-            domain = domain.replace("domain:", "")
-            return f"Can fetch from {domain}"
-        if rule.startswith("Read("):
-            path = rule[5:-1] if rule.endswith(")") else rule[5:]
-            return f"Can read {os.path.basename(path) or path}"
+    @staticmethod
+    def format_permission_display(rule: str) -> str:
+        """Format a permission rule for display — show the raw command, trimmed."""
+        if rule.startswith("Bash(") and rule.endswith(")"):
+            inner = rule[5:-1]
+            if ":*" in inner:
+                return inner.replace(":*", " *")
+            if len(inner) > _MAX_RULE_LEN:
+                return inner[: _MAX_RULE_LEN - 1] + "…"
+            return inner
+        # Non-Bash: show as-is
+        if len(rule) > _MAX_RULE_LEN:
+            return rule[: _MAX_RULE_LEN - 1] + "…"
+        return rule
 
+    @staticmethod
+    def format_permission_tooltip(rule: str) -> str:
+        """Generate a tooltip explaining what the permission allows."""
+        if rule == "WebSearch":
+            return "Allows searching the web"
+        if rule.startswith("WebFetch("):
+            return "Allows fetching content from a URL"
+        if rule.startswith("Read("):
+            return "Allows reading files matching this pattern"
         if not (rule.startswith("Bash(") and rule.endswith(")")):
             return rule
 
         inner = rule[5:-1]
-
-        # Wildcard permissions
         if ":*" in inner:
             tool = inner.split(":*")[0]
-            known = {
-                "python3": "Can run any Python script",
-                "node": "Can run any Node.js script",
-                "npm": "Can run any npm command",
-                "git": "Can run any git command",
-                "docker": "Can run any Docker command",
-            }
-            return known.get(tool, f"Can run {tool} with any arguments")
-
-        # Claude session log paths
-        if "/.claude/projects/" in inner:
-            parts = inner.split("/.claude/projects/")
-            proj_path = parts[1] if len(parts) > 1 else ""
-            proj_segments = proj_path.split("/")[0].split("-")
-            project_name = proj_segments[-1] if proj_segments else "unknown"
-            return f"Can read {project_name} session logs"
-
-        # Common commands
-        if inner.startswith("wc "):
-            return "Can count lines in files"
-        if inner.startswith("cat "):
-            return "Can read file contents"
-        if inner.startswith("ls "):
-            return "Can list directory contents"
-        if inner.startswith("grep ") or inner.startswith("-exec grep"):
-            return "Can search file contents"
-        if inner.startswith("find "):
-            return "Can search for files"
-
-        # Fallback: show the raw command, trimmed
-        if len(inner) > _MAX_RULE_LEN:
-            return inner[: _MAX_RULE_LEN - 1] + "…"
-        return inner
+            return f"Can run '{tool}' with any arguments — always allowed without asking"
+        return f"Always allowed: {inner}"
