@@ -11,46 +11,58 @@ from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, BasePane
 
 _SECTIONS = [
     (
-        "Getting Started",
+        "Status Dots",
         [
-            "ClaudeWatch lives in your menu bar — click the icon to see all running Claude Code sessions.",
-            "Sessions are grouped by status: Attention (needs input), Working, and Idle.",
+            "The colored dots next to the menu bar icon show your sessions at a glance.",
+            "Red = needs your attention (tool approval). Green = working. Yellow = idle.",
+            "Click any session to jump straight to its terminal window.",
         ],
     ),
     (
-        "Focus a Session",
+        "Session Details",
         [
-            "Click any session to instantly focus its terminal window.",
-            "Works with Terminal.app, VS Code, PyCharm, and tmux.",
-        ],
-    ),
-    (
-        "Session Actions",
-        [
-            "Hover over a session to see action buttons: Activity, Bookmark, and Quit.",
-            "Activity shows a timeline of messages, tool calls, and responses.",
+            "Expand a session to see its summary, token usage, and spawned agents.",
+            "Summaries are generated automatically in the background using claude -p.",
+            "Configure the model and effort level for summaries in Settings.",
         ],
     ),
     (
         "Bookmarks",
         [
-            "Bookmark a session to save it for later — find it in the Bookmarks submenu.",
-            "Add a note when bookmarking to remind yourself what you were working on.",
+            "Bookmark sessions you want to come back to — they persist across restarts.",
+            "Bookmarked sessions appear in the Bookmarks section with a resume option.",
+            "Add a note to remember what you were working on.",
+        ],
+    ),
+    (
+        "Security",
+        [
+            "The Security pane shows installed plugins, policies, and permissions.",
+            "Get alerts when plugins are installed, policies change, or sessions run unrestricted.",
+            "Manage permissions per project — remove stale rules or dangerous wildcards.",
         ],
     ),
     (
         "Notifications",
         [
-            "Get notified when a session needs attention (e.g. tool approval).",
-            "Configure notification sound and behavior in Settings.",
+            "Get alerted when Claude needs tool approval and you're in another app.",
+            "Only fires when the session's terminal isn't in the foreground.",
+            "Customize sound and behavior in Settings. Security alerts have their own sound.",
+        ],
+    ),
+    (
+        "Accessibility",
+        [
+            "Customize status dot colors for colorblind accessibility in Settings.",
+            "Choose from Default, Blue-Orange, Blue-Yellow, or High Contrast schemes.",
         ],
     ),
     (
         "Permissions",
         [
-            "Accessibility — required to focus terminal windows when you click a session.",
-            "Automation (Terminal) — required to list and control Terminal.app windows.",
-            "All other permission prompts (Photos, Music, etc.) can be safely denied.",
+            "Accessibility — needed to focus windows when you click a session.",
+            "Automation (Terminal) — needed to detect which Terminal.app tabs are running Claude.",
+            "You can safely deny any other permission prompts (Photos, Music, etc.).",
         ],
     ),
 ]
