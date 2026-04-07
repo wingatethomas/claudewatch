@@ -461,8 +461,11 @@ class SecurityPane(BasePane):
             inner = rule[5:-1]
             if ":*" in inner:
                 cmd = inner.replace(":*", " *")
-                base = inner.split(":*")[0].split(maxsplit=1)[0]
-                desc = SecurityRepository.get_command_description(base)
+                # Strip env var prefixes (e.g., GH_PAGER=cat gh pr diff)
+                clean_cmd = inner.split(":*")[0]
+                words = clean_cmd.split()
+                words = [w for w in words if "=" not in w]  # drop VAR=val prefixes
+                desc = SecurityRepository.get_command_description(" ".join(words))
                 display = f"{cmd}  —  {desc}" if desc else cmd
                 if len(display) > _MAX_RULE_LEN:
                     return display[: _MAX_RULE_LEN - 1] + "…"

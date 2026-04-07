@@ -562,61 +562,60 @@ class SecurityRepository:
     def get_command_description(cls, command: str) -> str:
         """Get a one-line description for a command via whatis. Returns from cache only — never blocks.
 
-        Tries full command ('git fetch') first, then base ('git').
-        Caps description at 40 chars to avoid overflow.
+        Tries longest match first: 'gh pr diff' → 'gh pr' → 'gh'.
+        Strips env var prefixes (VAR=val).
+        Caps description at 40 chars.
         """
         _max_desc = 40
         cache = cls._load_whatis_cache()
-        parts = command.split(maxsplit=1)
-        # Try full two-word key first
-        if len(parts) >= 2:  # noqa: PLR2004
-            full = f"{parts[0]} {parts[1]}"
-            desc = cache.get(full, "")
+        # Strip env var prefixes
+        words = [w for w in command.split() if "=" not in w]
+        if not words:
+            return ""
+        # Try progressively shorter keys: 'gh pr diff', 'gh pr', 'gh'
+        for length in range(len(words), 0, -1):
+            key = " ".join(words[:length])
+            desc = cache.get(key, "")
             if desc:
                 return desc[:_max_desc] if len(desc) > _max_desc else desc
-        base = parts[0] if parts else command
-        desc = cache.get(base, "")
-        return desc[:_max_desc] if len(desc) > _max_desc else desc
+        return ""
 
     @classmethod
     def warm_whatis_cache(cls, commands: list[str]) -> None:
         """Pre-warm the whatis cache for a list of commands. Call from background thread.
 
-        For multi-word commands like 'git fetch', tries the hyphenated form
-        'git-fetch' first (more specific), then falls back to the base command.
+        For 'gh pr diff', tries: gh-pr-diff, gh-pr, gh (most specific first).
+        Strips env var prefixes (VAR=val).
+        Caches at each word-length key so lookups find the best match.
         """
         if cls._whatis_warming:
             return
         cls._whatis_warming = True
         try:
             cache = cls._load_whatis_cache()
-            # Build lookup keys — both base and full hyphenated forms
-            keys_to_lookup: dict[str, str] = {}  # cache_key -> whatis_query
-            for cmd in commands:
-                parts = cmd.split()
-                if not parts:
-                    continue
-                base = parts[0]
-                if base not in cache:
-                    # For multi-word commands, try hyphenated form first
-                    if len(parts) >= 2:  # noqa: PLR2004
-                        hyphenated = f"{parts[0]}-{parts[1]}"
-                        keys_to_lookup[base] = hyphenated
-                    else:
-                        keys_to_lookup[base] = base
-                # Also cache the full command for multi-word lookups
-                full = " ".join(parts[:2]) if len(parts) >= 2 else parts[0]  # noqa: PLR2004
-                if full not in cache and full != base:
-                    keys_to_lookup[full] = f"{parts[0]}-{parts[1]}" if len(parts) >= 2 else full  # noqa: PLR2004
+            keys_needed: set[str] = set()
 
-            for cache_key, query in keys_to_lookup.items():
-                if cache_key in cache:
+            for cmd in commands:
+                words = [w for w in cmd.split() if "=" not in w]
+                # Cache at every prefix length: 'gh pr diff', 'gh pr', 'gh'
+                for length in range(len(words), 0, -1):
+                    key = " ".join(words[:length])
+                    if key not in cache:
+                        keys_needed.add(key)
+
+            for key in keys_needed:
+                if key in cache:
                     continue
-                desc = cls._lookup_whatis(query)
-                if not desc and query != cache_key.split()[0]:
-                    # Hyphenated lookup failed, try base command
-                    desc = cls._lookup_whatis(cache_key.split()[0])
-                cache[cache_key] = desc
+                words = key.split()
+                # Try hyphenated forms from longest to shortest
+                desc = ""
+                for length in range(len(words), 0, -1):
+                    hyphenated = "-".join(words[:length])
+                    desc = cls._lookup_whatis(hyphenated)
+                    if desc:
+                        break
+                cache[key] = desc
+
             cls._save_whatis_cache()
         finally:
             cls._whatis_warming = False
