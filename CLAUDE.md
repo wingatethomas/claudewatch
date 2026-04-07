@@ -7,7 +7,7 @@ MIT licensed. All contributions are subject to the same license.
 - Run `uv run ruff check .` and `uv run pytest` before committing.
 - Type hints on all functions.
 - Conventional commit messages: `feat:`, `fix:`, `refactor:`, `docs:`, `style:`, `test:`, `chore:`.
-- **One branch per domain.** Each distinct feature or bug gets its own branch. Never combine unrelated changes in one branch/PR.
+- **One branch per domain.** Each distinct feature or bug gets its own branch. Never combine unrelated changes in one branch/PR. Trivial cross-cutting changes (adding a field to a shared model, a one-line import) can land with the feature branch that needs them.
 
 ## Rules Index
 

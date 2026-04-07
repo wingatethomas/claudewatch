@@ -82,7 +82,11 @@ def _ensure_delegate() -> None:
     if _delegate is not None:
         return
     _delegate = _NotificationDelegate.alloc().init()
-    NSUserNotificationCenter.defaultUserNotificationCenter().setDelegate_(_delegate)
+    center = NSUserNotificationCenter.defaultUserNotificationCenter()
+    if center is not None:
+        center.setDelegate_(_delegate)
+    else:
+        log.warning("NSUserNotificationCenter unavailable — notifications disabled")
 
 
 class NotificationService(BaseService):
@@ -98,7 +102,7 @@ class NotificationService(BaseService):
 
     def send(self, title: str, subtitle: str, message: str) -> None:
         """Send a single notification (fire-and-forget)."""
-        if not features.is_enabled("notifications"):
+        if not features.is_enabled("notifications") or self._center is None:
             return
         n = NSUserNotification.alloc().init()
         n.setTitle_(title)

@@ -67,6 +67,16 @@ class TestClaudeSession:
         )
         assert s.needs_attention is False
 
+    def test_agent_count_defaults_to_zero(self):
+        s = ClaudeSession(
+            pid=1,
+            tty="ttys001",
+            project="myapp",
+            cwd="/tmp/myapp",
+            host_app=HostApp.TERMINAL,
+        )
+        assert s.agent_count == 0
+
     def test_menu_label_with_task(self):
         s = ClaudeSession(
             pid=1,

@@ -5,7 +5,7 @@ paths:
 ---
 
 - Never pass user-controlled strings (project names, window titles, paths) to shell commands without validation.
-- Session IDs must be validated as UUIDs before use in commands or clipboard content.
+- Session IDs must be validated as UUIDs before interpolation into shell commands, AppleScript, or clipboard content. Parameterized SQL/Cypher queries are safe without validation.
 - All values interpolated into AppleScript must go through `escape_applescript()` which strips control chars and escapes quotes. Exception: integer values (e.g. `window_id`) verified via `isdigit()` may be interpolated directly — add a comment noting the safety invariant.
 - JSONL file reads must validate the resolved path stays within `~/.claude/projects/` via `is_safe_jsonl_path()` in `jsonl.py`.
 - Notification content must never include raw terminal buffer data. Only tool names and project names. Truncation limit: 200 chars.

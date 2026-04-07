@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+import threading
+
 from AppKit import NSScrollView, NSView
 from Foundation import NSMakeRect
 
-from claudewatch.backend.history.dependencies import get_history_service
-from claudewatch.backend.metrics.dependencies import get_metrics_service
+from claudewatch.backend.analytics.dependencies import get_analytics_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES
 from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.cards import card
@@ -14,9 +16,13 @@ from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, BasePane
 from claudewatch.ui.theme import theme
 
+log = logging.getLogger("claudewatch")
+
 
 class InsightsPane(BasePane):
     """Insights pane showing aggregated session metrics."""
+
+    _bootstrap_running = False
 
     @property
     def title(self) -> str:
@@ -27,16 +33,21 @@ class InsightsPane(BasePane):
         return "Aggregated metrics across all sessions"
 
     def build_content(self, view: NSView, content_top: float) -> None:  # noqa: PLR0915
-        history = get_history_service().get_all()
-        metrics_svc = get_metrics_service()
-        cwds = [e.cwd for e in history if e.cwd]
-        aggregated = metrics_svc.get_aggregated(cwds)
+        analytics_svc = get_analytics_service()
+        summary = analytics_svc.queries.summary()
 
-        if aggregated.total_sessions == 0:
+        if summary.total_sessions == 0:
             empty = secondary_label("No session data yet.", size=Font.BODY)
             empty.setFrame_(NSMakeRect(CONTENT_PADDING, content_top - 30, self.card_width, 18))
             view.addSubview_(empty)
+            # Bootstrap: kick off a first scan in background (once)
+            if not InsightsPane._bootstrap_running:
+                InsightsPane._bootstrap_running = True
+                threading.Thread(target=self._bootstrap_scan, daemon=True).start()
             return
+
+        tools = analytics_svc.queries.tool_usage(limit=10)
+        models = analytics_svc.queries.model_distribution()
 
         # Build scroll content
         _row_h = 22
@@ -45,9 +56,9 @@ class InsightsPane(BasePane):
         # Calculate heights
         overview_rows = 4
         overview_h = _card_pad + overview_rows * _row_h + _card_pad
-        tool_rows = min(len(aggregated.top_tools), 10)
+        tool_rows = min(len(tools), 10)
         tools_h = _card_pad + tool_rows * _row_h + _card_pad
-        model_rows = len(aggregated.models)
+        model_rows = len(models)
         models_h = _card_pad + model_rows * _row_h + _card_pad
         content_h = overview_h + tools_h + models_h + Spacing.XL * 4
 
@@ -69,10 +80,10 @@ class InsightsPane(BasePane):
         content = overview_card.contentView()
         ry = overview_h - _card_pad
         for name, value in [
-            ("Sessions analyzed", str(aggregated.total_sessions)),
-            ("User messages", str(aggregated.total_user_messages)),
-            ("Assistant messages", str(aggregated.total_assistant_messages)),
-            ("Agent spawns", str(aggregated.total_agent_spawns)),
+            ("Sessions", str(summary.total_sessions)),
+            ("Messages", str(summary.total_messages)),
+            ("Tool calls", str(summary.total_tools)),
+            ("Agents spawned", str(summary.total_agents)),
         ]:
             ry -= _row_h
             name_label = label(name, size=Font.SECONDARY, color=theme.secondary)
@@ -84,7 +95,7 @@ class InsightsPane(BasePane):
         y -= overview_h + Spacing.MD
 
         # Top tools card
-        if aggregated.top_tools:
+        if tools:
             tools_header = label("TOP TOOLS", size=Font.CAPTION, color=theme.tertiary)
             tools_header.setFrame_(NSMakeRect(CONTENT_PADDING, y - 14, self.card_width, 14))
             inner.addSubview_(tools_header)
@@ -93,20 +104,20 @@ class InsightsPane(BasePane):
             tools_card = card(self.card_width, tools_h)
             tools_card.setFrame_(NSMakeRect(CONTENT_PADDING, y - tools_h, self.card_width, tools_h))
             inner.addSubview_(tools_card)
-            tc = tools_card.contentView()
+            tools_content = tools_card.contentView()
             ty = tools_h - _card_pad
-            for tool_name, count in aggregated.top_tools:
+            for tool in tools:
                 ty -= _row_h
-                tl = label(tool_name, size=Font.SECONDARY)
-                tl.setFrame_(NSMakeRect(_card_pad, ty, 200, 18))
-                tc.addSubview_(tl)
-                cl = label(str(count), size=Font.SECONDARY, bold=True, color=theme.secondary)
-                cl.setFrame_(NSMakeRect(220, ty, 100, 18))
-                tc.addSubview_(cl)
+                tool_label = label(tool.name, size=Font.SECONDARY)
+                tool_label.setFrame_(NSMakeRect(_card_pad, ty, 200, 18))
+                tools_content.addSubview_(tool_label)
+                count_label = label(str(tool.count), size=Font.SECONDARY, bold=True, color=theme.secondary)
+                count_label.setFrame_(NSMakeRect(220, ty, 100, 18))
+                tools_content.addSubview_(count_label)
             y -= tools_h + Spacing.MD
 
         # Models card
-        if aggregated.models:
+        if models:
             models_header = label("MODELS USED", size=Font.CAPTION, color=theme.tertiary)
             models_header.setFrame_(NSMakeRect(CONTENT_PADDING, y - 14, self.card_width, 14))
             inner.addSubview_(models_header)
@@ -115,17 +126,21 @@ class InsightsPane(BasePane):
             models_card = card(self.card_width, models_h)
             models_card.setFrame_(NSMakeRect(CONTENT_PADDING, y - models_h, self.card_width, models_h))
             inner.addSubview_(models_card)
-            mc = models_card.contentView()
+            models_content = models_card.contentView()
             my = models_h - _card_pad
-            for model_name, session_count in sorted(aggregated.models.items(), key=lambda x: -x[1]):
+            for model_entry in models:
                 my -= _row_h
-                display = MODEL_DISPLAY_NAMES.get(model_name, model_name)
-                ml = label(display, size=Font.SECONDARY)
-                ml.setFrame_(NSMakeRect(_card_pad, my, 200, 18))
-                mc.addSubview_(ml)
-                sl = label(f"{session_count} sessions", size=Font.SECONDARY, color=theme.secondary)
-                sl.setFrame_(NSMakeRect(220, my, 150, 18))
-                mc.addSubview_(sl)
+                display = MODEL_DISPLAY_NAMES.get(model_entry.name, model_entry.name)
+                model_label = label(display, size=Font.SECONDARY)
+                model_label.setFrame_(NSMakeRect(_card_pad, my, 200, 18))
+                models_content.addSubview_(model_label)
+                session_label = label(
+                    f"{model_entry.count} sessions",
+                    size=Font.SECONDARY,
+                    color=theme.secondary,
+                )
+                session_label.setFrame_(NSMakeRect(220, my, 150, 18))
+                models_content.addSubview_(session_label)
 
         # Place in scroll
         if content_h <= scroll_h:
@@ -139,6 +154,14 @@ class InsightsPane(BasePane):
             scroll.setDocumentView_(inner)
             inner.scrollPoint_((0, inner_h))
             view.addSubview_(scroll)
+
+    def _bootstrap_scan(self) -> None:
+        try:
+            get_analytics_service().incremental_scan()
+        except Exception:
+            log.exception("insights bootstrap scan failed")
+        finally:
+            InsightsPane._bootstrap_running = False
 
 
 # Legacy function wrapper

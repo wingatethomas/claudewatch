@@ -6,28 +6,45 @@ paths:
 
 ## Import Rules
 
-| From \ To | core/ | core/services | domains | ui/ |
-|-----------|-------|---------------|---------|-----|
+| From \ To | core/ | core sub-packages | domains | ui/ |
+|-----------|-------|-------------------|---------|-----|
 | **core/** | self | NO | NO | NO |
-| **core/services** | YES | self | NO | NO |
+| **core sub-packages** | YES | self | NO | NO |
 | **domains** | YES | YES | peers (via deps) | NO |
-| **ui/** | YES (DTOs/models) | NO | YES (via deps) | self |
+| **ui/** | YES (models/return types) | NO | YES (via deps) | self |
 
 - Enforced statically via `scripts/audit_imports.py` (runs in CI).
-- UI imports services via `get_*_service()` factory functions from each domain's `dependencies.py`.
+- Two service access patterns:
+  - **Constructor injection** for `ClaudeWatchApp` — services passed as keyword args from `main()`, stored as instance attrs. This is the primary pattern for the menubar.
+  - **Factory functions** (`get_*_service()`) for standalone UI (preferences panes, activity windows, etc.) that don't have a parent app reference.
 
 ## Domain Package Convention
 
-Each domain is a package with:
-- `service.py` — extends `BaseService`, receives dependencies via constructor
-- `dependencies.py` — `@lru_cache(maxsize=1)` factory function `get_*_service()` that wires dependencies
+Each domain is a package under `backend/` with at minimum:
 
-## DTO Convention
+- `service.py` — extends `BaseService`, thin facade that delegates to other modules. Never implements persistence or business logic directly.
+- `dependencies.py` — `@lru_cache(maxsize=1)` factory function `get_*_service()` that wires constructor args and caches the singleton. This is the only entry point for UI code.
 
-- All DTOs inherit `BaseDTO` (frozen dataclass), suffixed with `DTO`
-- DTOs flow from services to UI across layer boundaries
-- `ClaudeSession` from `core/models.py` is the shared session model (mutable, internal)
-- Services return DTOs, not raw dicts
+Additional modules as needed:
+
+- `repository.py` — persistence layer (JSON file I/O, database access). Service delegates here for all reads and writes.
+- `models.py` — domain-specific data types (ORM model classes, frozen dataclasses, enums, store lifecycle). For DB-backed domains, this includes the SQLAlchemy `Base`, `*Row` classes, and the `Store` class.
+
+Cross-layer DTOs (`BookmarkDTO`, `HistoryEntryDTO`, etc.) live in `core/dto.py` and inherit `BaseDTO`. Domain-internal return types live in the domain's `models.py`.
+
+## Return Type Convention
+
+- Services return frozen dataclasses or named types, never raw dicts.
+- Cross-layer types used by UI live in `core/dto.py` and inherit `BaseDTO` (suffixed `DTO`).
+- Domain-internal return types (e.g. `ToolUsage`, `AgentInfo`) are frozen dataclasses in the domain's `models.py` — they don't need `BaseDTO` or the `DTO` suffix.
+- `ClaudeSession` from `core/models.py` is the shared session model (mutable, internal).
+
+## Typing Rules
+
+- All function parameters and return types must have type annotations.
+- Never use bare `dict`, `list`, `tuple`, `set` — always parameterize (`dict[str, int]`, `list[str]`).
+- Never use `Any`. If the type is truly unknown, use `object`. If it's JSON-shaped, use `dict[str, object]`.
+- Use `| None` instead of `Optional`.
 
 ## Threading Rules
 
