@@ -561,35 +561,30 @@ class SecurityRepository:
         try:
             unique_bases = {cmd.split(maxsplit=1)[0] for cmd in commands if cmd.split()}
             uncached = [b for b in unique_bases if b not in cls._whatis_cache]
-            if not uncached:
-                return
-            # Batch whatis call — all commands at once
-            try:
-                result = subprocess.run(
-                    ["whatis", *uncached],  # noqa: S603, S607
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    check=False,
-                )
-                if result.stdout:
-                    for line in result.stdout.strip().splitlines():
-                        if " - " in line:
-                            name_part = line.split("(")[0].strip() if "(" in line else line.split(" - ")[0].strip()
-                            desc = line.split(" - ", 1)[1].strip()
-                            # Match against our uncached list
-                            for base in uncached:
-                                if name_part == base or line.startswith(f"{base}("):
-                                    cls._whatis_cache[base] = desc
-                                    break
-            except (OSError, subprocess.TimeoutExpired):
-                pass
-            # Fill empty entries for commands whatis didn't know
             for base in uncached:
-                if base not in cls._whatis_cache:
-                    cls._whatis_cache[base] = ""
+                cls._whatis_cache[base] = cls._lookup_whatis(base)
         finally:
             cls._whatis_warming = False
+
+    @staticmethod
+    def _lookup_whatis(command: str) -> str:
+        """Look up a single command via whatis. Returns description or empty string."""
+        try:
+            result = subprocess.run(
+                ["whatis", command],  # noqa: S603, S607
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout:
+                # Find the exact match line: "command(1) - description"
+                for line in result.stdout.strip().splitlines():
+                    if line.startswith(f"{command}(") and " - " in line:
+                        return line.split(" - ", 1)[1].strip()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        return ""
 
     # -- Helpers --
 
