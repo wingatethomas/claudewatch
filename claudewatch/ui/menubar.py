@@ -125,6 +125,7 @@ class ClaudeWatchApp:
         self.update_display()
         # Kick off background update check
         threading.Thread(target=self._update_service.check, daemon=True).start()
+        threading.Thread(target=self._security_service.warm_command_cache, daemon=True).start()
 
     def run(self) -> None:
         """Start the app: create status bar item, timer, and run the event loop."""

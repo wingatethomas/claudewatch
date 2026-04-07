@@ -60,7 +60,7 @@ class SecurityService(BaseService):
             self._repo.save_baseline(current)
 
         # Pre-warm command description cache for tooltip display
-        self._warm_command_cache()
+        self.warm_command_cache()
 
         return self._deduplicate(alerts)
 
@@ -123,7 +123,7 @@ class SecurityService(BaseService):
                 alert.message[:80],
             )
 
-    def _warm_command_cache(self) -> None:
+    def warm_command_cache(self) -> None:
         """Pre-warm whatis cache with commands from all permission rules."""
         try:
             _, global_rules = self._repo.get_global_permissions()

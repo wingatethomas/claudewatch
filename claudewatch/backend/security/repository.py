@@ -542,15 +542,29 @@ class SecurityRepository:
 
     # -- Command descriptions (via man whatis) --
 
-    _whatis_cache: dict[str, str] = {}
+    _whatis_cache: dict[str, str] | None = None
     _whatis_warming: bool = False
+    _WHATIS_SETTINGS_KEY = "security.whatis_cache"
+
+    @classmethod
+    def _load_whatis_cache(cls) -> dict[str, str]:
+        if cls._whatis_cache is None:
+            raw = get_setting(cls._WHATIS_SETTINGS_KEY)
+            cls._whatis_cache = dict(raw) if isinstance(raw, dict) else {}
+        return cls._whatis_cache
+
+    @classmethod
+    def _save_whatis_cache(cls) -> None:
+        if cls._whatis_cache:
+            set_setting(cls._WHATIS_SETTINGS_KEY, cls._whatis_cache)
 
     @classmethod
     def get_command_description(cls, command: str) -> str:
         """Get a one-line description for a command via whatis. Returns from cache only — never blocks."""
+        cache = cls._load_whatis_cache()
         parts = command.split(maxsplit=1)
         base = parts[0] if parts else command
-        return cls._whatis_cache.get(base, "")
+        return cache.get(base, "")
 
     @classmethod
     def warm_whatis_cache(cls, commands: list[str]) -> None:
@@ -559,10 +573,14 @@ class SecurityRepository:
             return
         cls._whatis_warming = True
         try:
+            cache = cls._load_whatis_cache()
             unique_bases = {cmd.split(maxsplit=1)[0] for cmd in commands if cmd.split()}
-            uncached = [b for b in unique_bases if b not in cls._whatis_cache]
+            uncached = [b for b in unique_bases if b not in cache]
+            if not uncached:
+                return
             for base in uncached:
-                cls._whatis_cache[base] = cls._lookup_whatis(base)
+                cache[base] = cls._lookup_whatis(base)
+            cls._save_whatis_cache()
         finally:
             cls._whatis_warming = False
 
