@@ -57,7 +57,8 @@ class SecurityPane(BasePane):
 
         # Monitoring toggles
         stack.add(self._build_section_header("MONITORING"), height=14)
-        stack.add(self._build_toggles_card(), height=_CARD_PAD + 2 * 28 + _CARD_PAD)
+        _toggle_row_h = 42
+        stack.add(self._build_toggles_card(), height=_CARD_PAD + 2 * _toggle_row_h + _CARD_PAD)
 
         # Installed plugins
         stack.add(self._build_section_header("INSTALLED PLUGINS"), height=14)
@@ -118,21 +119,29 @@ class SecurityPane(BasePane):
         return label(text, size=Font.CAPTION, color=theme.tertiary)
 
     def _build_toggles_card(self) -> NSView:
-        card_h = _CARD_PAD + 2 * 28 + _CARD_PAD
+        _toggle_row_h = 42
+        toggles = [
+            ("config_alerts", "Config change alerts", "Plugin installs, policy changes, new permissions"),
+            ("runtime_alerts", "Runtime security alerts", "Unrestricted sessions, suspicious commands"),
+        ]
+        card_h = _CARD_PAD + len(toggles) * _toggle_row_h + _CARD_PAD
         toggle_card = card(self.card_width, card_h)
         content = toggle_card.contentView()
         toggle_y = card_h - _CARD_PAD
 
-        for facet_name, facet_label in [
-            ("config_alerts", "Config change alerts"),
-            ("runtime_alerts", "Runtime security alerts"),
-        ]:
-            toggle_y -= 28
-            text = label(facet_label, size=Font.SECONDARY)
-            text.setFrame_(NSMakeRect(_CARD_PAD, toggle_y + 4, 250, 18))
+        for facet_name, facet_label, description in toggles:
+            toggle_y -= _toggle_row_h
+            text = label(facet_label, size=Font.SECONDARY, bold=True)
+            text.setFrame_(NSMakeRect(_CARD_PAD, toggle_y + 22, 300, 16))
             content.addSubview_(text)
 
-            switch = NSSwitch.alloc().initWithFrame_(NSMakeRect(self.card_width - _CARD_PAD - 46, toggle_y + 2, 46, 22))
+            desc = secondary_label(description, size=Font.SMALL)
+            desc.setFrame_(NSMakeRect(_CARD_PAD, toggle_y + 4, 300, 14))
+            content.addSubview_(desc)
+
+            switch = NSSwitch.alloc().initWithFrame_(
+                NSMakeRect(self.card_width - _CARD_PAD - 46, toggle_y + 12, 46, 22)
+            )
             val = features.get_facet(_FEATURE_KEY, facet_name)
             switch.setState_(NSControlStateValueOn if val else NSControlStateValueOff)
             switch.setIdentifier_(f"{_FEATURE_KEY}|{facet_name}")
