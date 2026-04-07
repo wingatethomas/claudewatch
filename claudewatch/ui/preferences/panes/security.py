@@ -49,19 +49,19 @@ class SecurityPane(BasePane):
         plugin_count = len(plugins_data) if isinstance(plugins_data, dict) else 0
         blocklist_entries = self._get_blocklist_entries(snapshot)
         perm_rules = repo._permission_rules(snapshot.settings_local)
-        mkt_names = repo._marketplace_names(snapshot.known_marketplaces)
 
         # Estimate content height
         content_h = 0
         content_h += 80  # toggles section
         content_h += _card_pad + max(plugin_count, 1) * _row_h + _card_pad + 30
-        content_h += _card_pad + 2 * _row_h + _card_pad + 30  # policies
+        content_h += _card_pad + 2 * 36 + _card_pad + 30  # policies (taller rows)
         if blocklist_entries:
-            content_h += _card_pad + len(blocklist_entries) * _row_h + _card_pad + 30
+            content_h += _card_pad + len(blocklist_entries) * 36 + _card_pad + 30
         if perm_rules:
             content_h += _card_pad + len(perm_rules) * _row_h + _card_pad + 30
-        if mkt_names:
-            content_h += _card_pad + len(mkt_names) * _row_h + _card_pad + 30
+        marketplaces_data = snapshot.known_marketplaces
+        if isinstance(marketplaces_data, dict) and marketplaces_data:
+            content_h += _card_pad + len(marketplaces_data) * 36 + _card_pad + 30
         content_h += Spacing.XL * 6
 
         inner_h = max(scroll_h, content_h)
@@ -127,91 +127,139 @@ class SecurityPane(BasePane):
             inner.addSubview_(empty)
             y -= 20 + Spacing.MD
 
-        # Policies
+        # Policies — with descriptions explaining what each one controls
+        _policy_row_h = 36  # taller rows for name + description
+        _policies = [
+            ("allow_remote_control", "Remote Control", "Allow external tools to send commands to Claude Code"),
+            ("allow_quick_web_setup", "Quick Web Setup", "Allow browser-based configuration of Claude Code"),
+        ]
         y = self._add_section_header(inner, "POLICIES", y)
-        policy_h = _card_pad + 2 * _row_h + _card_pad
+        policy_h = _card_pad + len(_policies) * _policy_row_h + _card_pad
         policy_card = card(self.card_width, policy_h)
         policy_card.setFrame_(NSMakeRect(CONTENT_PADDING, y - policy_h, self.card_width, policy_h))
         inner.addSubview_(policy_card)
         policy_content = policy_card.contentView()
         policy_y = policy_h - _card_pad
 
-        for key, display_name in [
-            ("allow_remote_control", "Remote Control"),
-            ("allow_quick_web_setup", "Quick Web Setup"),
-        ]:
-            policy_y -= _row_h
+        for key, display_name, description in _policies:
+            policy_y -= _policy_row_h
             val = repo._get_policy_value(snapshot.policy_limits, key)
             status = "Enabled" if val else "Disabled"
             color = theme.danger if val else theme.secondary
 
-            key_label = label(display_name, size=Font.SECONDARY)
-            key_label.setFrame_(NSMakeRect(_card_pad, policy_y, 160, 16))
+            key_label = label(display_name, size=Font.SECONDARY, bold=True)
+            key_label.setFrame_(NSMakeRect(_card_pad, policy_y + 16, 260, 16))
             policy_content.addSubview_(key_label)
 
+            desc_label = secondary_label(description, size=Font.SMALL)
+            desc_label.setFrame_(NSMakeRect(_card_pad, policy_y, 260, 14))
+            policy_content.addSubview_(desc_label)
+
             val_label = label(status, size=Font.SECONDARY, bold=True, color=color)
-            val_label.setFrame_(NSMakeRect(180, policy_y, 100, 16))
+            val_label.setFrame_(NSMakeRect(self.card_width - _card_pad - 80, policy_y + 10, 80, 16))
             policy_content.addSubview_(val_label)
 
         y -= policy_h + Spacing.MD
 
-        # Blocklisted plugins (with reasons)
+        # Blocklisted plugins — name, reason, and human-readable explanation
         if blocklist_entries:
+            _blocked_row_h = 36
             y = self._add_section_header(inner, "BLOCKLISTED PLUGINS", y)
-            blocked_h = _card_pad + len(blocklist_entries) * _row_h + _card_pad
+            blocked_h = _card_pad + len(blocklist_entries) * _blocked_row_h + _card_pad
             blocked_card = card(self.card_width, blocked_h)
             blocked_card.setFrame_(NSMakeRect(CONTENT_PADDING, y - blocked_h, self.card_width, blocked_h))
             inner.addSubview_(blocked_card)
             blocked_content = blocked_card.contentView()
             blocked_y = blocked_h - _card_pad
 
+            installed_plugins = repo._plugin_keys(snapshot.plugins_installed)
+
             for entry in blocklist_entries:
-                blocked_y -= _row_h
+                blocked_y -= _blocked_row_h
                 plugin_name = entry.get("plugin", "unknown")
                 short = plugin_name.split("@")[0] if "@" in plugin_name else plugin_name
                 reason = entry.get("reason", "")
-                display = f"{short}  —  {reason}" if reason else short
+                explanation = entry.get("text", "")
 
-                blocked_label = label(display, size=Font.SECONDARY, color=theme.danger)
-                blocked_label.setFrame_(NSMakeRect(_card_pad, blocked_y, self.card_width - _card_pad * 2, 16))
-                blocked_content.addSubview_(blocked_label)
+                # Flag if this blocked plugin is also installed
+                is_conflict = plugin_name in installed_plugins
+                name_display = f"⚠ {short}" if is_conflict else short
+
+                name_label = label(name_display, size=Font.SECONDARY, bold=True, color=theme.danger)
+                name_label.setFrame_(NSMakeRect(_card_pad, blocked_y + 16, 200, 16))
+                blocked_content.addSubview_(name_label)
+
+                reason_display = explanation or reason or "No reason given"
+                if len(reason_display) > _MAX_RULE_LEN:
+                    reason_display = reason_display[: _MAX_RULE_LEN - 1] + "…"
+                reason_label = secondary_label(reason_display, size=Font.SMALL)
+                reason_label.setFrame_(NSMakeRect(_card_pad, blocked_y, self.card_width - _card_pad * 2, 14))
+                blocked_content.addSubview_(reason_label)
+
+                if reason:
+                    badge_label = label(reason, size=Font.SMALL, color=theme.danger)
+                    badge_label.setFrame_(NSMakeRect(self.card_width - _card_pad - 80, blocked_y + 16, 80, 16))
+                    blocked_content.addSubview_(badge_label)
 
             y -= blocked_h + Spacing.MD
 
-        # Permission rules (truncated)
+        # Permission rules — categorized as broad (wildcard) vs specific
         if perm_rules:
+            broad = sorted(r for r in perm_rules if "*" in r)
+            specific = sorted(r for r in perm_rules if "*" not in r)
+            all_rules = broad + specific
+
             y = self._add_section_header(inner, "PERMISSION RULES", y)
-            rules_h = _card_pad + len(perm_rules) * _row_h + _card_pad
+            rules_h = _card_pad + len(all_rules) * _row_h + _card_pad
             rules_card = card(self.card_width, rules_h)
             rules_card.setFrame_(NSMakeRect(CONTENT_PADDING, y - rules_h, self.card_width, rules_h))
             inner.addSubview_(rules_card)
             rules_content = rules_card.contentView()
             rules_y = rules_h - _card_pad
 
-            for rule in sorted(perm_rules):
+            for rule in all_rules:
                 rules_y -= _row_h
-                display_rule = rule if len(rule) <= _MAX_RULE_LEN else rule[: _MAX_RULE_LEN - 1] + "…"
-                rule_label = secondary_label(display_rule, size=Font.SMALL)
+                is_broad = "*" in rule
+                # Parse tool name from Bash(...) format
+                display_rule = self._format_permission_rule(rule)
+                if len(display_rule) > _MAX_RULE_LEN:
+                    display_rule = display_rule[: _MAX_RULE_LEN - 1] + "…"
+
+                color = theme.danger if is_broad else theme.secondary
+                prefix = "⚠ " if is_broad else "  "
+                rule_label = label(prefix + display_rule, size=Font.SMALL, color=color)
                 rule_label.setFrame_(NSMakeRect(_card_pad, rules_y, self.card_width - _card_pad * 2, 16))
                 rules_content.addSubview_(rule_label)
 
             y -= rules_h + Spacing.MD
 
-        # Marketplaces
-        if mkt_names:
+        # Marketplaces — show name + GitHub source
+        marketplaces_data = snapshot.known_marketplaces
+        if isinstance(marketplaces_data, dict) and marketplaces_data:
             y = self._add_section_header(inner, "PLUGIN MARKETPLACES", y)
-            mkt_h = _card_pad + len(mkt_names) * _row_h + _card_pad
+            _mkt_row_h = 36
+            mkt_h = _card_pad + len(marketplaces_data) * _mkt_row_h + _card_pad
             mkt_card = card(self.card_width, mkt_h)
             mkt_card.setFrame_(NSMakeRect(CONTENT_PADDING, y - mkt_h, self.card_width, mkt_h))
             inner.addSubview_(mkt_card)
             mkt_content = mkt_card.contentView()
             mkt_y = mkt_h - _card_pad
 
-            for name in mkt_names:
-                mkt_y -= _row_h
-                mkt_label = label(name, size=Font.SECONDARY)
-                mkt_label.setFrame_(NSMakeRect(_card_pad, mkt_y, self.card_width - _card_pad * 2, 16))
+            for name, data in marketplaces_data.items():
+                mkt_y -= _mkt_row_h
+                mkt_label = label(name, size=Font.SECONDARY, bold=True)
+                mkt_label.setFrame_(NSMakeRect(_card_pad, mkt_y + 16, self.card_width - _card_pad * 2, 16))
                 mkt_content.addSubview_(mkt_label)
+
+                source_repo = ""
+                if isinstance(data, dict):
+                    source = data.get("source", {})
+                    if isinstance(source, dict):
+                        source_repo = source.get("repo", "")
+                source_display = source_repo or "Unknown source"
+                source_label = secondary_label(source_display, size=Font.SMALL)
+                source_label.setFrame_(NSMakeRect(_card_pad, mkt_y, self.card_width - _card_pad * 2, 14))
+                mkt_content.addSubview_(source_label)
 
             y -= mkt_h + Spacing.MD
 
@@ -254,6 +302,21 @@ class SecurityPane(BasePane):
 
         parts = [p for p in [scope_display, installed] if p]
         return " · ".join(parts)
+
+    @staticmethod
+    def _format_permission_rule(rule: str) -> str:
+        """Make a permission rule human-readable.
+
+        'Bash(python3:*)' → 'Bash: python3 (any args)'
+        'Bash(wc -l /path/...)' → 'Bash: wc -l /path/...'
+        """
+        if rule.startswith("Bash(") and rule.endswith(")"):
+            inner = rule[5:-1]
+            if ":*" in inner:
+                tool = inner.split(":*")[0]
+                return f"Bash: {tool} (any args)"
+            return f"Bash: {inner}"
+        return rule
 
     @staticmethod
     def _get_blocklist_entries(snapshot: object) -> list[dict[str, str]]:
