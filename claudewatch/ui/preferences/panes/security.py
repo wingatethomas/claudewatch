@@ -411,7 +411,7 @@ class SecurityPane(BasePane):
             color = theme.danger
             prefix = "🚫 "
         elif is_broad:
-            color = theme.secondary
+            color = theme.warning
             prefix = "⚠ "
         else:
             color = theme.secondary
