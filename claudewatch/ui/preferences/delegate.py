@@ -265,7 +265,7 @@ class PrefsDelegate(NSObject):
 
         repo = get_security_service()._repo
         if repo.remove_permission_rule(settings_path, rule):
-            self.show_pane({"key": "security"})
+            self._show_security_confirmation("Permission removed")
 
     @objc_callback
     def clearPermissions_(self, sender: objc.objc_object) -> None:  # noqa: N802
@@ -279,7 +279,20 @@ class PrefsDelegate(NSObject):
 
         repo = get_security_service()._repo
         if repo.clear_permissions(settings_path):
-            self.show_pane({"key": "security"})
+            self._show_security_confirmation("All permissions cleared")
+
+    def _show_security_confirmation(self, message: str) -> None:
+        """Show confirmation alert then refresh the Security pane preserving scroll."""
+        from AppKit import NSAlert
+
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_(message)
+        alert.setInformativeText_("Claude will ask for permission again next time it needs access.")
+        alert.addButtonWithTitle_("OK")
+        alert.runModal()
+
+        # Rebuild pane — scroll position resets but that's acceptable after a modal
+        self.show_pane({"key": "security"})
 
     # -- Window --
 
