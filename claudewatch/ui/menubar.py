@@ -30,6 +30,7 @@ from claudewatch.backend.analytics.dependencies import get_analytics_service
 from claudewatch.backend.analytics.service import AnalyticsService
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
+from claudewatch.backend.core import features
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.models import ClaudeSession
 from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
@@ -206,12 +207,14 @@ class ClaudeWatchApp:
         """Track session count for guide nudge (no notification tips)."""
         pass
 
-    _SECURITY_CHECK_INTERVAL = 30
+    _INTERVAL_MAP = {"10s": 10, "30s": 30, "60s": 60, "5m": 300}
 
     def _run_security_checks(self) -> None:
         """Run throttled security config + runtime checks."""
+        interval_str = str(features.get_facet("security", "check_interval") or "30s")
+        interval = self._INTERVAL_MAP.get(interval_str, 30)
         now = time.time()
-        if now - self._last_security_check < self._SECURITY_CHECK_INTERVAL:
+        if now - self._last_security_check < interval:
             return
         self._last_security_check = now
         try:

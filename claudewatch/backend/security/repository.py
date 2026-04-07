@@ -5,9 +5,16 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 
+from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, proj_key_to_cwd
 from claudewatch.backend.core.settings import get_setting, set_setting
-from claudewatch.backend.security.models import ConfigSnapshot, SecurityAlert, is_dangerous_permission
+from claudewatch.backend.security.models import (
+    DEFAULT_SUSPICIOUS_PATTERNS,
+    ConfigSnapshot,
+    SecurityAlert,
+    is_dangerous_permission,
+)
 
 log = logging.getLogger("claudewatch")
 
@@ -243,17 +250,13 @@ class SecurityRepository:
 
         Returns list of (project_name, settings_path, rules).
         """
-        import time as _time  # noqa: PLC0415
-
-        now = _time.time()
+        now = time.time()
         if (
             not force
             and self._project_perms_cache is not None
             and now - self._project_perms_cache_time < self._PROJECT_CACHE_TTL
         ):
             return self._project_perms_cache
-
-        from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, proj_key_to_cwd  # noqa: PLC0415
 
         results: list[tuple[str, str, list[str]]] = []
         try:
@@ -485,8 +488,6 @@ class SecurityRepository:
 
     def check_suspicious_commands(self, cwd: str, project: str) -> list[SecurityAlert]:  # noqa: PLR0912
         """Scan recent Bash commands in a session's JSONL for suspicious patterns."""
-        from claudewatch.backend.security.models import DEFAULT_SUSPICIOUS_PATTERNS  # noqa: PLC0415
-
         if not self._session_log:
             return []
         path = self._session_log.find_most_recent(cwd)

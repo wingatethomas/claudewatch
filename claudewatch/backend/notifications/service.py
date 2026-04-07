@@ -100,7 +100,7 @@ class NotificationService(BaseService):
         self.last_notification_time = 0.0
         self._center = NSUserNotificationCenter.defaultUserNotificationCenter()
 
-    def send(self, title: str, subtitle: str, message: str) -> None:
+    def send(self, title: str, subtitle: str, message: str, *, sound: str | None = None) -> None:
         """Send a single notification (fire-and-forget)."""
         if not features.is_enabled("notifications") or self._center is None:
             return
@@ -108,6 +108,8 @@ class NotificationService(BaseService):
         n.setTitle_(title)
         n.setSubtitle_(subtitle)
         n.setInformativeText_(message[:200])
+        if sound:
+            n.setSoundName_(sound)
         self._center.deliverNotification_(n)
 
     def notify_if_needed(self, sessions: list[ClaudeSession]) -> None:  # noqa: PLR0912

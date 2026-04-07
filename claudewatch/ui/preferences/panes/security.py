@@ -10,6 +10,7 @@ from AppKit import (
     NSControlStateValueOff,
     NSControlStateValueOn,
     NSFont,
+    NSPopUpButton,
     NSSwitch,
     NSView,
 )
@@ -53,12 +54,13 @@ class SecurityPane(BasePane):
         global_rules = set(global_rules_list)
         project_perms = repo.get_all_project_permissions()
 
-        stack = VStack(width=self.width, padding=CONTENT_PADDING, spacing=Spacing.MD)
+        stack = VStack(width=self.width, padding=CONTENT_PADDING, spacing=Spacing.SM)
 
         # Monitoring toggles
         stack.add(self._build_section_header("MONITORING"), height=14)
         _toggle_row_h = 42
-        stack.add(self._build_toggles_card(), height=_CARD_PAD + 2 * _toggle_row_h + _CARD_PAD)
+        _dropdown_row_h = 34
+        stack.add(self._build_toggles_card(), height=_CARD_PAD + 2 * _toggle_row_h + 2 * _dropdown_row_h + _CARD_PAD)
 
         # Installed plugins
         stack.add(self._build_section_header("INSTALLED PLUGINS"), height=14)
@@ -120,34 +122,56 @@ class SecurityPane(BasePane):
 
     def _build_toggles_card(self) -> NSView:
         _toggle_row_h = 42
-        toggles = [
+        _dropdown_row_h = 34
+        bool_toggles = [
             ("config_alerts", "Config change alerts", "Plugin installs, policy changes, new permissions"),
             ("runtime_alerts", "Runtime security alerts", "Unrestricted sessions, suspicious commands"),
         ]
-        card_h = _CARD_PAD + len(toggles) * _toggle_row_h + _CARD_PAD
+        dropdowns = [
+            ("check_interval", "Check interval", ("10s", "30s", "60s", "5m")),
+            ("alert_sound", "Alert sound", ("Glass", "Blow", "Funk", "Hero", "Ping", "Pop", "Purr", "Submarine")),
+        ]
+        card_h = _CARD_PAD + len(bool_toggles) * _toggle_row_h + len(dropdowns) * _dropdown_row_h + _CARD_PAD
         toggle_card = card(self.card_width, card_h)
         content = toggle_card.contentView()
-        toggle_y = card_h - _CARD_PAD
+        row_y = card_h - _CARD_PAD
 
-        for facet_name, facet_label, description in toggles:
-            toggle_y -= _toggle_row_h
+        for facet_name, facet_label, description in bool_toggles:
+            row_y -= _toggle_row_h
             text = label(facet_label, size=Font.SECONDARY, bold=True)
-            text.setFrame_(NSMakeRect(_CARD_PAD, toggle_y + 22, 300, 16))
+            text.setFrame_(NSMakeRect(_CARD_PAD, row_y + 22, 300, 16))
             content.addSubview_(text)
 
             desc = secondary_label(description, size=Font.SMALL)
-            desc.setFrame_(NSMakeRect(_CARD_PAD, toggle_y + 4, 300, 14))
+            desc.setFrame_(NSMakeRect(_CARD_PAD, row_y + 4, 300, 14))
             content.addSubview_(desc)
 
-            switch = NSSwitch.alloc().initWithFrame_(
-                NSMakeRect(self.card_width - _CARD_PAD - 46, toggle_y + 12, 46, 22)
-            )
+            switch = NSSwitch.alloc().initWithFrame_(NSMakeRect(self.card_width - _CARD_PAD - 46, row_y + 12, 46, 22))
             val = features.get_facet(_FEATURE_KEY, facet_name)
             switch.setState_(NSControlStateValueOn if val else NSControlStateValueOff)
             switch.setIdentifier_(f"{_FEATURE_KEY}|{facet_name}")
             switch.setTarget_(self.delegate)
             switch.setAction_(objc.selector(self.delegate.facetBoolChanged_, signature=b"v@:@"))
             content.addSubview_(switch)
+
+        for facet_name, facet_label, options in dropdowns:
+            row_y -= _dropdown_row_h
+            text = label(facet_label, size=Font.SECONDARY)
+            text.setFrame_(NSMakeRect(_CARD_PAD, row_y + 8, 150, 16))
+            content.addSubview_(text)
+
+            popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+                NSMakeRect(self.card_width - _CARD_PAD - 130, row_y + 4, 130, 24), False
+            )
+            popup.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
+            popup.addItemsWithTitles_(list(options))
+            current = features.get_facet(_FEATURE_KEY, facet_name)
+            if current:
+                popup.selectItemWithTitle_(str(current))
+            popup.cell().setRepresentedObject_(f"{_FEATURE_KEY}|{facet_name}")
+            popup.setTarget_(self.delegate)
+            popup.setAction_(objc.selector(self.delegate.facetChanged_, signature=b"v@:@"))
+            content.addSubview_(popup)
 
         return toggle_card
 

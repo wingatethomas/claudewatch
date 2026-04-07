@@ -105,8 +105,9 @@ class SecurityService(BaseService):
         if not features.is_enabled(_FEATURE_KEY):
             return
 
+        sound = str(features.get_facet(_FEATURE_KEY, "alert_sound") or "Glass")
         for alert in alerts:
-            self._notifications.send(alert.title, alert.subtitle, alert.message[:200])
+            self._notifications.send(alert.title, alert.subtitle, alert.message[:200], sound=sound)
             log.info(
                 "security.alert type=%s severity=%s message=%s",
                 alert.alert_type,

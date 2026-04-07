@@ -26,6 +26,20 @@ register(
                 default=False,
                 description="Runtime security alerts",
             ),
+            Facet(
+                name="check_interval",
+                type=FacetType.CHOICE,
+                default="30s",
+                description="Check interval",
+                options=("10s", "30s", "60s", "5m"),
+            ),
+            Facet(
+                name="alert_sound",
+                type=FacetType.CHOICE,
+                default="Glass",
+                description="Alert sound",
+                options=("Glass", "Blow", "Funk", "Hero", "Ping", "Pop", "Purr", "Submarine"),
+            ),
         ),
     )
 )

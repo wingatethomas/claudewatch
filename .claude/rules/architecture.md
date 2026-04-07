@@ -39,6 +39,14 @@ Cross-layer DTOs (`BookmarkDTO`, `HistoryEntryDTO`, etc.) live in `core/dto.py` 
 - Domain-internal return types (e.g. `ToolUsage`, `AgentInfo`) are frozen dataclasses in the domain's `models.py` — they don't need `BaseDTO` or the `DTO` suffix.
 - `ClaudeSession` from `core/models.py` is the shared session model (mutable, internal).
 
+## Import Rules (continued)
+
+- **No lazy imports inside functions.** All imports must be at the top of the file. The only exceptions are:
+  - `TYPE_CHECKING` blocks for circular dependency avoidance
+  - Delegate handler methods in `preferences/delegate.py` (lazy imports to avoid circular deps with handler modules)
+  - Test files using `from X import Y` inside test methods when the import triggers side effects
+- If ruff flags `PLC0415` for a lazy import, move it to the top of the file. Do not suppress with `# noqa: PLC0415`.
+
 ## Encapsulation Rules
 
 - Never access private methods (`_method`) across module boundaries. If a UI pane needs data from a repository, the repository must expose a public method for it.
