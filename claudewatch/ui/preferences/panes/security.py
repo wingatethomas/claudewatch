@@ -257,7 +257,7 @@ class SecurityPane(BasePane):
         if global_rules:
             total_rows += 1 + len(global_rules)  # header + rules
         for _proj_name, _path, rules in project_perms:
-            total_rows += 1 + min(len(rules), 5)  # header + capped rules
+            total_rows += 1 + len(rules)  # header + rules
 
         if total_rows == 0:
             empty = secondary_label("No permission rules configured", size=Font.SECONDARY)
@@ -312,7 +312,7 @@ class SecurityPane(BasePane):
                 clear_btn.cell().setRepresentedObject_(settings_path)
                 rules_content.addSubview_(clear_btn)
 
-                display_rules = sorted(rules, key=lambda r: (":*" not in r, r))[:5]
+                display_rules = sorted(rules, key=lambda r: (":*" not in r, r))
                 for rule in display_rules:
                     rules_y -= _row_h
                     rules_y = self._add_permission_row(rules_content, rule, settings_path, rules_y, _card_pad)
