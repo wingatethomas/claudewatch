@@ -143,6 +143,90 @@ class TestPendingToolDetection:
         result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert result.has_pending is True
 
+    def test_no_pending_when_tool_result_received(self, tmp_path: str) -> None:
+        """Tool completed — tool_result after tool_use means not pending."""
+        service, jsonl_path = self._make_service(tmp_path)
+        _write_jsonl(
+            jsonl_path,
+            [
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "tool_use", "name": "Write", "input": {"file_path": "/tmp/out.md"}},
+                        ],
+                    },
+                },
+                {
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "tool_result", "tool_use_id": "toolu_001", "content": "wrote 240 lines"}],
+                    },
+                },
+            ],
+        )
+
+        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is False
+
+    def test_no_pending_after_tool_result_then_text(self, tmp_path: str) -> None:
+        """Full cycle: tool_use → tool_result → assistant text. Not pending."""
+        service, jsonl_path = self._make_service(tmp_path)
+        _write_jsonl(
+            jsonl_path,
+            [
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "tool_use", "name": "Bash", "input": {"command": "pytest"}},
+                        ],
+                    },
+                },
+                {
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "tool_result", "tool_use_id": "toolu_002", "content": "5 passed"}],
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "All tests pass."}],
+                    },
+                },
+            ],
+        )
+
+        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is False
+
+    def test_pending_when_no_tool_result(self, tmp_path: str) -> None:
+        """tool_use without subsequent tool_result — still pending."""
+        service, jsonl_path = self._make_service(tmp_path)
+        _write_jsonl(
+            jsonl_path,
+            [
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "tool_use", "name": "Edit", "input": {"file_path": "/src/auth.py"}},
+                        ],
+                    },
+                },
+            ],
+        )
+
+        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is True
+
     def test_no_pending_when_assistant_sent_text_only(self, tmp_path: str) -> None:
         service, jsonl_path = self._make_service(tmp_path)
         _write_jsonl(

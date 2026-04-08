@@ -244,6 +244,11 @@ class DetectionService(BaseService):
             return _empty
 
         lines = tail.strip().splitlines()
+
+        # Scan in reverse. Track whether we've seen a tool_result (user entry)
+        # AFTER the most recent assistant tool_use. If yes, the tool completed.
+        seen_tool_result = False
+
         for line in reversed(lines[-20:]):
             try:
                 d = json.loads(line)
@@ -253,12 +258,23 @@ class DetectionService(BaseService):
                     continue
 
                 if dtype == "user":
+                    # Check if this is a tool_result (tool completed) or actual user input
+                    content = d.get("message", {}).get("content", [])
+                    if isinstance(content, list):
+                        has_tool_result = any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+                        if has_tool_result:
+                            seen_tool_result = True
+                            continue  # keep scanning — the assistant tool_use before this is resolved
+                    # Actual user input — tool approval given or new message
                     return _empty
 
                 if dtype == "assistant":
                     content = d.get("message", {}).get("content", [])
                     tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
                     if tool_uses:
+                        if seen_tool_result:
+                            # This tool_use was already resolved by a subsequent tool_result
+                            return _empty
                         info = _format_tool_use(tool_uses[-1])
                         return PendingToolResult(has_pending=True, one_line=info.one_line, context=info.context)
                     return _empty
@@ -271,6 +287,8 @@ class DetectionService(BaseService):
                         content = msg.get("message", {}).get("content", [])
                         tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
                         if tool_uses:
+                            if seen_tool_result:
+                                return _empty
                             info = _format_tool_use(tool_uses[-1])
                             return PendingToolResult(has_pending=True, one_line=info.one_line, context=info.context)
                         return _empty
