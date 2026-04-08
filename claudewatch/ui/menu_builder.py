@@ -340,12 +340,14 @@ class MenuBuilder:
         # Detail line: model + summary (or status as fallback)
         model = self._app._usage_service.get_model(s.cwd)
         cached = self._app._summary_service.get_cached(s.cwd)
-        generating = self._app._summary_service.is_generating(s.cwd)
         _max_detail_total = 55
+        status = self._app._summary_service.get_status(s.cwd)
         if cached:
             oneliner = cached.replace("\n", " ").strip()
-        elif generating:
+        elif status == "generating":
             oneliner = "Generating summary…"
+        elif status == "failed":
+            oneliner = "Summary unavailable"
         else:
             oneliner = s.detail_line
         detail_parts = [p for p in [model, oneliner] if p]
