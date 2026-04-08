@@ -1,37 +1,34 @@
-"""Graph pane — change impact analysis and code intelligence."""
+"""Graph pane — human-readable change impact with tabs."""
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-import tempfile
-import threading
-import webbrowser
+from datetime import UTC, datetime
 
-from AppKit import NSScrollView, NSView
+import objc
+from AppKit import (
+    NSFont,
+    NSScrollView,
+    NSSegmentedControl,
+    NSSegmentStyleTexturedRounded,
+    NSView,
+)
 from Foundation import NSMakeRect
 
 from claudewatch.backend.analytics.dependencies import get_analytics_service
 from claudewatch.backend.core import features
 from claudewatch.backend.graph.dependencies import get_graph_service
 from claudewatch.ui.components.layout import VStack
-from claudewatch.ui.components.widgets.cards import card
+from claudewatch.ui.components.tokens import Font
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, BasePane
 from claudewatch.ui.theme import theme
 
 log = logging.getLogger("claudewatch")
 
-_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "graph_assets")
-_CARD_PAD = 16
-_ROW_H = 22
-
 
 class GraphPane(BasePane):
-    """Graph pane showing change impact analysis."""
-
-    _bootstrap_running = False
+    """Graph pane with tabs: Recent Changes, Impact, Hotspots."""
 
     @property
     def title(self) -> str:
@@ -41,188 +38,214 @@ class GraphPane(BasePane):
     def subtitle(self) -> str:
         return "Change impact analysis"
 
-    def build_content(self, view: NSView, content_top: float) -> None:  # noqa: PLR0915
+    def build_content(self, view: NSView, content_top: float) -> None:
         graph_svc = get_graph_service()
-        analytics_svc = get_analytics_service()
         overview = graph_svc.queries.project_graph_all()
 
         if overview.sessions == 0:
-            empty = secondary_label("Graph data will appear after the first background scan.", size=13.0)
+            empty = secondary_label("No data yet. Graph populates after the first background scan.", size=13.0)
             empty.setFrame_(NSMakeRect(CONTENT_PADDING, content_top - 30, self.card_width, 18))
             view.addSubview_(empty)
-            if not GraphPane._bootstrap_running:
-                GraphPane._bootstrap_running = True
-                threading.Thread(target=self._bootstrap, daemon=True).start()
             return
 
-        stack = VStack(width=self.card_width, padding=0, spacing=8)
+        # Tab control
+        tab_y = content_top - 28
+        tab_control = NSSegmentedControl.segmentedControlWithLabels_trackingMode_target_action_(
+            ["Recent Changes", "Impact", "Hotspots"],
+            0,
+            self.delegate,
+            objc.selector(self.delegate.graphTabChanged_, signature=b"v@:@"),
+        )
+        tab_control.setFrame_(NSMakeRect(CONTENT_PADDING, tab_y, self.card_width, 24))
+        tab_control.setSegmentStyle_(NSSegmentStyleTexturedRounded)
+        tab_control.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
+        tab_idx = getattr(self.delegate, "_graph_tab", 0)
+        tab_control.setSelectedSegment_(tab_idx)
+        view.addSubview_(tab_control)
 
-        # Overview
-        stack.add(_section_header("OVERVIEW"), height=14)
-        overview_rows = [
-            ("Sessions tracked", str(overview.sessions)),
-            ("Actions recorded", str(overview.actions)),
-            ("Files touched", str(overview.files)),
-            ("Symbols indexed", str(overview.symbols)),
-        ]
-        overview_card = _build_rows_card(self.card_width, overview_rows)
-        stack.add(overview_card, height=overview_card.frame().size.height)
-
-        # Code indexing status
-        indexing_enabled = features.is_enabled("code_indexing")
-        if not indexing_enabled:
-            stack.gap(4)
-            hint = secondary_label("Enable Code Indexing in Settings for function-level impact analysis.", size=11.0)
-            stack.add(hint, height=16)
-
-        # Recent edits → functions (only if code indexing is on and symbols exist)
-        if indexing_enabled and overview.symbols > 0:
-            recent_edits = graph_svc.queries.recent_edits_with_symbols(limit=10)
-            if recent_edits:
-                stack.add(_section_header("RECENT EDITS → FUNCTIONS"), height=14)
-                edit_card = _build_edits_card(self.card_width, recent_edits)
-                stack.add(edit_card, height=edit_card.frame().size.height)
-
-        # Function hotspots (graph-based, needs code indexing)
-        if indexing_enabled and overview.symbols > 0:
-            hotspots = graph_svc.queries.function_hotspots(
-                project=graph_svc.queries.active_project_paths()[0] if graph_svc.queries.active_project_paths() else "",
-                limit=10,
-            )
-            if hotspots:
-                stack.add(_section_header("FUNCTION HOTSPOTS"), height=14)
-                hotspot_rows = [(h.qualified_name.rsplit(":", 1)[-1], f"{h.edits} edits") for h in hotspots]
-                hotspot_card = _build_rows_card(self.card_width, hotspot_rows)
-                stack.add(hotspot_card, height=hotspot_card.frame().size.height)
-
-        # File hotspots (analytics-based, always available)
-        file_hotspots = analytics_svc.queries.hotspot_files_global(min_sessions=2, limit=10)
-        if file_hotspots:
-            stack.add(_section_header("FILE HOTSPOTS"), height=14)
-            file_rows = [(_shorten_path(h.path), f"{h.session_count} sessions") for h in file_hotspots]
-            file_card = _build_rows_card(self.card_width, file_rows)
-            stack.add(file_card, height=file_card.frame().size.height)
-
-        # Workflow patterns
-        patterns = graph_svc.queries.workflow_patterns_all(limit=8)
-        if patterns:
-            stack.add(_section_header("WORKFLOW PATTERNS"), height=14)
-            pattern_rows = [(f"{p.first} → {p.then}", str(p.frequency)) for p in patterns]
-            pattern_card = _build_rows_card(self.card_width, pattern_rows)
-            stack.add(pattern_card, height=pattern_card.frame().size.height)
-
-        # Open in browser link
-        if indexing_enabled and overview.symbols > 0:
-            stack.gap(8)
-            browser_label = label("Open impact graph in browser →", size=12.0, color=theme.accent)
-            stack.add(browser_label, height=18)
-            # Fire browser open in background to not block pane render
-            threading.Thread(target=self._open_impact_in_browser, daemon=True).start()
-
-        # Place in scroll
-        scroll_h = content_top
-        if stack.content_height <= scroll_h:
-            content_view = stack.to_view(min_height=scroll_h)
-            content_view.setFrame_(NSMakeRect(CONTENT_PADDING, 0, self.card_width, scroll_h))
-            view.addSubview_(content_view)
+        # Content area below tabs
+        content_top_after_tabs = tab_y - 8
+        if tab_idx == 0:
+            self._build_recent_changes(view, content_top_after_tabs)
+        elif tab_idx == 1:
+            self._build_impact(view, content_top_after_tabs)
         else:
-            inner = stack.to_view()
-            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING, 0, self.card_width, scroll_h))
-            scroll.setHasVerticalScroller_(True)
-            scroll.setAutohidesScrollers_(True)
-            scroll.setDrawsBackground_(False)
-            scroll.setDocumentView_(inner)
-            inner.scrollPoint_((0, inner.frame().size.height))
-            view.addSubview_(scroll)
+            self._build_hotspots(view, content_top_after_tabs)
 
-    def _open_impact_in_browser(self) -> None:
-        try:
-            graph_svc = get_graph_service()
+    def _build_recent_changes(self, view: NSView, content_top: float) -> None:
+        """What did Claude change?"""
+        graph_svc = get_graph_service()
+        indexing_on = features.is_enabled("code_indexing")
+
+        stack = VStack(width=self.card_width, padding=0, spacing=4)
+
+        if indexing_on:
+            edits = graph_svc.queries.recent_edits_with_symbols(limit=30)
+            if edits:
+                for edit in edits:
+                    fn = edit.get("function", "")
+                    fpath = edit.get("file_path", "")
+                    ts = edit.get("timestamp", "")
+                    filename = fpath.rsplit("/", 1)[-1] if "/" in fpath else fpath
+                    time_ago = _relative_time(ts)
+
+                    line = f"{fn}()  in {filename}" if fn else filename
+                    row = _text_row(self.card_width, line, time_ago)
+                    stack.add(row, height=20)
+            else:
+                stack.add(
+                    secondary_label("No edits with function data yet. Waiting for code indexing.", size=12.0), height=18
+                )
+        else:
+            # Fall back to file-level edits from analytics
             analytics_svc = get_analytics_service()
+            recent = analytics_svc.queries.recent_sessions(limit=5)
+            if recent:
+                for session in recent:
+                    session_files = analytics_svc.queries.files_for_session(session.session_id)
+                    edit_files = [f for f in session_files if f.count > 0][:5]
+                    if edit_files:
+                        project_label = label(
+                            f"{session.proj_key}  {_relative_time(session.last_ts)}",
+                            size=11.0,
+                            color=theme.tertiary,
+                        )
+                        stack.add(project_label, height=16)
+                        for file_entry in edit_files:
+                            filename = file_entry.path.rsplit("/", 1)[-1] if "/" in file_entry.path else file_entry.path
+                            row = _text_row(self.card_width, f"  {filename}", f"{file_entry.count}x")
+                            stack.add(row, height=18)
+                        stack.gap(4)
+            else:
+                stack.add(secondary_label("No recent sessions.", size=12.0), height=18)
 
-            data = json.dumps(
-                {
-                    "edits": graph_svc.queries.recent_edits_with_symbols(limit=20),
-                    "hotspots": [
-                        {"path": h.path, "session_count": h.session_count}
-                        for h in analytics_svc.queries.hotspot_files_global(limit=15)
-                    ],
-                    "patterns": [
-                        {"first": p.first, "then": p.then, "frequency": p.frequency}
-                        for p in graph_svc.queries.workflow_patterns_all(limit=15)
-                    ],
-                    "graph": graph_svc.queries.force_graph_data(limit=300),
-                }
+            stack.gap(8)
+            stack.add(
+                secondary_label("Enable Code Indexing in Settings for function-level detail.", size=11.0), height=16
             )
 
-            html_path = os.path.join(_ASSETS_DIR, "index.html")
-            d3_path = os.path.join(_ASSETS_DIR, "d3.v7.min.js")
-            with open(html_path) as f:
-                html = f.read()
-            with open(d3_path) as f:
-                d3_js = f.read()
+        _place_stack(view, stack, self.card_width, content_top)
 
-            html = html.replace('<script src="d3.v7.min.js"></script>', f"<script>{d3_js}</script>")
-            html = html.replace("__DATA__", data)
+    def _build_impact(self, view: NSView, content_top: float) -> None:
+        """What depends on what I changed?"""
+        stack = VStack(width=self.card_width, padding=0, spacing=4)
 
-            with tempfile.NamedTemporaryFile(suffix=".html", prefix="claudewatch-impact-", delete=False) as tmp:
-                tmp.write(html.encode())
-            webbrowser.open(f"file://{tmp.name}")
-        except Exception:
-            log.exception("failed to open impact graph in browser")
+        indexing_on = features.is_enabled("code_indexing")
+        if not indexing_on:
+            stack.add(secondary_label("Enable Code Indexing in Settings to see impact analysis.", size=12.0), height=18)
+            _place_stack(view, stack, self.card_width, content_top)
+            return
 
-    def _bootstrap(self) -> None:
-        try:
-            get_graph_service().full_pipeline()
-        except Exception:
-            log.exception("graph bootstrap failed")
-        finally:
-            GraphPane._bootstrap_running = False
+        graph_svc = get_graph_service()
+        overview = graph_svc.queries.project_graph_all()
+        if overview.symbols == 0:
+            stack.add(secondary_label("Waiting for code indexing to complete...", size=12.0), height=18)
+            _place_stack(view, stack, self.card_width, content_top)
+            return
+
+        edits = graph_svc.queries.recent_edits_with_symbols(limit=10)
+        if not edits:
+            stack.add(secondary_label("No recent edits with function data.", size=12.0), height=18)
+            _place_stack(view, stack, self.card_width, content_top)
+            return
+
+        seen_actions: set[str] = set()
+        for edit in edits:
+            action_id = edit.get("session_id", "") + ":" + edit.get("function", "")
+            if action_id in seen_actions:
+                continue
+            seen_actions.add(action_id)
+
+            fn = edit.get("function", "?")
+            impact = graph_svc.queries.cascading_impact(edit.get("session_id", ""))
+            callers = impact.impacted[:5] if impact.impacted else []
+
+            fn_label = label(f"{fn}()", size=12.0, bold=True)
+            stack.add(fn_label, height=20)
+
+            if callers:
+                caller_names = ", ".join(c.rsplit(":", 1)[-1] + "()" for c in callers)
+                caller_label = label(f"  called by {caller_names}", size=11.0, color=theme.secondary)
+                stack.add(caller_label, height=18)
+            else:
+                no_callers = label("  no known callers", size=11.0, color=theme.tertiary)
+                stack.add(no_callers, height=18)
+
+            stack.gap(4)
+
+        _place_stack(view, stack, self.card_width, content_top)
+
+    def _build_hotspots(self, view: NSView, content_top: float) -> None:
+        """What files keep getting changed?"""
+        analytics_svc = get_analytics_service()
+        hotspots = analytics_svc.queries.hotspot_files_global(min_sessions=2, limit=20)
+
+        stack = VStack(width=self.card_width, padding=0, spacing=2)
+
+        if not hotspots:
+            stack.add(secondary_label("No file hotspots yet.", size=12.0), height=18)
+        else:
+            for hotspot in hotspots:
+                filename = hotspot.path.rsplit("/", 1)[-1] if "/" in hotspot.path else hotspot.path
+                row = _text_row(self.card_width, filename, f"{hotspot.session_count} sessions")
+                stack.add(row, height=20)
+
+        _place_stack(view, stack, self.card_width, content_top)
 
 
-def _section_header(text: str) -> NSView:
-    return label(text, size=10.0, color=theme.tertiary)
+def _text_row(width: float, left_text: str, right_text: str) -> NSView:
+    """A simple left-aligned + right-aligned text row."""
+    row = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, width, 20))
+    left = label(left_text, size=12.0)
+    left.setFrame_(NSMakeRect(0, 0, width - 100, 18))
+    row.addSubview_(left)
+    right = label(right_text, size=11.0, color=theme.tertiary)
+    right.setFrame_(NSMakeRect(width - 96, 0, 96, 18))
+    row.addSubview_(right)
+    return row
 
 
-def _shorten_path(path: str, max_len: int = 40) -> str:
-    if len(path) <= max_len:
-        return path
-    parts = path.split("/")
-    if len(parts) > 2:
-        return ".../" + "/".join(parts[-2:])
-    return "..." + path[-(max_len - 3) :]
+def _place_stack(view: NSView, stack: VStack, card_width: float, content_top: float) -> None:
+    """Place a VStack into the view, scrolling if needed."""
+    scroll_h = content_top
+    if stack.content_height <= scroll_h:
+        content_view = stack.to_view(min_height=scroll_h)
+        content_view.setFrame_(NSMakeRect(CONTENT_PADDING, 0, card_width, scroll_h))
+        view.addSubview_(content_view)
+    else:
+        inner = stack.to_view()
+        scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING, 0, card_width, scroll_h))
+        scroll.setHasVerticalScroller_(True)
+        scroll.setAutohidesScrollers_(True)
+        scroll.setDrawsBackground_(False)
+        scroll.setDocumentView_(inner)
+        inner.scrollPoint_((0, inner.frame().size.height))
+        view.addSubview_(scroll)
 
 
-def _build_rows_card(card_w: float, rows: list[tuple[str, str]]) -> NSView:
-    card_h = _CARD_PAD + len(rows) * _ROW_H + _CARD_PAD
-    rows_card = card(card_w, card_h)
-    content = rows_card.contentView()
-    ry = card_h - _CARD_PAD
-    for left_text, right_text in rows:
-        ry -= _ROW_H
-        left_label = label(left_text, size=12.0, color=theme.secondary)
-        left_label.setFrame_(NSMakeRect(_CARD_PAD, ry, card_w - _CARD_PAD - 120, 18))
-        content.addSubview_(left_label)
-        right_label = label(right_text, size=12.0, bold=True)
-        right_label.setFrame_(NSMakeRect(card_w - _CARD_PAD - 100, ry, 100, 18))
-        content.addSubview_(right_label)
-    return rows_card
-
-
-def _build_edits_card(card_w: float, edits: list[dict[str, str]]) -> NSView:
-    card_h = _CARD_PAD + len(edits) * _ROW_H + _CARD_PAD
-    edits_card = card(card_w, card_h)
-    content = edits_card.contentView()
-    ry = card_h - _CARD_PAD
-    for edit in edits:
-        ry -= _ROW_H
-        fn_name = edit.get("function", "?")
-        file_short = _shorten_path(edit.get("file_path", ""), 25)
-        left_label = label(f"{fn_name}  {file_short}", size=11.0)
-        left_label.setFrame_(NSMakeRect(_CARD_PAD, ry, card_w - _CARD_PAD - 90, 18))
-        content.addSubview_(left_label)
-        ts = edit.get("timestamp", "")[:10]
-        ts_label = label(ts, size=10.0, color=theme.tertiary)
-        ts_label.setFrame_(NSMakeRect(card_w - _CARD_PAD - 80, ry, 80, 18))
-        content.addSubview_(ts_label)
-    return edits_card
+def _relative_time(ts: str) -> str:  # noqa: PLR0911
+    """Convert ISO timestamp to human-readable relative time."""
+    if not ts:
+        return ""
+    try:
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        delta = datetime.now(tz=UTC) - dt
+        seconds = int(delta.total_seconds())
+        if seconds < 60:
+            return "just now"
+        if seconds < 3600:
+            mins = seconds // 60
+            return f"{mins}m ago"
+        if seconds < 86400:
+            hours = seconds // 3600
+            return f"{hours}h ago"
+        days = seconds // 86400
+        if days == 1:
+            return "yesterday"
+        if days < 30:
+            return f"{days}d ago"
+        return ts[:10]
+    except (ValueError, TypeError):
+        return ts[:10] if len(ts) >= 10 else ""

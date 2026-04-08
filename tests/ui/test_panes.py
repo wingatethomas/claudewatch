@@ -43,6 +43,8 @@ def _make_delegate() -> MagicMock:
     delegate.removeDangerousPermissions_ = lambda self, sender: None
     delegate.uninstallPlugin_ = lambda self, sender: None
     delegate.openBlocklistSource_ = lambda self, sender: None
+    delegate.graphTabChanged_ = lambda self, sender: None
+    delegate._graph_tab = 0
     return delegate
 
 
@@ -189,24 +191,31 @@ class TestGraphPane:
         view = pane.build()
         assert isinstance(view, NSView)
 
+    @patch("claudewatch.ui.preferences.panes.graph.features")
     @patch("claudewatch.ui.preferences.panes.graph.get_analytics_service")
     @patch("claudewatch.ui.preferences.panes.graph.get_graph_service")
-    def test_renders_with_data(self, mock_graph: MagicMock, mock_analytics: MagicMock) -> None:
-        from claudewatch.backend.graph.models import ProjectGraphResult, WorkflowPattern
+    def test_renders_recent_changes(
+        self,
+        mock_graph: MagicMock,
+        mock_analytics: MagicMock,
+        mock_features: MagicMock,
+    ) -> None:
+        from claudewatch.backend.graph.models import ProjectGraphResult
         from claudewatch.ui.preferences.panes.graph import GraphPane
 
+        mock_features.is_enabled.return_value = False
         mock_graph.return_value.queries.project_graph_all.return_value = ProjectGraphResult(
             files=50,
             symbols=0,
             sessions=10,
             actions=300,
         )
-        mock_graph.return_value.queries.workflow_patterns_all.return_value = [
-            WorkflowPattern(first="read", then="edit", frequency=42),
-            WorkflowPattern(first="edit", then="bash", frequency=18),
-        ]
+        mock_graph.return_value.queries.workflow_patterns_all.return_value = []
+        mock_analytics.return_value.queries.recent_sessions.return_value = []
         mock_analytics.return_value.queries.hotspot_files_global.return_value = []
-        pane = GraphPane(_make_delegate(), 490, 620)
+        delegate = _make_delegate()
+        delegate._graph_tab = 0
+        pane = GraphPane(delegate, 490, 620)
         view = pane.build()
         assert isinstance(view, NSView)
 

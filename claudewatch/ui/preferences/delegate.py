@@ -110,6 +110,11 @@ class PrefsDelegate(NSObject):
         handle_search_changed(self, sender)
 
     @objc_callback
+    def graphTabChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        self._graph_tab = sender.selectedSegment()
+        self.show_pane({"key": "graph"})
+
+    @objc_callback
     def historySortChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
         from claudewatch.ui.preferences.handlers.history import handle_sort_changed
 
