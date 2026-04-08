@@ -8,7 +8,59 @@ from unittest.mock import MagicMock, patch
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.summary.models import SummaryEntry
-from claudewatch.backend.summary.service import SummaryService
+from claudewatch.backend.summary.service import SummaryService, _parse_summary_response
+
+
+class TestParseSummaryResponse:
+    def test_valid_title_and_bullets(self) -> None:
+        raw = "TITLE: Refactoring auth module\n• Updated login flow\n• Fixed token refresh\n• Added tests"
+        title, bullets = _parse_summary_response(raw)
+        assert title == "Refactoring auth module"
+        assert "Updated login flow" in bullets
+        assert "Fixed token refresh" in bullets
+
+    def test_title_clamped_to_30_chars(self) -> None:
+        raw = "TITLE: This is a very long title that should be truncated at word boundary\n• bullet"
+        title, _ = _parse_summary_response(raw)
+        assert len(title) <= 30
+
+    def test_case_insensitive_title(self) -> None:
+        raw = "title: lowercase works\n• bullet"
+        title, _ = _parse_summary_response(raw)
+        assert title == "lowercase works"
+
+    def test_dash_bullets(self) -> None:
+        raw = "TITLE: Test\n- dash bullet one\n- dash bullet two"
+        _, bullets = _parse_summary_response(raw)
+        assert "dash bullet one" in bullets
+        assert "dash bullet two" in bullets
+
+    def test_fallback_first_line_as_title(self) -> None:
+        raw = "Just a plain response\nwith some lines"
+        title, _ = _parse_summary_response(raw)
+        assert title == "Just a plain response"
+
+    def test_fallback_lines_as_bullets(self) -> None:
+        raw = "TITLE: Something\nno bullet markers here\njust plain text\nanother line"
+        _, bullets = _parse_summary_response(raw)
+        assert "no bullet markers here" in bullets
+
+    def test_rejects_prompt_echo(self) -> None:
+        raw = "present-tense verb phrase, max 30 chars\n• bullet"
+        title, bullets = _parse_summary_response(raw)
+        assert title == ""
+        assert bullets == ""
+
+    def test_rejects_no_structure(self) -> None:
+        raw = ""
+        title, bullets = _parse_summary_response(raw)
+        assert title == ""
+        assert bullets == ""
+
+    def test_bullets_only_gets_first_as_title(self) -> None:
+        raw = "• First action taken\n• Second action\n• Third"
+        title, bullets = _parse_summary_response(raw)
+        assert title == "First action taken"
 
 
 def _make_service(tmp_path, projects_dir=None):

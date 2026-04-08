@@ -138,6 +138,8 @@ class SummaryService(BaseService):
 
         # Persistent session for summaries — reuse instead of spawning new processes
         self._summary_session_id: str | None = None
+        self._session_failures: int = 0
+        self._session_failure_threshold = 2  # after this many, fall back to non-session mode
 
         # Failure tracking: {cwd: (count, jsonl_mtime_at_failure)}
         self._failures: dict[str, tuple[int, float]] = {}
@@ -540,21 +542,25 @@ class SummaryService(BaseService):
         model = str(features.get_facet("background_summaries", "model") or "haiku")
         effort = str(features.get_facet("background_summaries", "effort") or "low")
 
-        if self._summary_session_id:
+        # Use persistent session if available and not failing repeatedly
+        use_session = self._session_failures < self._session_failure_threshold
+
+        session_id = self._summary_session_id
+        if session_id and use_session:
             # Resume existing session — system prompt already in context
             cmd = [
                 claude_path,
                 "-p",
                 _CONVERSATION_PREFIX + conversation,
                 "-r",
-                self._summary_session_id,
+                session_id,
                 "--model",
                 model,
                 "--effort",
                 effort,
             ]
-            log.debug("summarize: reusing session %s", self._summary_session_id[:8])
-        else:
+            log.debug("summarize: reusing session %s", session_id[:8])
+        elif use_session:
             # First call — create new session with system prompt
             session_id = str(uuid.uuid4())
             cmd = [
@@ -569,19 +575,32 @@ class SummaryService(BaseService):
                 effort,
             ]
             log.info("summarize: creating session %s", session_id[:8])
+        else:
+            # Fallback — no session flags, just plain -p (CLI may not support sessions)
+            cmd = [
+                claude_path,
+                "-p",
+                _SYSTEM_PROMPT + _CONVERSATION_PREFIX + conversation,
+                "--model",
+                model,
+                "--effort",
+                effort,
+            ]
+            log.debug("summarize: using non-session fallback")
 
         result = self._run_claude_process(cmd)
         if result:
-            # Session worked — remember it for reuse
-            if not self._summary_session_id:
+            if use_session:
                 self._summary_session_id = session_id
+                self._session_failures = 0
             return result
 
-        # Failed — if we were reusing a session, it might be stale. Reset and try fresh next time.
-        if self._summary_session_id:
-            log.info("summarize: session failed, will create new one next time")
-            self._summary_session_id = None
-
+        # Failed — reset session so next call creates a fresh one
+        if use_session:
+            self._session_failures += 1
+            if self._session_failures >= self._session_failure_threshold:
+                log.warning("summarize: persistent sessions failing, falling back to non-session mode")
+        self._summary_session_id = None
         return ""
 
     def _run_claude_process(self, cmd: list[str]) -> str:
