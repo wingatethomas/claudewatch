@@ -12,3 +12,4 @@ class SummaryEntry:
     title: str
     summary: str
     mtime: float
+    jsonl_size: int = 0

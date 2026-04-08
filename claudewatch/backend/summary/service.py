@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import threading
 import time
+import uuid
 
 from claudewatch.backend.core import features
 from claudewatch.backend.core.paths import SUMMARIES_PATH
@@ -24,36 +25,49 @@ log = logging.getLogger("claudewatch")
 
 _MAX_STORE_ENTRIES = 500
 _STORE_MAX_AGE = 30 * 86400  # 30 days
-_MAX_CONTEXT_CHARS = 12000
+_MAX_CONTEXT_CHARS = 16000
 _TIMEOUT_SECONDS = 60
 _REFRESH_INTERVAL = 60  # seconds between background refresh cycles
-_MAX_FAILURES = 3  # stop retrying after this many consecutive failures per CWD
+_MAX_FAILURES = 5  # stop retrying after this many consecutive failures per CWD
+_STALENESS_SIZE_THRESHOLD = 10240  # 10KB — invalidate if JSONL grew more than this
 
-_PROMPT = (
-    "Analyze this Claude Code session and respond with EXACTLY this format, nothing else:\n"
-    "TITLE: <under 40 chars, what's happening now, action verb>\n"
-    "• <action taken>\n"
-    "• <action taken>\n"
-    "• <action taken>\n\n"
-    "The TITLE is a short present-tense description of the most recent activity.\n"
-    "The bullets summarize ALL key actions taken in the session (3-8 bullets).\n"
-    "Keep bullets concise (under 60 chars each). No fluff.\n"
-    "OMIT boilerplate like 'waiting for input', 'greeting user', 'session started'.\n"
-    "Focus on substantive actions: code changes, file edits, commands run, features built.\n\n"
+_SYSTEM_PROMPT = (
+    "You are a session summarizer for Claude Code. "
+    "You will receive structured event timelines from coding sessions. "
+    "Always respond in this exact format — no other text, no explanations:\n"
+    "TITLE: <present-tense verb phrase, max 30 chars>\n"
+    "• <what was done> (max 50 chars)\n"
+    "• <what was done>\n"
+    "• <what was done>\n\n"
+    "Rules:\n"
+    "- Title describes the MOST RECENT activity\n"
+    "- 3-6 bullets covering key actions chronologically\n"
+    "- Skip: greetings, confirmations, tool approvals, 'waiting for input'\n"
+    "- Focus: code changes, files edited, features built, bugs fixed, tests run\n"
+    "- If the session has minimal activity, summarize what IS there. Never say 'I don't see' or 'no activity'.\n"
+    "- Even a single user message is enough — summarize the topic.\n"
 )
 
+_CONVERSATION_PREFIX = "Summarize this session:\n\n"
 
-def _parse_summary_response(raw: str) -> tuple[str, str]:
+
+def _parse_summary_response(raw: str) -> tuple[str, str]:  # noqa: PLR0912
     """Parse the TITLE + bullets format from claude -p output.
 
     Returns (title, bullets_string). Falls back gracefully if format is unexpected.
+    Rejects responses that echo back the prompt.
     """
+    # Reject prompt echo-back
+    if "present-tense verb phrase" in raw or "max 30 chars" in raw:
+        return ("", "")
+
     lines = raw.strip().splitlines()
     title = ""
     bullets: list[str] = []
 
     for line in lines:
         stripped = line.strip()
+        # Case-insensitive title match
         if stripped.upper().startswith("TITLE:"):
             title = stripped[6:].strip()
         elif stripped.startswith("•") or stripped.startswith("-"):
@@ -61,12 +75,28 @@ def _parse_summary_response(raw: str) -> tuple[str, str]:
             if bullet:
                 bullets.append(f"• {bullet}")
 
-    # Fallback: if no structured output, use first line as title
-    if not title and lines:
+    # Fallback: if no title but has bullets, use first bullet as title
+    if not title and bullets:
+        title = bullets[0].lstrip("• ").strip()
+    # Fallback: if nothing structured, use first non-empty line
+    elif not title and lines:
         title = lines[0].strip()
 
+    # Fallback: if no bullets, use non-title lines as bullets
+    if not bullets:
+        for line in lines:
+            stripped = line.strip()
+            if stripped and not stripped.upper().startswith("TITLE:"):
+                bullets.append(f"• {stripped}")
+                if len(bullets) >= 3:  # noqa: PLR2004
+                    break
+
+    # Structural validation: must have a title or bullets to be useful
+    if not title and not bullets:
+        return ("", "")
+
     # Clamp title at word boundary
-    _max_title = 40
+    _max_title = 30
     if len(title) > _max_title:
         truncated = title[:_max_title]
         last_space = truncated.rfind(" ")
@@ -106,6 +136,11 @@ class SummaryService(BaseService):
         self._in_progress: set[str] = set()
         self._in_progress_lock = threading.Lock()
 
+        # Persistent session for summaries — reuse instead of spawning new processes
+        self._summary_session_id: str | None = None
+        self._session_failures: int = 0
+        self._session_failure_threshold = 2  # after this many, fall back to non-session mode
+
         # Failure tracking: {cwd: (count, jsonl_mtime_at_failure)}
         self._failures: dict[str, tuple[int, float]] = {}
         self._failures_lock = threading.Lock()
@@ -131,6 +166,7 @@ class SummaryService(BaseService):
                             title=v.get("title", ""),
                             summary=v.get("summary", ""),
                             mtime=v.get("mtime", 0),
+                            jsonl_size=v.get("jsonl_size", 0),
                         )
                         for k, v in data.items()
                         if isinstance(v, dict)
@@ -153,7 +189,10 @@ class SummaryService(BaseService):
     def _save_store(self) -> None:
         tmp = self._store_path + ".tmp"
         try:
-            serialized = {k: {"title": v.title, "summary": v.summary, "mtime": v.mtime} for k, v in self._store.items()}
+            serialized = {
+                k: {"title": v.title, "summary": v.summary, "mtime": v.mtime, "jsonl_size": v.jsonl_size}
+                for k, v in self._store.items()
+            }
             with open(tmp, "w") as f:
                 json.dump(serialized, f, indent=2)
             os.replace(tmp, self._store_path)
@@ -163,17 +202,20 @@ class SummaryService(BaseService):
     # -- Public API ---------------------------------------------------------
 
     def _get_entry(self, cwd: str) -> SummaryEntry | None:
-        """Return the cached entry if JSONL hasn't changed since generation."""
+        """Return the cached entry if JSONL hasn't changed significantly since generation."""
         with self._store_lock:
             self._load_store()
             entry = self._store.get(cwd)
         if not entry:
             return None
-        cached_mtime = entry.mtime
         current_mtime = self._get_jsonl_mtime(cwd)
-        if current_mtime and current_mtime <= cached_mtime:
-            return entry
-        return None
+        if not current_mtime or current_mtime > entry.mtime:
+            return None
+        # Also check if file grew significantly (new activity without mtime change)
+        current_size = self._get_jsonl_size(cwd)
+        if current_size and entry.jsonl_size and current_size - entry.jsonl_size > _STALENESS_SIZE_THRESHOLD:
+            return None
+        return entry
 
     def get_cached(self, cwd: str) -> str | None:
         """Return the title (one-liner). Backward compatible — used by menu bar."""
@@ -210,9 +252,10 @@ class SummaryService(BaseService):
     def cache_full(self, cwd: str, title: str, summary: str) -> None:
         """Persist both title and bulleted summary."""
         mtime = self._get_jsonl_mtime(cwd) or time.time()
+        size = self._get_jsonl_size(cwd)
         with self._store_lock:
             self._load_store()
-            self._store[cwd] = SummaryEntry(title=title, summary=summary, mtime=mtime)
+            self._store[cwd] = SummaryEntry(title=title, summary=summary, mtime=mtime, jsonl_size=size)
             self._save_store()
 
     def clear_all(self) -> None:
@@ -225,6 +268,20 @@ class SummaryService(BaseService):
         """Check if a summary is currently being generated for a CWD."""
         with self._in_progress_lock:
             return cwd in self._in_progress
+
+    def get_status(self, cwd: str) -> str:
+        """Get the summary status for a CWD: 'cached', 'generating', 'failed', or 'pending'."""
+        if self._get_entry(cwd):
+            return "cached"
+        if self.is_generating(cwd):
+            return "generating"
+        with self._failures_lock:
+            fail_entry = self._failures.get(cwd)
+            if fail_entry is not None:
+                fail_count = fail_entry[0] if isinstance(fail_entry, tuple) else fail_entry
+                if fail_count >= _MAX_FAILURES:
+                    return "failed"
+        return "pending"
 
     def generate_and_cache(self, cwd: str) -> str:  # noqa: PLR0912
         """Generate a summary via claude -p and persist it.
@@ -366,22 +423,43 @@ class SummaryService(BaseService):
                 pass
         return 0.0
 
-    def _extract_conversation_text(self, cwd: str) -> str:  # noqa: PLR0912
+    def _get_jsonl_size(self, cwd: str) -> int:
+        """Get the file size of the most recent JSONL for a CWD."""
+        path = self._session_log_service.find_most_recent(cwd)
+        if path:
+            try:
+                return os.path.getsize(path)
+            except OSError:
+                pass
+        return 0
+
+    def _extract_conversation_text(self, cwd: str) -> str:  # noqa: PLR0912, PLR0915
         """Extract a structured event timeline from JSONL — token-efficient.
 
-        Instead of raw conversation text, extracts: user prompts, tool calls
-        (name + key args), and short assistant text. Skips boilerplate.
+        Deduplicates consecutive identical tool calls and groups by turn.
+        Skips tool_result entries and boilerplate.
         """
         path = self._session_log_service.find_most_recent(cwd)
         if not path:
             return ""
 
-        tail = self._session_log_service.read_tail(path, tail_bytes=80000)
+        tail = self._session_log_service.read_tail(path, tail_bytes=200000)
         if not tail:
             return ""
 
         parts: list[str] = []
         total = 0
+        last_tool: str = ""
+        last_tool_count: int = 0
+
+        def _flush_tool() -> None:
+            nonlocal last_tool, last_tool_count
+            if last_tool:
+                suffix = f" ({last_tool_count}x)" if last_tool_count > 1 else ""
+                parts.append(f"TOOL: {last_tool}{suffix}")
+                last_tool = ""
+                last_tool_count = 0
+
         for line in tail.strip().splitlines():
             try:
                 d = json.loads(line)
@@ -394,9 +472,9 @@ class SummaryService(BaseService):
                 continue
 
             if dtype == "user":
+                _flush_tool()
                 content = msg.get("content", "")
                 if isinstance(content, str) and content.strip():
-                    # Truncate long user messages
                     text = content.strip()[:200]
                     parts.append(f"USER: {text}")
                     total += len(text)
@@ -408,19 +486,25 @@ class SummaryService(BaseService):
                         if not isinstance(block, dict):
                             continue
                         if block.get("type") == "tool_use":
-                            # Structured tool call — very token-efficient
                             name = block.get("name", "")
                             inp = block.get("input", {})
+                            key_arg = ""
                             if isinstance(inp, dict):
-                                key_arg = inp.get("command") or inp.get("file_path") or inp.get("pattern") or ""
-                                if key_arg:
-                                    parts.append(f"TOOL: {name} → {str(key_arg)[:100]}")
-                                else:
-                                    parts.append(f"TOOL: {name}")
+                                key_arg = str(inp.get("command") or inp.get("file_path") or inp.get("pattern") or "")[
+                                    :100
+                                ]
+                            tool_key = f"{name} → {key_arg}" if key_arg else name
+
+                            # Deduplicate consecutive identical tool calls
+                            if tool_key == last_tool:
+                                last_tool_count += 1
                             else:
-                                parts.append(f"TOOL: {name}")
-                            total += 30  # approximate
+                                _flush_tool()
+                                last_tool = tool_key
+                                last_tool_count = 1
+                            total += 30
                         elif block.get("type") == "text":
+                            _flush_tool()
                             text = block.get("text", "").strip()
                             _min_text = 20
                             if text and len(text) > _min_text:
@@ -430,6 +514,7 @@ class SummaryService(BaseService):
             if total > _MAX_CONTEXT_CHARS:
                 break
 
+        _flush_tool()
         return "\n".join(parts)
 
     @staticmethod
@@ -444,7 +529,7 @@ class SummaryService(BaseService):
         return None
 
     def _call_claude(self, cwd: str) -> str:
-        """Call claude -p to generate a summary. Returns empty string on failure."""
+        """Call claude -p to generate a summary. Reuses a persistent session when possible."""
         claude_path = self._find_claude()
         if not claude_path:
             log.warning("summarize: claude CLI not found")
@@ -454,11 +539,72 @@ class SummaryService(BaseService):
         if not conversation:
             return ""
 
-        # Read model and effort from feature settings
         model = str(features.get_facet("background_summaries", "model") or "haiku")
         effort = str(features.get_facet("background_summaries", "effort") or "low")
 
-        cmd = [claude_path, "-p", _PROMPT + conversation, "--model", model, "--effort", effort]
+        # Use persistent session if available and not failing repeatedly
+        use_session = self._session_failures < self._session_failure_threshold
+
+        session_id = self._summary_session_id
+        if session_id and use_session:
+            # Resume existing session — system prompt already in context
+            cmd = [
+                claude_path,
+                "-p",
+                _CONVERSATION_PREFIX + conversation,
+                "-r",
+                session_id,
+                "--model",
+                model,
+                "--effort",
+                effort,
+            ]
+            log.debug("summarize: reusing session %s", session_id[:8])
+        elif use_session:
+            # First call — create new session with system prompt
+            session_id = str(uuid.uuid4())
+            cmd = [
+                claude_path,
+                "-p",
+                _SYSTEM_PROMPT + _CONVERSATION_PREFIX + conversation,
+                "--session-id",
+                session_id,
+                "--model",
+                model,
+                "--effort",
+                effort,
+            ]
+            log.info("summarize: creating session %s", session_id[:8])
+        else:
+            # Fallback — no session flags, just plain -p (CLI may not support sessions)
+            cmd = [
+                claude_path,
+                "-p",
+                _SYSTEM_PROMPT + _CONVERSATION_PREFIX + conversation,
+                "--model",
+                model,
+                "--effort",
+                effort,
+            ]
+            log.debug("summarize: using non-session fallback")
+
+        result = self._run_claude_process(cmd)
+        if result:
+            if use_session:
+                self._summary_session_id = session_id
+                self._session_failures = 0
+            return result
+
+        # Failed — reset session so next call creates a fresh one
+        if use_session:
+            self._session_failures += 1
+            if self._session_failures >= self._session_failure_threshold:
+                log.warning("summarize: persistent sessions failing, falling back to non-session mode")
+        self._summary_session_id = None
+        return ""
+
+    def _run_claude_process(self, cmd: list[str]) -> str:
+        """Execute a claude subprocess and return stdout. Returns empty string on failure."""
         try:
             proc = subprocess.Popen(
                 cmd,
@@ -480,5 +626,4 @@ class SummaryService(BaseService):
                 self._process_service.unregister_child(proc.pid)
         except OSError as e:
             log.warning("summarize: failed to run claude: %s", e)
-
         return ""

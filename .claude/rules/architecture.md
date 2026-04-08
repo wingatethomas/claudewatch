@@ -54,6 +54,10 @@ Cross-layer DTOs (`BookmarkDTO`, `HistoryEntryDTO`, etc.) live in `core/dto.py` 
 - When adding new data accessors, add them to the repository as public methods and expose through the service if needed.
 - If UI needs direct repository access (e.g., for a preferences pane), expose a `repository` property on the service. Never access `service._repo` from outside the service module.
 
+## Variable Scoping
+
+- Variables used across conditional branches (`if`/`elif`/`else`) must be defined before the branch, not inside one branch. Assign from existing state or provide a default. This prevents `UnboundLocalError` when a different branch is taken.
+
 ## Typing Rules
 
 - All function parameters and return types must have type annotations.

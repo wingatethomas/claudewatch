@@ -30,6 +30,13 @@ Every pane registered in `window.py` must have at least one test in `tests/ui/te
 
 Never assume the structure of Claude Code config files (plugins, blocklist, settings, policy). Read the actual file from `~/.claude/` first and confirm the keys, nesting, and value types. Document the real format in code comments when it differs from what you'd expect.
 
+## LLM output parsing
+
+When parsing output from an LLM (via `claude -p` or any subprocess that calls a model):
+- Validate **structurally** (expected format elements present), not **semantically** (checking for specific phrases like "I don't see" or "no activity"). LLM responses are unpredictable — string matching will always miss edge cases.
+- Test the parser with realistic bad inputs: empty response, refusal text, echoed prompt, malformed format, partial format (title but no bullets, bullets but no title).
+- If the response doesn't match the expected structure, treat it as a failure and retry — don't display it to the user.
+
 ## Smoke-test before committing
 
 Before committing a new UI feature:

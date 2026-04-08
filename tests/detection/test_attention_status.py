@@ -3,7 +3,7 @@
 These tests verify that:
 1. ATTENTION overrides both IDLE and WORKING from window title
 2. Pending tools are detected regardless of JSONL age (no upper bound cutoff)
-3. Very fresh JSONL files (< 1s) still get checked for pending tools
+3. Fresh JSONL files (< 5s) are treated as actively working, not pending
 4. Multiple sessions sharing the same CWD all get the correct status
 """
 
@@ -14,12 +14,17 @@ import time
 from claudewatch.backend.core.models import SessionStatus
 from claudewatch.backend.detection.service import DetectionService
 
+_STALE_AGE = 10  # seconds — old enough that the pending check runs
 
-def _write_jsonl(path: str, entries: list[dict]) -> None:
+
+def _write_jsonl(path: str, entries: list[dict], *, stale: bool = False) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         for entry in entries:
             f.write(json.dumps(entry) + "\n")
+    if stale:
+        old_time = time.time() - _STALE_AGE
+        os.utime(path, (old_time, old_time))
 
 
 class TestPendingToolDetection:
@@ -61,6 +66,7 @@ class TestPendingToolDetection:
                     },
                 },
             ],
+            stale=True,
         )
 
         cwd = "/Users/dev/myapp"
@@ -118,11 +124,8 @@ class TestPendingToolDetection:
         assert result.has_pending is True
         assert "Edit" in result.one_line
 
-    def test_detects_pending_on_fresh_file(self, tmp_path: str) -> None:
-        """Bug fix: JSONL modified < 1 second ago should still be checked.
-
-        The old code skipped files with age < 1s.
-        """
+    def test_fresh_file_not_flagged_as_pending(self, tmp_path: str) -> None:
+        """Fresh JSONL (< 5s old) means Claude is actively working — not pending approval."""
         service, jsonl_path = self._make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
@@ -138,7 +141,92 @@ class TestPendingToolDetection:
                 },
             ],
         )
-        # File was just written — mtime is now
+        # File was just written — mtime is now, so it's considered active
+
+        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is False
+
+    def test_no_pending_when_tool_result_received(self, tmp_path: str) -> None:
+        """Tool completed — tool_result after tool_use means not pending."""
+        service, jsonl_path = self._make_service(tmp_path)
+        _write_jsonl(
+            jsonl_path,
+            [
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "tool_use", "name": "Write", "input": {"file_path": "/tmp/out.md"}},
+                        ],
+                    },
+                },
+                {
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "tool_result", "tool_use_id": "toolu_001", "content": "wrote 240 lines"}],
+                    },
+                },
+            ],
+        )
+
+        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is False
+
+    def test_no_pending_after_tool_result_then_text(self, tmp_path: str) -> None:
+        """Full cycle: tool_use → tool_result → assistant text. Not pending."""
+        service, jsonl_path = self._make_service(tmp_path)
+        _write_jsonl(
+            jsonl_path,
+            [
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "tool_use", "name": "Bash", "input": {"command": "pytest"}},
+                        ],
+                    },
+                },
+                {
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "tool_result", "tool_use_id": "toolu_002", "content": "5 passed"}],
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "All tests pass."}],
+                    },
+                },
+            ],
+        )
+
+        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        assert result.has_pending is False
+
+    def test_pending_when_no_tool_result(self, tmp_path: str) -> None:
+        """tool_use without subsequent tool_result — still pending."""
+        service, jsonl_path = self._make_service(tmp_path)
+        _write_jsonl(
+            jsonl_path,
+            [
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "tool_use", "name": "Edit", "input": {"file_path": "/src/auth.py"}},
+                        ],
+                    },
+                },
+            ],
+            stale=True,
+        )
 
         result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
         assert result.has_pending is True
@@ -200,6 +288,7 @@ class TestStatusPriority:
                     },
                 },
             ],
+            stale=True,
         )
 
         result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")

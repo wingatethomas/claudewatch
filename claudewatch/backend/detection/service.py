@@ -228,8 +228,8 @@ class DetectionService(BaseService):
     def _check_jsonl_for_pending_tool(self, cwd: str) -> PendingToolResult:  # noqa: PLR0911, PLR0912
         """Check if the most recent JSONL for this CWD has a pending tool_use.
 
-        No age cutoffs — a tool waiting for approval stays pending regardless
-        of how long ago the file was modified. Users can step away for hours.
+        If the JSONL was modified very recently (< 5s), Claude is actively working —
+        tool_use blocks are being executed, not waiting for approval. Skip the check.
         """
         _empty = PendingToolResult(has_pending=False, one_line="", context="")
         path = self._session_log_service.find_most_recent(cwd)
@@ -239,11 +239,25 @@ class DetectionService(BaseService):
         if not os.path.isfile(path):
             return _empty
 
+        # If JSONL was modified very recently, Claude is actively working — not waiting
+        _active_threshold = 5
+        try:
+            age = time.time() - os.path.getmtime(path)
+            if age < _active_threshold:
+                return _empty
+        except OSError:
+            pass
+
         tail = self._session_log_service.read_tail(path)
         if not tail:
             return _empty
 
         lines = tail.strip().splitlines()
+
+        # Scan in reverse. Track whether we've seen a tool_result (user entry)
+        # AFTER the most recent assistant tool_use. If yes, the tool completed.
+        seen_tool_result = False
+
         for line in reversed(lines[-20:]):
             try:
                 d = json.loads(line)
@@ -253,12 +267,23 @@ class DetectionService(BaseService):
                     continue
 
                 if dtype == "user":
+                    # Check if this is a tool_result (tool completed) or actual user input
+                    content = d.get("message", {}).get("content", [])
+                    if isinstance(content, list):
+                        has_tool_result = any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+                        if has_tool_result:
+                            seen_tool_result = True
+                            continue  # keep scanning — the assistant tool_use before this is resolved
+                    # Actual user input — tool approval given or new message
                     return _empty
 
                 if dtype == "assistant":
                     content = d.get("message", {}).get("content", [])
                     tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
                     if tool_uses:
+                        if seen_tool_result:
+                            # This tool_use was already resolved by a subsequent tool_result
+                            return _empty
                         info = _format_tool_use(tool_uses[-1])
                         return PendingToolResult(has_pending=True, one_line=info.one_line, context=info.context)
                     return _empty
@@ -271,6 +296,8 @@ class DetectionService(BaseService):
                         content = msg.get("message", {}).get("content", [])
                         tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
                         if tool_uses:
+                            if seen_tool_result:
+                                return _empty
                             info = _format_tool_use(tool_uses[-1])
                             return PendingToolResult(has_pending=True, one_line=info.one_line, context=info.context)
                         return _empty
@@ -374,8 +401,9 @@ class DetectionService(BaseService):
         self._get_ide_tab_indices(sessions, all_ps)
 
         # JSONL-based status refinement.
-        # Priority: ATTENTION (pending tool) > IDLE/WORKING from JSONL > window title.
-        # Cache results per CWD so we don't re-read for sessions sharing a CWD.
+        # The window title is the real-time signal. If it shows a working indicator
+        # (braille spinner), Claude is actively streaming — trust it over JSONL.
+        # For IDE sessions (no title indicators), JSONL is the only signal.
         cwd_status_cache: dict[str, tuple[PendingToolResult, SessionStatus]] = {}
         for s in sessions:
             if not s.cwd:
@@ -386,13 +414,18 @@ class DetectionService(BaseService):
                 cwd_status_cache[s.cwd] = (tool_result, jsonl_status)
 
             tool_result, jsonl_status = cwd_status_cache[s.cwd]
-            if tool_result.has_pending:
+            title_confirms_working = _has_working_indicator(s.window_title)
+
+            if tool_result.has_pending and not title_confirms_working:
+                # JSONL has unresolved tool_use, and window title doesn't show active work.
+                # This covers: IDLE sessions, IDE sessions (no indicators), unknown hosts.
                 s.status = SessionStatus.ATTENTION
                 s.prompt_text = tool_result.one_line
                 s.prompt_context = tool_result.context
-            else:
-                # JSONL status takes precedence over window title
+            elif not tool_result.has_pending and not title_confirms_working:
+                # No pending tools and not actively streaming — use JSONL status
                 s.status = jsonl_status
+            # else: title confirms working — keep the WORKING status from window title
 
         return sessions
 
@@ -477,6 +510,16 @@ def _format_tool_use(tool: dict) -> ToolUseInfo:
     if len(one_line) > _TEXT_MAX_LEN:
         one_line = one_line[:77] + "..."
     return ToolUseInfo(one_line=one_line, context="\n".join(context_parts))
+
+
+def _has_working_indicator(window_title: str) -> bool:
+    """Check if the window title contains a known working indicator (braille spinner or ●).
+
+    Returns False for generic titles like "VS Code", "PyCharm", "Terminal" — these
+    don't tell us whether Claude is actively streaming. JSONL is authoritative for those.
+    """
+    # Braille characters (U+2800..U+28FF) are Claude's spinner frames
+    return any("\u2800" <= ch <= "\u28ff" or ch == "●" for ch in window_title)
 
 
 def _determine_status(window_title: str) -> SessionStatus:
