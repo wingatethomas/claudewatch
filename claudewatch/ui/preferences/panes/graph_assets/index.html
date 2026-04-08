@@ -106,7 +106,7 @@ body {
 </style>
 </head>
 <body>
-<div id="app" style="padding: 0 4px;"></div>
+<div id="app" style="padding: 16px 24px; max-width: 900px; margin: 0 auto;"></div>
 <div class="tooltip" id="tooltip"></div>
 
 <script src="d3.v7.min.js"></script>
@@ -115,7 +115,7 @@ const DATA = __DATA__;
 
 const app = d3.select("#app");
 const tooltip = d3.select("#tooltip");
-const W = document.body.clientWidth - 8;
+const W = Math.min(document.body.clientWidth - 48, 852);
 
 if (DATA.graph.nodes.length === 0) {
   app.append("div").attr("class", "empty-state").text("Graph data will appear after the first background scan.");
@@ -130,7 +130,7 @@ function renderForceGraph() {
   section.append("div").attr("class", "section-header").text("SESSION GRAPH");
 
   const container = section.append("div").attr("id", "force-graph");
-  const height = 300;
+  const height = 450;
   const svg = container.append("svg").attr("width", W).attr("height", height);
   const g = svg.append("g");
 

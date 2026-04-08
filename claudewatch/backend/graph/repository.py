@@ -1005,6 +1005,42 @@ class GraphQueries:
             sessions.append(result.get_next()[0])
         return sessions
 
+    def recent_edits_with_symbols(self, limit: int = 20) -> list[dict[str, str]]:
+        """Recent edit actions linked to the functions they modified."""
+        result = self._safe_execute(
+            "MATCH (a:Action {kind: 'edit'})-[:MODIFIES]->(sym:Symbol) "
+            "RETURN a.file_path, sym.name, sym.qualified_name, a.timestamp, a.session_id "
+            "ORDER BY a.timestamp DESC LIMIT $lim",
+            {"lim": limit},
+        )
+        if not result:
+            return []
+        edits = []
+        while result.has_next():
+            row = result.get_next()
+            edits.append(
+                {
+                    "file_path": row[0] or "",
+                    "function": row[1] or "",
+                    "qualified_name": row[2] or "",
+                    "timestamp": row[3] or "",
+                    "session_id": row[4] or "",
+                }
+            )
+        return edits
+
+    def active_project_paths(self) -> list[str]:
+        """Get distinct project paths from the graph."""
+        result = self._safe_execute("MATCH (p:Project) RETURN p.path", {})
+        if not result:
+            return []
+        paths = []
+        while result.has_next():
+            path = result.get_next()[0]
+            if path:
+                paths.append(path)
+        return paths
+
     def _count(self, query: str, params: dict[str, object]) -> int:
         result = self._safe_execute(query, params)
         if not result or not result.has_next():

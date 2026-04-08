@@ -9,7 +9,6 @@ authors = [{name = "ClaudeWatch Contributors"}]
 dependencies = [
     "pyobjc-framework-Cocoa~=12.1",
     "pyobjc-framework-Quartz~=12.1",
-    "pyobjc-framework-WebKit~=12.1",
     "kuzu>=0.8.0",
     "sqlalchemy>=2.0",
 ]
@@ -51,7 +50,6 @@ sources = ["claudewatch"]
 requires = [
     "pyobjc-framework-Cocoa~=12.1",
     "pyobjc-framework-Quartz~=12.1",
-    "pyobjc-framework-WebKit~=12.1",
     "kuzu>=0.8.0",
     "sqlalchemy>=2.0",
 ]

@@ -248,7 +248,7 @@ class ClaudeWatchApp:
     def _bg_scan(self) -> None:
         try:
             self._analytics_service.incremental_scan()
-            self._graph_service.ingest_sessions()
+            self._graph_service.full_pipeline()
         except Exception:
             log.exception("background scan failed")
         finally:

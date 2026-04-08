@@ -5,11 +5,21 @@ from __future__ import annotations
 import logging
 import os
 
+from claudewatch.backend.core import features
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.graph.models import GraphStore
 from claudewatch.backend.graph.repository import CodeETL, EditMapper, GraphQueries, SessionETL
 
 log = logging.getLogger("claudewatch")
+
+# Feature flag for AST-based code indexing
+features.register(
+    features.Feature(
+        key="code_indexing",
+        description="Index source files for change impact analysis",
+        default_enabled=False,
+    )
+)
 
 
 class GraphService(BaseService):
@@ -40,10 +50,17 @@ class GraphService(BaseService):
         return self._mapper.map_all()
 
     def full_pipeline(self) -> dict[str, int]:
-        """Run the complete ETL pipeline: sessions → code → mapper."""
+        """Run the complete ETL pipeline: sessions → code indexing → mapper."""
         stats = self.ingest_sessions()
-        self.map_edits()
+        if features.is_enabled("code_indexing"):
+            for project_path in self._get_active_project_paths():
+                if os.path.isdir(project_path):
+                    self._code_etl.index_project(project_path)
+            self._mapper.map_all()
         return stats
+
+    def _get_active_project_paths(self) -> list[str]:
+        return self._queries.active_project_paths()
 
     # --- Queries ---
 
