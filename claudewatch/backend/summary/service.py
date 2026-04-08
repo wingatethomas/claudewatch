@@ -34,7 +34,7 @@ _STALENESS_SIZE_THRESHOLD = 10240  # 10KB — invalidate if JSONL grew more than
 _SYSTEM_PROMPT = (
     "You are a session summarizer for Claude Code. "
     "You will receive structured event timelines from coding sessions. "
-    "Always respond in this exact format:\n"
+    "Always respond in this exact format — no other text, no explanations:\n"
     "TITLE: <present-tense verb phrase, max 30 chars>\n"
     "• <what was done> (max 50 chars)\n"
     "• <what was done>\n"
@@ -44,6 +44,8 @@ _SYSTEM_PROMPT = (
     "- 3-6 bullets covering key actions chronologically\n"
     "- Skip: greetings, confirmations, tool approvals, 'waiting for input'\n"
     "- Focus: code changes, files edited, features built, bugs fixed, tests run\n"
+    "- If the session has minimal activity, summarize what IS there. Never say 'I don't see' or 'no activity'.\n"
+    "- Even a single user message is enough — summarize the topic.\n"
 )
 
 _CONVERSATION_PREFIX = "Summarize this session:\n\n"
@@ -88,6 +90,10 @@ def _parse_summary_response(raw: str) -> tuple[str, str]:  # noqa: PLR0912
                 bullets.append(f"• {stripped}")
                 if len(bullets) >= 3:  # noqa: PLR2004
                     break
+
+    # Structural validation: must have a title or bullets to be useful
+    if not title and not bullets:
+        return ("", "")
 
     # Clamp title at word boundary
     _max_title = 30
@@ -435,7 +441,7 @@ class SummaryService(BaseService):
         if not path:
             return ""
 
-        tail = self._session_log_service.read_tail(path, tail_bytes=80000)
+        tail = self._session_log_service.read_tail(path, tail_bytes=200000)
         if not tail:
             return ""
 
