@@ -228,8 +228,8 @@ class DetectionService(BaseService):
     def _check_jsonl_for_pending_tool(self, cwd: str) -> PendingToolResult:  # noqa: PLR0911, PLR0912
         """Check if the most recent JSONL for this CWD has a pending tool_use.
 
-        No age cutoffs — a tool waiting for approval stays pending regardless
-        of how long ago the file was modified. Users can step away for hours.
+        If the JSONL was modified very recently (< 5s), Claude is actively working —
+        tool_use blocks are being executed, not waiting for approval. Skip the check.
         """
         _empty = PendingToolResult(has_pending=False, one_line="", context="")
         path = self._session_log_service.find_most_recent(cwd)
@@ -238,6 +238,15 @@ class DetectionService(BaseService):
 
         if not os.path.isfile(path):
             return _empty
+
+        # If JSONL was modified very recently, Claude is actively working — not waiting
+        _active_threshold = 5
+        try:
+            age = time.time() - os.path.getmtime(path)
+            if age < _active_threshold:
+                return _empty
+        except OSError:
+            pass
 
         tail = self._session_log_service.read_tail(path)
         if not tail:
