@@ -86,10 +86,10 @@ class GraphPane(BasePane):
                     fn = edit.get("function", "")
                     fpath = edit.get("file_path", "")
                     ts = edit.get("timestamp", "")
-                    filename = fpath.rsplit("/", 1)[-1] if "/" in fpath else fpath
+                    short = _short_path(fpath)
                     time_ago = _relative_time(ts)
 
-                    line = f"{fn}()  in {filename}" if fn else filename
+                    line = f"{fn}()  in {short}" if fn else short
                     row = _text_row(self.card_width, line, time_ago)
                     stack.add(row, height=20)
             else:
@@ -112,8 +112,8 @@ class GraphPane(BasePane):
                         )
                         stack.add(project_label, height=16)
                         for file_entry in edit_files:
-                            filename = file_entry.path.rsplit("/", 1)[-1] if "/" in file_entry.path else file_entry.path
-                            row = _text_row(self.card_width, f"  {filename}", f"{file_entry.count}x")
+                            short = _short_path(file_entry.path)
+                            row = _text_row(self.card_width, f"  {short}", f"{file_entry.count}x")
                             stack.add(row, height=18)
                         stack.gap(4)
             else:
@@ -186,11 +186,19 @@ class GraphPane(BasePane):
             stack.add(secondary_label("No file hotspots yet.", size=12.0), height=18)
         else:
             for hotspot in hotspots:
-                filename = hotspot.path.rsplit("/", 1)[-1] if "/" in hotspot.path else hotspot.path
-                row = _text_row(self.card_width, filename, f"{hotspot.session_count} sessions")
+                short = _short_path(hotspot.path)
+                row = _text_row(self.card_width, short, f"{hotspot.session_count} sessions")
                 stack.add(row, height=20)
 
         _place_stack(view, stack, self.card_width, content_top)
+
+
+def _short_path(path: str) -> str:
+    """Show parent/filename for context, e.g. 'backend/models.py'."""
+    parts = path.rstrip("/").split("/")
+    if len(parts) >= 2:
+        return "/".join(parts[-2:])
+    return parts[-1] if parts else path
 
 
 def _text_row(width: float, left_text: str, right_text: str) -> NSView:
