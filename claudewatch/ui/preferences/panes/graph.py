@@ -86,11 +86,11 @@ class GraphPane(BasePane):
                     fn = edit.get("function", "")
                     fpath = edit.get("file_path", "")
                     ts = edit.get("timestamp", "")
-                    short = _short_path(fpath)
+                    display, full = _short_path(fpath)
                     time_ago = _relative_time(ts)
 
-                    line = f"{fn}()  in {short}" if fn else short
-                    row = _text_row(self.card_width, line, time_ago)
+                    line = f"{fn}()  in {display}" if fn else display
+                    row = _text_row(self.card_width, line, time_ago, tooltip=full)
                     stack.add(row, height=20)
             else:
                 stack.add(
@@ -112,8 +112,8 @@ class GraphPane(BasePane):
                         )
                         stack.add(project_label, height=16)
                         for file_entry in edit_files:
-                            short = _short_path(file_entry.path)
-                            row = _text_row(self.card_width, f"  {short}", f"{file_entry.count}x")
+                            display, full = _short_path(file_entry.path)
+                            row = _text_row(self.card_width, f"  {display}", f"{file_entry.count}x", tooltip=full)
                             stack.add(row, height=18)
                         stack.gap(4)
             else:
@@ -186,28 +186,30 @@ class GraphPane(BasePane):
             stack.add(secondary_label("No file hotspots yet.", size=12.0), height=18)
         else:
             for hotspot in hotspots:
-                short = _short_path(hotspot.path)
-                row = _text_row(self.card_width, short, f"{hotspot.session_count} sessions")
+                display, full = _short_path(hotspot.path)
+                row = _text_row(self.card_width, display, f"{hotspot.session_count} sessions", tooltip=full)
                 stack.add(row, height=20)
 
         _place_stack(view, stack, self.card_width, content_top)
 
 
-def _short_path(path: str) -> str:
-    """Show project/parent/filename for context, e.g. 'claudewatch/backend/models.py'."""
+def _short_path(path: str) -> tuple[str, str]:
+    """Return (display_text, full_path). Display shows last 3 path components."""
     parts = path.rstrip("/").split("/")
     if len(parts) >= 3:
-        return "/".join(parts[-3:])
+        return "/".join(parts[-3:]), path
     if len(parts) >= 2:
-        return "/".join(parts[-2:])
-    return parts[-1] if parts else path
+        return "/".join(parts[-2:]), path
+    return (parts[-1] if parts else path), path
 
 
-def _text_row(width: float, left_text: str, right_text: str) -> NSView:
-    """A simple left-aligned + right-aligned text row."""
+def _text_row(width: float, left_text: str, right_text: str, tooltip: str = "") -> NSView:
+    """A simple left-aligned + right-aligned text row with optional hover tooltip."""
     row = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, width, 20))
     left = label(left_text, size=12.0)
     left.setFrame_(NSMakeRect(0, 0, width - 100, 18))
+    if tooltip:
+        left.setToolTip_(tooltip)
     row.addSubview_(left)
     right = label(right_text, size=11.0, color=theme.tertiary)
     right.setFrame_(NSMakeRect(width - 96, 0, 96, 18))
