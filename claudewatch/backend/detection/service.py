@@ -401,8 +401,9 @@ class DetectionService(BaseService):
         self._get_ide_tab_indices(sessions, all_ps)
 
         # JSONL-based status refinement.
-        # Window title WORKING means Claude is actively executing — never override to ATTENTION.
-        # ATTENTION only applies when window title shows IDLE (✳) but JSONL has pending tool.
+        # The window title is the real-time signal. If it shows a working indicator
+        # (braille spinner), Claude is actively streaming — trust it over JSONL.
+        # For IDE sessions (no title indicators), JSONL is the only signal.
         cwd_status_cache: dict[str, tuple[PendingToolResult, SessionStatus]] = {}
         for s in sessions:
             if not s.cwd:
@@ -413,15 +414,18 @@ class DetectionService(BaseService):
                 cwd_status_cache[s.cwd] = (tool_result, jsonl_status)
 
             tool_result, jsonl_status = cwd_status_cache[s.cwd]
-            if tool_result.has_pending and s.status != SessionStatus.WORKING:
-                # Only flag ATTENTION if the session isn't actively working
-                # (window title shows idle/unknown, but JSONL has unresolved tool_use)
+            title_confirms_working = _has_working_indicator(s.window_title)
+
+            if tool_result.has_pending and not title_confirms_working:
+                # JSONL has unresolved tool_use, and window title doesn't show active work.
+                # This covers: IDLE sessions, IDE sessions (no indicators), unknown hosts.
                 s.status = SessionStatus.ATTENTION
                 s.prompt_text = tool_result.one_line
                 s.prompt_context = tool_result.context
-            elif not tool_result.has_pending:
-                # JSONL status refines window title when no pending tools
+            elif not tool_result.has_pending and not title_confirms_working:
+                # No pending tools and not actively streaming — use JSONL status
                 s.status = jsonl_status
+            # else: title confirms working — keep the WORKING status from window title
 
         return sessions
 
@@ -506,6 +510,16 @@ def _format_tool_use(tool: dict) -> ToolUseInfo:
     if len(one_line) > _TEXT_MAX_LEN:
         one_line = one_line[:77] + "..."
     return ToolUseInfo(one_line=one_line, context="\n".join(context_parts))
+
+
+def _has_working_indicator(window_title: str) -> bool:
+    """Check if the window title contains a known working indicator (braille spinner or ●).
+
+    Returns False for generic titles like "VS Code", "PyCharm", "Terminal" — these
+    don't tell us whether Claude is actively streaming. JSONL is authoritative for those.
+    """
+    # Braille characters (U+2800..U+28FF) are Claude's spinner frames
+    return any("\u2800" <= ch <= "\u28ff" or ch == "●" for ch in window_title)
 
 
 def _determine_status(window_title: str) -> SessionStatus:
