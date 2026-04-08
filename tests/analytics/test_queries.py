@@ -112,7 +112,7 @@ def populated(store: AnalyticsStore, ingest: Ingest, tmp_path: str) -> str:
         _session_entries(
             model="claude-sonnet-4-6",
             files=["/src/auth.py", "/src/db.py"],
-            tools=["Read", "Bash"],
+            tools=["Edit", "Bash"],
         ),
     )
     ingest.full_scan(os.path.join(tmp_path, "projects"))

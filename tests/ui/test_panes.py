@@ -44,7 +44,9 @@ def _make_delegate() -> MagicMock:
     delegate.uninstallPlugin_ = lambda self, sender: None
     delegate.openBlocklistSource_ = lambda self, sender: None
     delegate.graphTabChanged_ = lambda self, sender: None
+    delegate.graphHotspotProjectChanged_ = lambda self, sender: None
     delegate._graph_tab = 0
+    delegate._graph_hotspot_project = None
     return delegate
 
 

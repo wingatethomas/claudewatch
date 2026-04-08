@@ -964,7 +964,7 @@ class Queries:
                     func.count(distinct(FileRow.session_id)).label("sess"),
                     func.count().label("total"),
                 )
-                .where(FileRow.proj_key == proj_key)
+                .where(FileRow.proj_key == proj_key, FileRow.access_type.in_(("edit", "write")))
                 .group_by(FileRow.path)
                 .having(func.count(distinct(FileRow.session_id)) >= min_sessions)
                 .order_by(desc("sess"), desc("total"))
@@ -976,10 +976,11 @@ class Queries:
 
     def hotspot_files_global(
         self,
+        proj_key: str | None = None,
         min_sessions: int = 2,
         limit: int = 20,
     ) -> list[FileHotspot]:
-        """File hotspots across all projects."""
+        """File hotspots, optionally filtered by project."""
         with self._session_factory() as s:
             q = (
                 select(
@@ -987,11 +988,14 @@ class Queries:
                     func.count(distinct(FileRow.session_id)).label("sess"),
                     func.count().label("total"),
                 )
+                .where(FileRow.access_type.in_(("edit", "write")))
                 .group_by(FileRow.path)
                 .having(func.count(distinct(FileRow.session_id)) >= min_sessions)
                 .order_by(desc("sess"), desc("total"))
                 .limit(limit)
             )
+            if proj_key:
+                q = q.where(FileRow.proj_key == proj_key)
             return [FileHotspot(path=r.path, session_count=r.sess, total_accesses=r.total) for r in s.execute(q)]
 
     def tool_sequences(

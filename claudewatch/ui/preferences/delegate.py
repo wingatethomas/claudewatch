@@ -115,6 +115,12 @@ class PrefsDelegate(NSObject):
         self.show_pane({"key": "graph"})
 
     @objc_callback
+    def graphHotspotProjectChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        item = sender.selectedItem()
+        self._graph_hotspot_project = item.representedObject() if item else None
+        self.show_pane({"key": "graph"})
+
+    @objc_callback
     def historySortChanged_(self, sender: objc.objc_object) -> None:  # noqa: N802
         from claudewatch.ui.preferences.handlers.history import handle_sort_changed
 

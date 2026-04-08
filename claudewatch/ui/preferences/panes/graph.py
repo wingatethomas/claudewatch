@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import objc
 from AppKit import (
     NSFont,
+    NSPopUpButton,
     NSScrollView,
     NSSegmentedControl,
     NSSegmentStyleTexturedRounded,
@@ -178,12 +179,40 @@ class GraphPane(BasePane):
     def _build_hotspots(self, view: NSView, content_top: float) -> None:
         """What files keep getting changed?"""
         analytics_svc = get_analytics_service()
-        hotspots = analytics_svc.queries.hotspot_files_global(min_sessions=2, limit=20)
+
+        # Project filter dropdown
+        projects = analytics_svc.queries.top_projects(limit=30)
+        selected_proj = getattr(self.delegate, "_graph_hotspot_project", None)
+
+        dropdown = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(0, 0, self.card_width, 24), False)
+        dropdown.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
+        dropdown.addItemWithTitle_("All Projects")
+        for proj in projects:
+            proj_name = proj.proj_key.rsplit("-", 1)[-1] if "-" in proj.proj_key else proj.proj_key
+            dropdown.addItemWithTitle_(proj_name)
+            dropdown.lastItem().setRepresentedObject_(proj.proj_key)
+        if selected_proj:
+            for i in range(dropdown.numberOfItems()):
+                item = dropdown.itemAtIndex_(i)
+                if item.representedObject() == selected_proj:
+                    dropdown.selectItemAtIndex_(i)
+                    break
+        dropdown.setTarget_(self.delegate)
+        dropdown.setAction_(objc.selector(self.delegate.graphHotspotProjectChanged_, signature=b"v@:@"))
+
+        # Query with filter
+        hotspots = analytics_svc.queries.hotspot_files_global(
+            proj_key=selected_proj,
+            min_sessions=2,
+            limit=20,
+        )
 
         stack = VStack(width=self.card_width, padding=0, spacing=2)
+        stack.add(dropdown, height=24)
+        stack.gap(8)
 
         if not hotspots:
-            stack.add(secondary_label("No file hotspots yet.", size=12.0), height=18)
+            stack.add(secondary_label("No edited file hotspots yet.", size=12.0), height=18)
         else:
             for hotspot in hotspots:
                 display, full = _short_path(hotspot.path)
