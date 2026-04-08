@@ -180,17 +180,16 @@ class GraphPane(BasePane):
         """What files keep getting changed?"""
         analytics_svc = get_analytics_service()
 
-        # Project filter dropdown
-        projects = analytics_svc.queries.top_projects(limit=30)
+        # Project filter dropdown using canonical git-remote-based names
+        projects = analytics_svc.queries.project_list()
         selected_proj = getattr(self.delegate, "_graph_hotspot_project", None)
 
         dropdown = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(0, 0, self.card_width, 24), False)
         dropdown.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
         dropdown.addItemWithTitle_("All Projects")
         for proj in projects:
-            proj_name = proj.proj_key.rsplit("-", 1)[-1] if "-" in proj.proj_key else proj.proj_key
-            dropdown.addItemWithTitle_(proj_name)
-            dropdown.lastItem().setRepresentedObject_(proj.proj_key)
+            dropdown.addItemWithTitle_(f"{proj.display_name}  ({proj.session_count})")
+            dropdown.lastItem().setRepresentedObject_(proj.canonical_name)
         if selected_proj:
             for i in range(dropdown.numberOfItems()):
                 item = dropdown.itemAtIndex_(i)
@@ -201,11 +200,14 @@ class GraphPane(BasePane):
         dropdown.setAction_(objc.selector(self.delegate.graphHotspotProjectChanged_, signature=b"v@:@"))
 
         # Query with filter
-        hotspots = analytics_svc.queries.hotspot_files_global(
-            proj_key=selected_proj,
-            min_sessions=2,
-            limit=20,
-        )
+        if selected_proj:
+            hotspots = analytics_svc.queries.hotspot_files_by_project(
+                selected_proj,
+                min_sessions=2,
+                limit=20,
+            )
+        else:
+            hotspots = analytics_svc.queries.hotspot_files_global(min_sessions=2, limit=20)
 
         stack = VStack(width=self.card_width, padding=0, spacing=2)
         stack.add(dropdown, height=24)

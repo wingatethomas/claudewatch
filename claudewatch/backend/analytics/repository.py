@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from sqlalchemy import desc, distinct, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from claudewatch.backend.analytics.git_resolver import resolve_remote
 from claudewatch.backend.analytics.models import (
     AgentInfo,
     AgentRow,
@@ -23,6 +24,8 @@ from claudewatch.backend.analytics.models import (
     FileUsage,
     GlobalSummary,
     PRLink,
+    ProjectInfo,
+    ProjectRow,
     ProjectSummary,
     PullRequestRow,
     RelatedSession,
@@ -35,7 +38,7 @@ from claudewatch.backend.analytics.models import (
     ToolSequence,
     ToolUsage,
 )
-from claudewatch.backend.core.paths import is_safe_projects_path
+from claudewatch.backend.core.paths import is_safe_projects_path, proj_key_to_cwd
 
 log = logging.getLogger("claudewatch")
 
@@ -180,6 +183,7 @@ class Ingest:
 
             if count > 0:
                 self._update_session(s, session_id, proj_key)
+                self._resolve_project(s, proj_key)
 
             s.commit()
         return count
@@ -467,6 +471,35 @@ class Ingest:
                     primary_branch=primary_branch,
                     agent_count=agent_count,
                     updated_at=time.time(),
+                )
+            )
+
+    _RESOLVE_TTL = 86400  # 24 hours
+
+    def _resolve_project(self, s: Session, proj_key: str) -> None:
+        """Resolve proj_key to git remote and cache in projects table."""
+        existing = s.get(ProjectRow, proj_key)
+        if existing and existing.resolved_at and (time.time() - existing.resolved_at) < self._RESOLVE_TTL:
+            return
+        cwd = proj_key_to_cwd(proj_key)
+        result = resolve_remote(cwd)
+        if result:
+            remote_url, canonical, display = result
+        else:
+            remote_url, canonical, display = None, os.path.basename(cwd), os.path.basename(cwd)
+        if existing:
+            existing.git_remote = remote_url
+            existing.canonical_name = canonical
+            existing.display_name = display
+            existing.resolved_at = time.time()
+        else:
+            s.add(
+                ProjectRow(
+                    proj_key=proj_key,
+                    git_remote=remote_url,
+                    canonical_name=canonical,
+                    display_name=display,
+                    resolved_at=time.time(),
                 )
             )
 
@@ -904,6 +937,61 @@ class Queries:
             if proj_key:
                 q = q.where(AgentRow.proj_key == proj_key)
             return {r.agent_type: r.c for r in s.execute(q)}
+
+    def project_list(self) -> list[ProjectInfo]:
+        """All known projects grouped by canonical name, ordered by session count."""
+        with self._session_factory() as s:
+            rows = s.execute(
+                select(
+                    ProjectRow.canonical_name,
+                    ProjectRow.display_name,
+                    func.coalesce(ProjectRow.git_remote, "").label("git_remote"),
+                    func.count(distinct(SessionRow.session_id)).label("session_count"),
+                    func.coalesce(func.sum(SessionRow.tool_count), 0).label("tool_count"),
+                    func.group_concat(distinct(ProjectRow.proj_key)).label("proj_keys"),
+                )
+                .outerjoin(SessionRow, ProjectRow.proj_key == SessionRow.proj_key)
+                .where(ProjectRow.canonical_name.isnot(None))
+                .group_by(ProjectRow.canonical_name)
+                .order_by(desc("session_count"))
+            ).all()
+            return [
+                ProjectInfo(
+                    canonical_name=r.canonical_name or "",
+                    display_name=r.display_name or "",
+                    git_remote=r.git_remote or "",
+                    session_count=r.session_count,
+                    tool_count=r.tool_count,
+                    proj_keys=(r.proj_keys or "").split(","),
+                )
+                for r in rows
+                if r.session_count > 0
+            ]
+
+    def hotspot_files_by_project(
+        self,
+        canonical_name: str,
+        min_sessions: int = 2,
+        limit: int = 20,
+    ) -> list[FileHotspot]:
+        """Hotspot files filtered by canonical project name (groups all CWDs for that repo)."""
+        with self._session_factory() as s:
+            proj_keys_subq = (
+                select(ProjectRow.proj_key).where(ProjectRow.canonical_name == canonical_name).scalar_subquery()
+            )
+            q = (
+                select(
+                    FileRow.path,
+                    func.count(distinct(FileRow.session_id)).label("sess"),
+                    func.count().label("total"),
+                )
+                .where(FileRow.proj_key.in_(proj_keys_subq), FileRow.access_type.in_(("edit", "write")))
+                .group_by(FileRow.path)
+                .having(func.count(distinct(FileRow.session_id)) >= min_sessions)
+                .order_by(desc("sess"), desc("total"))
+                .limit(limit)
+            )
+            return [FileHotspot(path=r.path, session_count=r.sess, total_accesses=r.total) for r in s.execute(q)]
 
     def model_distribution(self, since: datetime | None = None) -> list[ToolUsage]:
         """Model usage across all sessions, returned as ToolUsage(name=model, count=sessions)."""

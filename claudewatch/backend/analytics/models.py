@@ -169,6 +169,15 @@ class CheckpointRow(Base):
     updated_at: Mapped[float] = mapped_column(Float, default=0)
 
 
+class ProjectRow(Base):
+    __tablename__ = "projects"
+    proj_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    git_remote: Mapped[str | None] = mapped_column(Text, nullable=True)
+    canonical_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolved_at: Mapped[float] = mapped_column(Float, default=0)
+
+
 class SchemaVersionRow(Base):
     __tablename__ = "schema_version"
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -341,3 +350,13 @@ class AgentInfo:
     ended_at: str
     entry_count: int
     proj_key: str
+
+
+@dataclass(frozen=True)
+class ProjectInfo:
+    canonical_name: str
+    display_name: str
+    git_remote: str
+    session_count: int
+    tool_count: int
+    proj_keys: list[str] = field(default_factory=list)
