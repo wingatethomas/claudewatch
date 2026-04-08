@@ -108,6 +108,12 @@ def get_bookmarked_cwds() -> set[str]:
     return {p["cwd"] for p in _load()}
 
 
+def clear_all_bookmarks() -> None:
+    """Delete all bookmarks."""
+    _save([])
+    log.info("bookmark.cleared_all")
+
+
 def remove_bookmark(cwd: str) -> None:
     """Remove a bookmark by CWD."""
     bookmarks = _load()
