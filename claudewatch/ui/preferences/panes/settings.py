@@ -39,6 +39,7 @@ _FEATURE_GROUPS: list[tuple[str, list[str]]] = [
     ("Sessions", ["bookmarks", "background_summaries"]),
     ("Notifications", ["notifications"]),
     ("App", ["launch_at_login", "auto_updates", "accessibility"]),
+    ("Analytics", ["code_indexing"]),
 ]
 
 
