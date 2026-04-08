@@ -401,8 +401,8 @@ class DetectionService(BaseService):
         self._get_ide_tab_indices(sessions, all_ps)
 
         # JSONL-based status refinement.
-        # Priority: ATTENTION (pending tool) > IDLE/WORKING from JSONL > window title.
-        # Cache results per CWD so we don't re-read for sessions sharing a CWD.
+        # Window title WORKING means Claude is actively executing — never override to ATTENTION.
+        # ATTENTION only applies when window title shows IDLE (✳) but JSONL has pending tool.
         cwd_status_cache: dict[str, tuple[PendingToolResult, SessionStatus]] = {}
         for s in sessions:
             if not s.cwd:
@@ -413,12 +413,14 @@ class DetectionService(BaseService):
                 cwd_status_cache[s.cwd] = (tool_result, jsonl_status)
 
             tool_result, jsonl_status = cwd_status_cache[s.cwd]
-            if tool_result.has_pending:
+            if tool_result.has_pending and s.status != SessionStatus.WORKING:
+                # Only flag ATTENTION if the session isn't actively working
+                # (window title shows idle/unknown, but JSONL has unresolved tool_use)
                 s.status = SessionStatus.ATTENTION
                 s.prompt_text = tool_result.one_line
                 s.prompt_context = tool_result.context
-            else:
-                # JSONL status takes precedence over window title
+            elif not tool_result.has_pending:
+                # JSONL status refines window title when no pending tools
                 s.status = jsonl_status
 
         return sessions
