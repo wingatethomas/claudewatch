@@ -194,8 +194,10 @@ class GraphPane(BasePane):
 
 
 def _short_path(path: str) -> str:
-    """Show parent/filename for context, e.g. 'backend/models.py'."""
+    """Show project/parent/filename for context, e.g. 'claudewatch/backend/models.py'."""
     parts = path.rstrip("/").split("/")
+    if len(parts) >= 3:
+        return "/".join(parts[-3:])
     if len(parts) >= 2:
         return "/".join(parts[-2:])
     return parts[-1] if parts else path
