@@ -49,8 +49,18 @@ class GraphService(BaseService):
         """Link edit actions to the symbols they modified."""
         return self._mapper.map_all()
 
+    _initial_scan_done = False
+
     def full_pipeline(self) -> dict[str, int]:
         """Run the complete ETL pipeline: sessions → code indexing → mapper."""
+        # On first run, check if graph is empty and force a full scan
+        if not GraphService._initial_scan_done:
+            GraphService._initial_scan_done = True
+            overview = self._queries.project_graph_all()
+            if overview.sessions == 0:
+                log.info("graph: first run, performing full initial scan")
+                # Clear checkpoints to force re-processing all files
+                self._session_etl.clear_checkpoints()
         stats = self.ingest_sessions()
         if features.is_enabled("code_indexing"):
             for project_path in self._get_active_project_paths():

@@ -139,6 +139,11 @@ class SessionETL:
         self._ckpt.execute(_CHECKPOINT_DDL)
         self._ckpt.commit()
 
+    def clear_checkpoints(self) -> None:
+        """Clear all checkpoints to force a full re-scan."""
+        self._ckpt.execute("DELETE FROM checkpoints")
+        self._ckpt.commit()
+
     def ingest_all(self, projects_dir: str) -> dict[str, int]:
         """Process all JSONL files under the projects directory."""
         stats: dict[str, int] = {}
