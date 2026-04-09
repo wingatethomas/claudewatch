@@ -247,10 +247,11 @@ class SecurityPane(BasePane):
         return policy_card
 
     def _build_blocklist_source(self, fetched_date: str) -> NSView:
-        link_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 0, 14))
+        link_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, self.card_width, 14))
         link_btn.setTitle_(f"Synced from Anthropic on {fetched_date} ↗")
         link_btn.setBezelStyle_(0)
         link_btn.setBordered_(False)
+        link_btn.setAlignment_(0)  # NSTextAlignmentLeft
         link_btn.setFont_(NSFont.systemFontOfSize_(Font.SMALL))
         link_btn.setTarget_(self.delegate)
         link_btn.setAction_(objc.selector(self.delegate.openBlocklistSource_, signature=b"v@:@"))
