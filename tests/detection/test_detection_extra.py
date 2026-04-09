@@ -1,4 +1,4 @@
-"""Extra tests for detection.py — idle detection and session ID lookup."""
+"""Extra tests for detection.py — idle detection, pending tool, and session ID lookup."""
 
 import json
 import os
@@ -44,11 +44,10 @@ class TestCheckJsonlForIdle:
                 {"type": "assistant", "message": {"content": [{"type": "text", "text": "hi"}]}},
             ],
         )
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
         tail = jsonl.read_text()
 
-        svc = _make_detection_service(find_most_recent=str(jsonl), read_tail=tail)
-        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
+        svc = _make_detection_service()
+        result = svc._check_jsonl_for_idle(tail)
         assert result == SessionStatus.IDLE
 
     def test_returns_working_when_last_is_user(self, tmp_path):
@@ -60,40 +59,15 @@ class TestCheckJsonlForIdle:
                 {"type": "user", "message": {"content": "do something"}},
             ],
         )
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
         tail = jsonl.read_text()
 
-        svc = _make_detection_service(find_most_recent=str(jsonl), read_tail=tail)
-        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
+        svc = _make_detection_service()
+        result = svc._check_jsonl_for_idle(tail)
         assert result == SessionStatus.WORKING
 
-    def test_returns_working_when_recently_modified(self, tmp_path):
-        jsonl = tmp_path / "session.jsonl"
-        _write_jsonl(
-            jsonl,
-            [
-                {"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}},
-            ],
-        )
-        # File is fresh — should return WORKING even though last msg is assistant
-        tail = jsonl.read_text()
-
-        svc = _make_detection_service(find_most_recent=str(jsonl), read_tail=tail)
-        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
-        assert result == SessionStatus.WORKING
-
-    def test_returns_working_when_no_jsonl(self):
-        svc = _make_detection_service(find_most_recent=None)
-        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
-        assert result == SessionStatus.WORKING
-
-    def test_returns_working_when_empty_jsonl(self, tmp_path):
-        jsonl = tmp_path / "session.jsonl"
-        jsonl.write_text("")
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
-
-        svc = _make_detection_service(find_most_recent=str(jsonl), read_tail="")
-        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
+    def test_returns_working_when_empty(self):
+        svc = _make_detection_service()
+        result = svc._check_jsonl_for_idle("")
         assert result == SessionStatus.WORKING
 
     def test_skips_non_user_assistant_types(self, tmp_path):
@@ -106,12 +80,89 @@ class TestCheckJsonlForIdle:
                 {"type": "progress", "data": {}},
             ],
         )
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
         tail = jsonl.read_text()
 
-        svc = _make_detection_service(find_most_recent=str(jsonl), read_tail=tail)
-        result = svc._check_jsonl_for_idle("/Users/dev/myapp")
+        svc = _make_detection_service()
+        result = svc._check_jsonl_for_idle(tail)
         assert result == SessionStatus.IDLE
+
+
+class TestReadJsonlTail:
+    def test_returns_empty_when_no_path(self):
+        svc = _make_detection_service()
+        tail, is_fresh = svc._read_jsonl_tail(None)
+        assert tail == ""
+        assert is_fresh is False
+
+    def test_returns_fresh_when_recently_modified(self, tmp_path):
+        jsonl = tmp_path / "session.jsonl"
+        _write_jsonl(jsonl, [{"type": "assistant", "message": {"content": []}}])
+        # File is fresh (just created)
+        svc = _make_detection_service(read_tail=jsonl.read_text())
+        tail, is_fresh = svc._read_jsonl_tail(str(jsonl))
+        assert is_fresh is True
+        assert tail != ""
+
+    def test_returns_not_fresh_when_old(self, tmp_path):
+        jsonl = tmp_path / "session.jsonl"
+        _write_jsonl(jsonl, [{"type": "assistant", "message": {"content": []}}])
+        os.utime(jsonl, (time.time() - 10, time.time() - 10))
+        svc = _make_detection_service(read_tail=jsonl.read_text())
+        tail, is_fresh = svc._read_jsonl_tail(str(jsonl))
+        assert is_fresh is False
+        assert tail != ""
+
+
+class TestCheckJsonlForPendingTool:
+    def test_returns_empty_when_no_tail(self):
+        svc = _make_detection_service()
+        result = svc._check_jsonl_for_pending_tool("")
+        assert result.has_pending is False
+
+    def test_detects_pending_tool_use(self, tmp_path):
+        jsonl = tmp_path / "session.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}}],
+                    },
+                },
+            ],
+        )
+        tail = jsonl.read_text()
+
+        svc = _make_detection_service()
+        result = svc._check_jsonl_for_pending_tool(tail)
+        assert result.has_pending is True
+        assert "Bash" in result.one_line
+
+    def test_resolved_tool_not_pending(self, tmp_path):
+        jsonl = tmp_path / "session.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}],
+                    },
+                },
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [{"type": "tool_result", "tool_use_id": "123", "content": "ok"}],
+                    },
+                },
+            ],
+        )
+        tail = jsonl.read_text()
+
+        svc = _make_detection_service()
+        result = svc._check_jsonl_for_pending_tool(tail)
+        assert result.has_pending is False
 
 
 class TestDetermineStatus:

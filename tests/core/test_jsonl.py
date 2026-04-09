@@ -1,8 +1,6 @@
 """Tests for JSONL-based attention detection."""
 
 import json
-import os
-import time
 from unittest.mock import MagicMock
 
 from claudewatch.backend.core.process.service import ProcessService
@@ -44,10 +42,8 @@ class TestCheckJsonlForPendingTool:
                 },
             ],
         )
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        svc = _make_service(str(jsonl), jsonl.read_text())
-        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        result = _make_service()._check_jsonl_for_pending_tool(jsonl.read_text())
         assert result.has_pending is True
         assert "Bash" in result.one_line
 
@@ -67,10 +63,8 @@ class TestCheckJsonlForPendingTool:
                 {"type": "user", "message": {"content": "yes"}},
             ],
         )
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        svc = _make_service(str(jsonl), jsonl.read_text())
-        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        result = _make_service()._check_jsonl_for_pending_tool(jsonl.read_text())
         assert result.has_pending is False
 
     def test_assistant_without_tool_use_not_pending(self, tmp_path):
@@ -88,10 +82,8 @@ class TestCheckJsonlForPendingTool:
                 },
             ],
         )
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        svc = _make_service(str(jsonl), jsonl.read_text())
-        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        result = _make_service()._check_jsonl_for_pending_tool(jsonl.read_text())
         assert result.has_pending is False
 
     def test_old_file_still_detected(self, tmp_path):
@@ -110,14 +102,13 @@ class TestCheckJsonlForPendingTool:
                 },
             ],
         )
-        os.utime(jsonl, (time.time() - 600, time.time() - 600))
 
-        svc = _make_service(str(jsonl), jsonl.read_text())
-        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        result = _make_service()._check_jsonl_for_pending_tool(jsonl.read_text())
         assert result.has_pending is True
 
     def test_fresh_file_treated_as_working(self, tmp_path):
-        """Fresh JSONL (< 5s) means Claude is actively working — not flagged as pending."""
+        """Fresh JSONL (< 5s) means _read_jsonl_tail returns is_fresh=True.
+        The caller (detect loop) skips pending check when fresh."""
         jsonl = tmp_path / "session.jsonl"
         _write_jsonl(
             jsonl,
@@ -132,20 +123,17 @@ class TestCheckJsonlForPendingTool:
                 },
             ],
         )
-        os.utime(jsonl, (time.time(), time.time()))
 
         svc = _make_service(str(jsonl), jsonl.read_text())
-        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert result.has_pending is False
+        _, is_fresh = svc._read_jsonl_tail(str(jsonl))
+        assert is_fresh is True
 
     def test_nonexistent_project_dir(self):
-        svc = _make_service(None)
-        result = svc._check_jsonl_for_pending_tool("/Users/dev/nonexistent")
+        result = _make_service()._check_jsonl_for_pending_tool("")
         assert result.has_pending is False
 
     def test_empty_project_dir(self):
-        svc = _make_service(None)
-        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        result = _make_service()._check_jsonl_for_pending_tool("")
         assert result.has_pending is False
 
     def test_progress_message_with_tool_use(self, tmp_path):
@@ -168,10 +156,8 @@ class TestCheckJsonlForPendingTool:
                 },
             ],
         )
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        svc = _make_service(str(jsonl), jsonl.read_text())
-        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        result = _make_service()._check_jsonl_for_pending_tool(jsonl.read_text())
         assert result.has_pending is True
         assert "Edit" in result.one_line
 
@@ -191,10 +177,8 @@ class TestCheckJsonlForPendingTool:
                 {"type": "system", "data": {}},
             ],
         )
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        svc = _make_service(str(jsonl), jsonl.read_text())
-        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        result = _make_service()._check_jsonl_for_pending_tool(jsonl.read_text())
         assert result.has_pending is True
 
     def test_malformed_json_skipped(self, tmp_path):
@@ -214,8 +198,6 @@ class TestCheckJsonlForPendingTool:
                 )
                 + "\n"
             )
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
 
-        svc = _make_service(str(jsonl), jsonl.read_text())
-        result = svc._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        result = _make_service()._check_jsonl_for_pending_tool(jsonl.read_text())
         assert result.has_pending is True
