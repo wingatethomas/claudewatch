@@ -96,7 +96,7 @@ class NotificationService(BaseService):
         super().__init__()
         _ensure_delegate()
         self._notified_pids: set[int] = set()
-        self.cooldown = 30.0
+        self.cooldown = 10.0
         self.last_notification_time = 0.0
         self._center = NSUserNotificationCenter.defaultUserNotificationCenter()
 
@@ -118,9 +118,13 @@ class NotificationService(BaseService):
             return
 
         attention = [s for s in sessions if s.needs_attention]
+
+        # Evict PIDs that are no longer in ATTENTION — allows re-notification
+        # when a session leaves ATTENTION (WORKING) and returns (ATTENTION again)
+        attention_pids = {s.pid for s in attention}
+        self._notified_pids &= attention_pids
+
         if not attention:
-            live_pids = {s.pid for s in sessions}
-            self._notified_pids = {p for p in self._notified_pids if p in live_pids}
             return
 
         new_attention = [s for s in attention if s.pid not in self._notified_pids]
@@ -129,11 +133,6 @@ class NotificationService(BaseService):
 
         now = time.time()
         if now - self.last_notification_time < self.cooldown:
-            return
-
-        front = _get_frontmost_window()
-        new_attention = [s for s in new_attention if f" {s.project} " not in f" {front.window_title} "]
-        if not new_attention:
             return
 
         self.last_notification_time = now
@@ -172,6 +171,3 @@ class NotificationService(BaseService):
 
             self._center.deliverNotification_(n)
             self._notified_pids.add(s.pid)
-
-        live_attention_pids = {s.pid for s in attention}
-        self._notified_pids &= live_attention_pids

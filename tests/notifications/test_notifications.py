@@ -114,7 +114,7 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
+
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -129,7 +129,7 @@ class TestNotifyIfNeeded:
         svc._center = mock_center
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
-            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
+
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -145,7 +145,7 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
+
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -159,33 +159,14 @@ class TestNotifyIfNeeded:
         svc._center = mock_center
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
-            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
+
         ):
             s = _make_session(pid=100, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
         mock_center.deliverNotification_.assert_not_called()
 
-    def test_skips_when_frontmost_window_matches_project(self):
-        svc = NotificationService()
-        svc.last_notification_time = 0.0
-        mock_center = _mock_center()
-        svc._center = mock_center
-        with (
-            patch(f"{_MOD}.features.is_enabled", return_value=True),
-            patch(
-                f"{_MOD}._get_frontmost_window",
-                return_value=FrontmostWindow(app_name="Terminal", window_title="myproject — claude"),
-            ),
-        ):
-            s = _make_session(
-                pid=300,
-                project="myproject",
-                status=SessionStatus.ATTENTION,
-            )
-            svc.notify_if_needed([s])
-        mock_center.deliverNotification_.assert_not_called()
-
-    def test_sends_when_different_project_is_frontmost(self):
+    def test_notifies_even_when_project_is_frontmost(self):
+        """Frontmost window no longer suppresses notifications."""
         svc = NotificationService()
         svc.last_notification_time = 0.0
         mock_cls, mock_notif = _mock_notification_class()
@@ -194,10 +175,6 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-            patch(
-                f"{_MOD}._get_frontmost_window",
-                return_value=FrontmostWindow(app_name="Terminal", window_title="other-project — claude"),
-            ),
         ):
             s = _make_session(
                 pid=300,
@@ -216,7 +193,7 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
+
         ):
             s = _make_session(pid=500, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -250,7 +227,7 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-            patch(f"{_MOD}._get_frontmost_window", return_value=FrontmostWindow(app_name="Finder", window_title="")),
+
         ):
             s = _make_session(
                 pid=600,
