@@ -3,61 +3,9 @@
 from claudewatch.backend.core.models import HostApp, SessionStatus
 from claudewatch.backend.detection.service import (
     _determine_status,
-    _extract_last_output,
-    _extract_prompt_info,
     _format_tool_use,
     _match_terminal_window,
 )
-
-
-class TestExtractLastOutput:
-    """Tests for _extract_last_output()."""
-
-    def test_finds_claude_output_line(self):
-        buffer = "some stuff\n\u23fa Reading file auth.py\n\n"
-        assert _extract_last_output(buffer) == "Reading file auth.py"
-
-    def test_returns_last_output_line(self):
-        buffer = "\u23fa First line\n\u23fa Second line\n"
-        assert _extract_last_output(buffer) == "Second line"
-
-    def test_truncates_long_output(self):
-        buffer = "\u23fa " + "x" * 100 + "\n"
-        result = _extract_last_output(buffer)
-        assert len(result) <= 80
-        assert result.endswith("...")
-
-    def test_empty_buffer(self):
-        assert _extract_last_output("") == ""
-
-    def test_no_claude_output(self):
-        buffer = "just some terminal output\nno claude lines here\n"
-        assert _extract_last_output(buffer) == ""
-
-    def test_skips_empty_claude_lines(self):
-        buffer = "\u23fa Real output\n\u23fa \n\u23fa\n"
-        assert _extract_last_output(buffer) == "Real output"
-
-
-class TestExtractPromptInfo:
-    """Tests for _extract_prompt_info()."""
-
-    def test_finds_permission_prompt(self):
-        buffer = "\u23fa Update(auth.py)\n  Do you want to proceed with this edit?\n  Yes, allow | No\n"
-        result = _extract_prompt_info(buffer)
-        assert "Update" in result.one_line or "auth" in result.one_line
-        assert "allow" in result.context.lower() or "Update" in result.context
-
-    def test_no_prompt_returns_empty(self):
-        buffer = "\u23fa Working on something\nno prompts here\n"
-        result = _extract_prompt_info(buffer)
-        assert result.one_line == ""
-        assert result.context == ""
-
-    def test_truncates_long_one_line(self):
-        buffer = "\u23fa " + "x" * 100 + "\n  yes, allow\n"
-        result = _extract_prompt_info(buffer)
-        assert len(result.one_line) <= 80
 
 
 class TestFormatToolUse:

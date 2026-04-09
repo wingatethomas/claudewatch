@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from claudewatch.backend.core import features
 from claudewatch.backend.core.models import ClaudeSession
 from claudewatch.backend.core.service import BaseService
-from claudewatch.backend.core.session_log.service import SessionLogService
-from claudewatch.backend.notifications.service import NotificationService
 from claudewatch.backend.security.models import SecurityAlert
 from claudewatch.backend.security.repository import SecurityRepository
+
+if TYPE_CHECKING:
+    from claudewatch.backend.core.session_log.service import SessionLogService
+    from claudewatch.backend.notifications.service import NotificationService
 
 log = logging.getLogger("claudewatch")
 

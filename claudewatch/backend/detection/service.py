@@ -14,8 +14,8 @@ from claudewatch.backend.core.process.models import ProcessInfo
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
-from claudewatch.backend.detection.constants import HOST_PROCESS_NAMES, IDLE_INDICATOR, PROMPT_KEYWORDS
-from claudewatch.backend.detection.models import PendingToolResult, PromptInfo, TerminalMatch, ToolUseInfo
+from claudewatch.backend.detection.constants import HOST_PROCESS_NAMES, IDLE_INDICATOR
+from claudewatch.backend.detection.models import PendingToolResult, TerminalMatch, ToolUseInfo
 
 log = logging.getLogger("claudewatch")
 
@@ -42,10 +42,10 @@ class DetectionService(BaseService):
         self._process_service = process_service
         self._session_log_service = session_log_service
 
-        # PID -> HostApp cache (host app doesn't change for a session's lifetime)
+        # NOTE: These caches are NOT thread-safe. detect() must only be called
+        # from the single-worker ThreadPoolExecutor in menubar.py. If detection
+        # is ever parallelized, these need locks.
         self._host_app_cache: dict[int, HostApp] = {}
-
-        # Cached terminal window info to avoid expensive AppleScript every poll
         self._terminal_cache: dict[str, tuple[str, int]] | None = None
         self._terminal_cache_time: float = 0
 
@@ -430,65 +430,7 @@ class DetectionService(BaseService):
         return sessions
 
 
-# ── Module-level pure functions (no state, used by tests) ─────────────
-
-
-def _extract_last_output(buffer: str) -> str:
-    """Extract the last meaningful Claude output line from terminal buffer.
-    Only looks for ⏺-prefixed lines (Claude's actual output)."""
-    lines = buffer.splitlines()
-    for line in reversed(lines):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("⏺"):
-            text = stripped.lstrip("⏺").strip()
-            if text:
-                if len(text) > _TEXT_MAX_LEN:
-                    text = text[:77] + "..."
-                return text
-    return ""
-
-
-def _extract_prompt_info(buffer: str) -> PromptInfo:
-    """Extract permission prompt context from the terminal buffer.
-    Returns PromptInfo with one_line summary and full context."""
-    lines = buffer.splitlines()
-    prompt_line_idx = None
-
-    for i in range(len(lines) - 1, -1, -1):
-        lower = lines[i].strip().lower()
-        if any(kw in lower for kw in PROMPT_KEYWORDS):
-            prompt_line_idx = i
-            break
-
-    if prompt_line_idx is None:
-        return PromptInfo(one_line="", context="")
-
-    block_start = prompt_line_idx
-    one_line = ""
-    for j in range(prompt_line_idx - 1, max(prompt_line_idx - 30, -1), -1):
-        stripped = lines[j].strip()
-        if stripped.startswith("⏺"):
-            block_start = j
-            one_line = stripped.lstrip("⏺").strip()
-            break
-        if stripped.startswith("─") or stripped.startswith("❯"):
-            block_start = j + 1
-            break
-
-    context_lines = []
-    for k in range(block_start, min(prompt_line_idx + 2, len(lines))):
-        stripped = lines[k].strip()
-        if stripped:
-            context_lines.append(stripped)
-
-    full_context = "\n".join(context_lines)
-
-    if one_line and len(one_line) > _TEXT_MAX_LEN:
-        one_line = one_line[:77] + "..."
-
-    return PromptInfo(one_line=one_line, context=full_context)
+# ── Module-level pure functions ─────────────
 
 
 def _format_tool_use(tool: dict) -> ToolUseInfo:

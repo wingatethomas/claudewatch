@@ -11,7 +11,6 @@ from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.detection.service import (
     DetectionService,
     _determine_status,
-    _extract_prompt_info,
 )
 
 
@@ -124,26 +123,6 @@ class TestDetermineStatus:
 
     def test_empty_title(self):
         assert _determine_status("") == SessionStatus.WORKING
-
-
-class TestExtractPromptInfo:
-    def test_extracts_prompt_context(self):
-        buf = "some output\n⏺ Bash: ls -la\n  Allow once  \n  Allow always  "
-        result = _extract_prompt_info(buf)
-        assert "Bash" in result.one_line or "ls" in result.context
-
-    def test_no_prompt_returns_empty(self):
-        buf = "just regular output\nno prompts here"
-        result = _extract_prompt_info(buf)
-        assert result.one_line == ""
-        assert result.context == ""
-
-    def test_truncates_long_one_liner(self):
-        long_cmd = "x" * 200
-        buf = f"⏺ {long_cmd}\n  Allow once  "
-        result = _extract_prompt_info(buf)
-        assert len(result.one_line) <= 80
-        assert result.one_line.endswith("...")
 
 
 class TestGetSessionId:

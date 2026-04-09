@@ -26,4 +26,4 @@ class BookmarkService(BaseService):
 
     def clear_all(self) -> None:
         """Delete all bookmarks."""
-        bookmarks_repo._save([])
+        bookmarks_repo.clear_all_bookmarks()

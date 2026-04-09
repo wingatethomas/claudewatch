@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 class BaseDTO:
     """Base class for all DTOs. Immutable by default."""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
 
