@@ -85,7 +85,7 @@ class ActivityService(BaseService):
         return list(reversed(entries[-max_entries:]))
 
 
-def _build_tool_use_fields(block: dict, ts: str) -> tuple[str, str, str]:
+def _build_tool_use_fields(block: dict[str, object], ts: str) -> tuple[str, str, str]:
     """Extract summary and detail from a tool_use block.
 
     Returns (summary, detail, timestamp).
@@ -113,7 +113,7 @@ def _build_tool_use_fields(block: dict, ts: str) -> tuple[str, str, str]:
     return summary, "\n".join(detail_parts), ts
 
 
-def _parse_tool_use_dto(block: dict, ts: str) -> ActivityEventDTO:
+def _parse_tool_use_dto(block: dict[str, object], ts: str) -> ActivityEventDTO:
     """Parse a tool_use block into an ActivityEventDTO."""
     summary, detail, timestamp = _build_tool_use_fields(block, ts)
     return ActivityEventDTO(kind="tool", summary=summary, detail=detail, timestamp=timestamp)
