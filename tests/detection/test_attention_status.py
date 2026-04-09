@@ -27,31 +27,38 @@ def _write_jsonl(path: str, entries: list[dict], *, stale: bool = False) -> None
         os.utime(path, (old_time, old_time))
 
 
+def _read_tail(path: str) -> str:
+    """Read file content as tail text for testing."""
+    with open(path) as f:
+        return f.read()
+
+
+def _make_service(tmp_path: str) -> tuple[DetectionService, str]:
+    """Create a DetectionService with mocked dependencies pointed at tmp_path."""
+    from unittest.mock import MagicMock
+
+    from claudewatch.backend.core.session_log.jsonl import read_jsonl_tail
+
+    proj_key = "-Users-dev-myapp"
+    proj_dir = os.path.join(tmp_path, proj_key)
+    session_id = "test-session-001"
+    jsonl_path = os.path.join(proj_dir, f"{session_id}.jsonl")
+
+    process_service = MagicMock()
+    session_log_service = MagicMock()
+    session_log_service.find_most_recent.return_value = jsonl_path
+    session_log_service.read_tail.side_effect = read_jsonl_tail
+    session_log_service.get_session_id.return_value = session_id
+
+    service = DetectionService(process_service, session_log_service)
+    return service, jsonl_path
+
+
 class TestPendingToolDetection:
     """Tests for _check_jsonl_for_pending_tool edge cases."""
 
-    def _make_service(self, tmp_path: str) -> tuple[DetectionService, str]:
-        """Create a DetectionService with mocked dependencies pointed at tmp_path."""
-        from unittest.mock import MagicMock
-
-        from claudewatch.backend.core.session_log.jsonl import read_jsonl_tail
-
-        proj_key = "-Users-dev-myapp"
-        proj_dir = os.path.join(tmp_path, proj_key)
-        session_id = "test-session-001"
-        jsonl_path = os.path.join(proj_dir, f"{session_id}.jsonl")
-
-        process_service = MagicMock()
-        session_log_service = MagicMock()
-        session_log_service.find_most_recent.return_value = jsonl_path
-        session_log_service.read_tail.side_effect = read_jsonl_tail
-        session_log_service.get_session_id.return_value = session_id
-
-        service = DetectionService(process_service, session_log_service)
-        return service, jsonl_path
-
     def test_detects_pending_tool_use(self, tmp_path: str) -> None:
-        service, jsonl_path = self._make_service(tmp_path)
+        service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
             [
@@ -69,13 +76,13 @@ class TestPendingToolDetection:
             stale=True,
         )
 
-        cwd = "/Users/dev/myapp"
-        result = service._check_jsonl_for_pending_tool(cwd)
+        tail = _read_tail(jsonl_path)
+        result = service._check_jsonl_for_pending_tool(tail)
         assert result.has_pending is True
         assert "Bash" in result.one_line
 
     def test_no_pending_when_user_responded(self, tmp_path: str) -> None:
-        service, jsonl_path = self._make_service(tmp_path)
+        service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
             [
@@ -92,16 +99,13 @@ class TestPendingToolDetection:
             ],
         )
 
-        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        tail = _read_tail(jsonl_path)
+        result = service._check_jsonl_for_pending_tool(tail)
         assert result.has_pending is False
 
     def test_detects_pending_after_five_minutes(self, tmp_path: str) -> None:
-        """Bug fix: JSONL older than 5 minutes should still show pending tool_use.
-
-        Users can step away. The old code had a 300s cutoff which meant
-        ATTENTION status disappeared after 5 minutes.
-        """
-        service, jsonl_path = self._make_service(tmp_path)
+        """Bug fix: JSONL older than 5 minutes should still show pending tool_use."""
+        service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
             [
@@ -116,17 +120,15 @@ class TestPendingToolDetection:
                 },
             ],
         )
-        # Set mtime to 10 minutes ago
-        old_time = time.time() - 600
-        os.utime(jsonl_path, (old_time, old_time))
 
-        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        tail = _read_tail(jsonl_path)
+        result = service._check_jsonl_for_pending_tool(tail)
         assert result.has_pending is True
         assert "Edit" in result.one_line
 
-    def test_fresh_file_not_flagged_as_pending(self, tmp_path: str) -> None:
+    def test_fresh_file_treated_as_working(self, tmp_path: str) -> None:
         """Fresh JSONL (< 5s old) means Claude is actively working — not pending approval."""
-        service, jsonl_path = self._make_service(tmp_path)
+        service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
             [
@@ -141,14 +143,13 @@ class TestPendingToolDetection:
                 },
             ],
         )
-        # File was just written — mtime is now, so it's considered active
-
-        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
-        assert result.has_pending is False
+        # File was just written — mtime is now, so _read_jsonl_tail returns is_fresh=True
+        tail, is_fresh = service._read_jsonl_tail(jsonl_path)
+        assert is_fresh is True
 
     def test_no_pending_when_tool_result_received(self, tmp_path: str) -> None:
         """Tool completed — tool_result after tool_use means not pending."""
-        service, jsonl_path = self._make_service(tmp_path)
+        service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
             [
@@ -171,12 +172,13 @@ class TestPendingToolDetection:
             ],
         )
 
-        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        tail = _read_tail(jsonl_path)
+        result = service._check_jsonl_for_pending_tool(tail)
         assert result.has_pending is False
 
     def test_no_pending_after_tool_result_then_text(self, tmp_path: str) -> None:
         """Full cycle: tool_use → tool_result → assistant text. Not pending."""
-        service, jsonl_path = self._make_service(tmp_path)
+        service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
             [
@@ -206,12 +208,13 @@ class TestPendingToolDetection:
             ],
         )
 
-        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        tail = _read_tail(jsonl_path)
+        result = service._check_jsonl_for_pending_tool(tail)
         assert result.has_pending is False
 
     def test_pending_when_no_tool_result(self, tmp_path: str) -> None:
         """tool_use without subsequent tool_result — still pending."""
-        service, jsonl_path = self._make_service(tmp_path)
+        service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
             [
@@ -228,11 +231,12 @@ class TestPendingToolDetection:
             stale=True,
         )
 
-        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        tail = _read_tail(jsonl_path)
+        result = service._check_jsonl_for_pending_tool(tail)
         assert result.has_pending is True
 
     def test_no_pending_when_assistant_sent_text_only(self, tmp_path: str) -> None:
-        service, jsonl_path = self._make_service(tmp_path)
+        service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
             [
@@ -246,35 +250,17 @@ class TestPendingToolDetection:
             ],
         )
 
-        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        tail = _read_tail(jsonl_path)
+        result = service._check_jsonl_for_pending_tool(tail)
         assert result.has_pending is False
 
 
 class TestStatusPriority:
     """Tests for status priority: ATTENTION > IDLE > WORKING from JSONL."""
 
-    def _make_service_and_sessions(self, tmp_path: str) -> tuple[DetectionService, str]:
-        from unittest.mock import MagicMock
-
-        from claudewatch.backend.core.session_log.jsonl import read_jsonl_tail
-
-        proj_key = "-Users-dev-myapp"
-        proj_dir = os.path.join(tmp_path, proj_key)
-        session_id = "test-session-002"
-        jsonl_path = os.path.join(proj_dir, f"{session_id}.jsonl")
-
-        process_service = MagicMock()
-        session_log_service = MagicMock()
-        session_log_service.find_most_recent.return_value = jsonl_path
-        session_log_service.read_tail.side_effect = read_jsonl_tail
-        session_log_service.get_session_id.return_value = session_id
-
-        service = DetectionService(process_service, session_log_service)
-        return service, jsonl_path
-
     def test_attention_overrides_idle_from_window_title(self, tmp_path: str) -> None:
         """If window title says IDLE but JSONL has pending tool, status should be ATTENTION."""
-        service, jsonl_path = self._make_service_and_sessions(tmp_path)
+        service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
             [
@@ -291,12 +277,13 @@ class TestStatusPriority:
             stale=True,
         )
 
-        result = service._check_jsonl_for_pending_tool("/Users/dev/myapp")
+        tail = _read_tail(jsonl_path)
+        result = service._check_jsonl_for_pending_tool(tail)
         assert result.has_pending is True
 
     def test_idle_from_jsonl_when_file_stale(self, tmp_path: str) -> None:
         """JSONL where last entry is assistant text → IDLE."""
-        service, jsonl_path = self._make_service_and_sessions(tmp_path)
+        service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
             jsonl_path,
             [
@@ -309,9 +296,9 @@ class TestStatusPriority:
                 },
             ],
         )
-        # Make it stale enough that mtime check doesn't think it's active
         old_time = time.time() - 30
         os.utime(jsonl_path, (old_time, old_time))
 
-        status = service._check_jsonl_for_idle("/Users/dev/myapp")
+        tail = _read_tail(jsonl_path)
+        status = service._check_jsonl_for_idle(tail)
         assert status == SessionStatus.IDLE
