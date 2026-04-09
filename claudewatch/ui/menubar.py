@@ -266,23 +266,11 @@ class ClaudeWatchApp:
     def poll(self) -> None:
         if self._modal_active:
             return
-        # Respect configurable poll interval (timer ticks every 1s, we skip until interval)
-        now = time.time()
-        interval = int(get_setting("poll_interval") or 3)
-        if now - self._last_poll_time < interval:
-            return
-        self._last_poll_time = now
 
-        # Recheck accessibility so warning dismisses after user grants it
-        self._check_accessibility()
-
-        # Collect results from background detection if ready
-        if self._future is not None:
-            if not self._future.done():
-                return  # previous detection still running
+        # Process completed detection results immediately (every 1s tick)
+        if self._future is not None and self._future.done():
             try:
                 self.sessions = self._future.result()
-                # Filter out sessions we've sent a quit signal to (grace period)
                 _exit_grace = 10  # seconds
                 now = time.time()
                 self._exiting_pids = {p: t for p, t in self._exiting_pids.items() if now - t < _exit_grace}
@@ -309,8 +297,17 @@ class ClaudeWatchApp:
                     self._menu.addItem_(make_menu_item("Quit", self._quit, self._delegate))
             self._future = None
 
-        # Dispatch new detection to background thread
-        self._future = _executor.submit(self._detection_service.detect)
+        # Dispatch new detection at the configured interval
+        now = time.time()
+        interval = int(get_setting("poll_interval") or 2)
+        if now - self._last_poll_time < interval:
+            return
+        self._last_poll_time = now
+
+        self._check_accessibility()
+
+        if self._future is None:
+            self._future = _executor.submit(self._detection_service.detect)
 
     def _menu_key(self) -> str:
         parts = [f"scheme:{theme.scheme.name}"]
