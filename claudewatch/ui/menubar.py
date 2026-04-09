@@ -71,6 +71,18 @@ _executor = ThreadPoolExecutor(max_workers=1)
 _MAX_ERRORS = 10
 
 
+def _safe_bg(fn: object) -> None:
+    """Run fn in a daemon thread with top-level exception safety."""
+
+    def _wrapper() -> None:
+        try:
+            fn()  # type: ignore[operator]
+        except Exception:
+            log.exception("background task failed")
+
+    threading.Thread(target=_wrapper, daemon=True).start()
+
+
 class ClaudeWatchApp:
     def __init__(  # noqa: PLR0913
         self,
@@ -124,8 +136,8 @@ class ClaudeWatchApp:
         # Show placeholder immediately, first detection runs async via poll loop
         self.update_display()
         # Kick off background update check
-        threading.Thread(target=self._update_service.check, daemon=True).start()
-        threading.Thread(target=self._security_service.warm_command_cache, daemon=True).start()
+        _safe_bg(self._update_service.check)
+        _safe_bg(self._security_service.warm_command_cache)
 
     def run(self) -> None:
         """Start the app: create status bar item, timer, and run the event loop."""
@@ -297,7 +309,10 @@ class ClaudeWatchApp:
 
         # Dispatch new detection at the configured interval
         now = time.time()
-        interval = int(get_setting("poll_interval") or 2)
+        try:
+            interval = int(get_setting("poll_interval") or 2)
+        except (ValueError, TypeError):
+            interval = 2
         if now - self._last_poll_time < interval:
             return
         self._last_poll_time = now
@@ -619,21 +634,27 @@ def main() -> None:
 
     signal.signal(signal.SIGINT, _sigint_handler)
 
-    delegate = AppDelegate.alloc().init()
-    app = ClaudeWatchApp(
-        delegate,
-        detection_service=get_detection_service(),
-        summary_service=get_summary_service(),
-        notification_service=get_notification_service(),
-        onboarding_service=get_onboarding_service(),
-        update_service=get_update_service(),
-        usage_service=get_usage_service(),
-        bookmark_service=get_bookmark_service(),
-        history_service=get_history_service(),
-        analytics_service=get_analytics_service(),
-        graph_service_factory=get_graph_service,
-        security_service=get_security_service(),
-    )
+    try:
+        delegate = AppDelegate.alloc().init()
+        app = ClaudeWatchApp(
+            delegate,
+            detection_service=get_detection_service(),
+            summary_service=get_summary_service(),
+            notification_service=get_notification_service(),
+            onboarding_service=get_onboarding_service(),
+            update_service=get_update_service(),
+            usage_service=get_usage_service(),
+            bookmark_service=get_bookmark_service(),
+            history_service=get_history_service(),
+            analytics_service=get_analytics_service(),
+            graph_service_factory=get_graph_service,
+            security_service=get_security_service(),
+        )
+    except Exception:
+        log.exception("fatal: failed to initialize")
+        _show_fatal_alert(f"ClaudeWatch failed to start.\nCheck the audit log:\n{LOG_PATH}")
+        return
+
     delegate._app = app
 
     # Wire notification click → focus session
@@ -644,3 +665,14 @@ def main() -> None:
 
     set_focus_callback(_on_notification_click)
     app.run()
+
+
+def _show_fatal_alert(message: str) -> None:
+    """Show a fatal error dialog when the app can't start."""
+    nsa = NSApplication.sharedApplication()
+    nsa.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_("ClaudeWatch Error")
+    alert.setInformativeText_(message)
+    alert.addButtonWithTitle_("OK")
+    alert.runModal()

@@ -1,9 +1,12 @@
 import ctypes
 import logging
+import threading
 
 from Foundation import NSAppleScript
 
 log = logging.getLogger("claudewatch")
+
+_APPLESCRIPT_TIMEOUT = 10.0
 
 
 def is_accessibility_trusted() -> bool:
@@ -16,16 +19,28 @@ def is_accessibility_trusted() -> bool:
         return False
 
 
-def run_applescript(source: str) -> str:
-    script = NSAppleScript.alloc().initWithSource_(source)
-    result, error = script.executeAndReturnError_(None)
-    if error:
-        msg = error.get("NSAppleScriptErrorMessage", error)
-        if "-60005" in str(msg):
-            log.warning("AppleScript error (Accessibility permissions required): %s", msg)
-        else:
-            log.debug("AppleScript error: %s", msg)
-    return result.stringValue() or "" if result else ""
+def run_applescript(source: str, *, timeout: float = _APPLESCRIPT_TIMEOUT) -> str:
+    """Execute AppleScript with a timeout. Returns empty string on timeout or error."""
+    result_holder: list[str] = []
+
+    def _execute() -> None:
+        script = NSAppleScript.alloc().initWithSource_(source)
+        result, error = script.executeAndReturnError_(None)
+        if error:
+            msg = error.get("NSAppleScriptErrorMessage", error)
+            if "-60005" in str(msg):
+                log.warning("AppleScript error (Accessibility permissions required): %s", msg)
+            else:
+                log.debug("AppleScript error: %s", msg)
+        result_holder.append(result.stringValue() or "" if result else "")
+
+    thread = threading.Thread(target=_execute, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+    if thread.is_alive():
+        log.warning("AppleScript timed out after %.0fs", timeout)
+        return ""
+    return result_holder[0] if result_holder else ""
 
 
 def escape_applescript(s: str) -> str:
