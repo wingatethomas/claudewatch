@@ -188,9 +188,9 @@ class DetectionService(BaseService):
 
     # -- JSONL status helpers -----------------------------------------------
 
-    def _check_jsonl_for_idle(self, cwd: str) -> SessionStatus:
+    def _check_jsonl_for_idle(self, cwd: str, jsonl_path: str | None = None) -> SessionStatus:
         """Determine idle/working status from JSONL."""
-        path = self._session_log_service.find_most_recent(cwd)
+        path = jsonl_path or self._session_log_service.find_most_recent(cwd)
         if not path:
             return SessionStatus.WORKING
 
@@ -220,19 +220,19 @@ class DetectionService(BaseService):
             return SessionStatus.IDLE
         return SessionStatus.WORKING
 
-    def _get_session_id(self, cwd: str) -> str:
+    def _get_session_id(self, cwd: str, jsonl_path: str | None = None) -> str:
         """Get the most recent session ID for a CWD from the JSONL filename."""
-        path = self._session_log_service.find_most_recent(cwd)
+        path = jsonl_path or self._session_log_service.find_most_recent(cwd)
         return self._session_log_service.get_session_id(path) if path else ""
 
-    def _check_jsonl_for_pending_tool(self, cwd: str) -> PendingToolResult:  # noqa: PLR0911, PLR0912
+    def _check_jsonl_for_pending_tool(self, cwd: str, jsonl_path: str | None = None) -> PendingToolResult:  # noqa: PLR0911, PLR0912
         """Check if the most recent JSONL for this CWD has a pending tool_use.
 
         If the JSONL was modified very recently (< 5s), Claude is actively working —
         tool_use blocks are being executed, not waiting for approval. Skip the check.
         """
         _empty = PendingToolResult(has_pending=False, one_line="", context="")
-        path = self._session_log_service.find_most_recent(cwd)
+        path = jsonl_path or self._session_log_service.find_most_recent(cwd)
         if not path:
             return _empty
 
@@ -339,6 +339,9 @@ class DetectionService(BaseService):
             if stale not in live_pids:
                 del self._host_app_cache[stale]
 
+        # Cache JSONL path per CWD — avoids repeated directory scans
+        jsonl_path_cache: dict[str, str | None] = {}
+
         sessions = []
         for pid in pids:
             info = all_ps.get(pid)
@@ -384,6 +387,9 @@ class DetectionService(BaseService):
 
             status = _determine_status(window_title)
 
+            if cwd not in jsonl_path_cache:
+                jsonl_path_cache[cwd] = self._session_log_service.find_most_recent(cwd)
+
             sessions.append(
                 ClaudeSession(
                     pid=pid,
@@ -394,7 +400,7 @@ class DetectionService(BaseService):
                     window_title=window_title,
                     window_id=window_id,
                     status=status,
-                    session_id=self._get_session_id(cwd),
+                    session_id=self._get_session_id(cwd, jsonl_path_cache[cwd]),
                 )
             )
 
@@ -409,8 +415,9 @@ class DetectionService(BaseService):
             if not s.cwd:
                 continue
             if s.cwd not in cwd_status_cache:
-                tool_result = self._check_jsonl_for_pending_tool(s.cwd)
-                jsonl_status = self._check_jsonl_for_idle(s.cwd) if not tool_result.has_pending else s.status
+                jpath = jsonl_path_cache.get(s.cwd)
+                tool_result = self._check_jsonl_for_pending_tool(s.cwd, jpath)
+                jsonl_status = self._check_jsonl_for_idle(s.cwd, jpath) if not tool_result.has_pending else s.status
                 cwd_status_cache[s.cwd] = (tool_result, jsonl_status)
 
             tool_result, jsonl_status = cwd_status_cache[s.cwd]
