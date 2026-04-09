@@ -25,13 +25,13 @@ from AppKit import (
 )
 from PyObjCTools import AppHelper
 
-import claudewatch.backend.core.login_item  # noqa: F401 — registers feature
 from claudewatch.backend.analytics.dependencies import get_analytics_service
 from claudewatch.backend.analytics.service import AnalyticsService
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core import features
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
+from claudewatch.backend.core.login_item import refresh_login_item
 from claudewatch.backend.core.models import ClaudeSession
 from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
 from claudewatch.backend.core.session_log.dependencies import get_session_log_service
@@ -613,6 +613,7 @@ def main() -> None:
 
     ensure_data_dir()
     ensure_defaults_migrated()
+    refresh_login_item()
     if not os.path.exists(LOG_PATH):
         os.open(LOG_PATH, os.O_CREAT | os.O_WRONLY, 0o600)
     file_handler = logging.handlers.RotatingFileHandler(

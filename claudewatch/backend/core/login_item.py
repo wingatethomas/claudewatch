@@ -90,3 +90,30 @@ def sync_login_item(enabled: bool) -> None:
         add_login_item()
     else:
         remove_login_item()
+
+
+def refresh_login_item() -> None:
+    """If launch_at_login is active, ensure the plist points to the current binary.
+
+    Fixes stale plists after Homebrew upgrades move the app bundle.
+    Called on every launch from main().
+    """
+    if not os.path.isfile(_PLIST_PATH):
+        return
+
+    try:
+        with open(_PLIST_PATH, "rb") as f:
+            plist = plistlib.load(f)
+    except (OSError, plistlib.InvalidFileException):
+        log.warning("login_item.refresh: could not read plist")
+        return
+
+    stored_args = plist.get("ProgramArguments", [])
+    stored_path = stored_args[0] if stored_args else ""
+    current_path = _get_app_path()
+
+    if stored_path == current_path:
+        return
+
+    log.info("login_item.refresh: updating path from %s to %s", stored_path, current_path)
+    add_login_item()
