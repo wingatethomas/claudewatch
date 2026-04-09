@@ -1,4 +1,4 @@
-"""Tests for SecurityRepository — config capture, baseline persistence, diff logic."""
+"""Tests for SecurityRepository — config capture, baseline persistence, I/O operations."""
 
 import json
 import os
@@ -113,219 +113,6 @@ class TestConfigSnapshotSerialization:
         assert snap.plugins_installed == {}
 
 
-class TestDiffSnapshots:
-    def test_no_changes(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        snap = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(snap, snap)
-        assert alerts == []
-
-    def test_plugin_installed(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-
-        _write_json(
-            os.path.join(claude_dir, "plugins/installed_plugins.json"),
-            {
-                "version": 2,
-                "plugins": {
-                    "code-review@official": [{"scope": "user"}],
-                    "swift-lsp@official": [{"scope": "user"}],
-                    "new-plugin@sketchy": [{"scope": "user"}],
-                },
-            },
-        )
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-
-        assert len(alerts) == 1
-        assert alerts[0].alert_type == "plugin_installed"
-        assert "new-plugin@sketchy" in alerts[0].message
-
-    def test_plugin_uninstalled(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-
-        _write_json(
-            os.path.join(claude_dir, "plugins/installed_plugins.json"),
-            {
-                "version": 2,
-                "plugins": {"code-review@official": [{"scope": "user"}]},
-            },
-        )
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-
-        assert len(alerts) == 1
-        assert alerts[0].alert_type == "plugin_uninstalled"
-        assert "swift-lsp" in alerts[0].message
-
-    def test_plugin_enabled(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-
-        _write_json(
-            os.path.join(claude_dir, "settings.json"),
-            {
-                "enabledPlugins": {
-                    "code-review@official": True,
-                    "swift-lsp@official": True,
-                    "superpowers@official": True,
-                },
-            },
-        )
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-
-        assert any(a.alert_type == "plugin_enabled" for a in alerts)
-        assert any("superpowers" in a.message for a in alerts)
-
-    def test_plugin_disabled(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-
-        _write_json(
-            os.path.join(claude_dir, "settings.json"),
-            {
-                "enabledPlugins": {"code-review@official": True},
-            },
-        )
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-
-        assert any(a.alert_type == "plugin_disabled" for a in alerts)
-
-    def test_plugin_unblocked(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-
-        _write_json(os.path.join(claude_dir, "plugins/blocklist.json"), {"plugins": []})
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-
-        assert len(alerts) == 1
-        assert alerts[0].alert_type == "plugin_unblocked"
-        assert alerts[0].severity == "warning"
-
-    def test_new_marketplace(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-
-        _write_json(
-            os.path.join(claude_dir, "plugins/known_marketplaces.json"),
-            {
-                "marketplaces": {
-                    "claude-plugins-official": {},
-                    "sketchy-marketplace": {"source": "unknown/repo"},
-                },
-            },
-        )
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-
-        assert any(a.alert_type == "marketplace_added" for a in alerts)
-        assert any("sketchy-marketplace" in a.message for a in alerts)
-
-    def test_remote_control_enabled_flat(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-
-        _write_json(
-            os.path.join(claude_dir, "policy-limits.json"),
-            {
-                "allow_remote_control": True,
-                "allow_quick_web_setup": False,
-            },
-        )
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-
-        assert len(alerts) == 1
-        assert alerts[0].alert_type == "policy_changed"
-        assert alerts[0].severity == "critical"
-
-    def test_remote_control_enabled_nested(self, claude_dir: str) -> None:
-        """Real format: restrictions.allow_remote_control.allowed."""
-        _write_json(
-            os.path.join(claude_dir, "policy-limits.json"),
-            {
-                "restrictions": {
-                    "allow_remote_control": {"allowed": False},
-                    "allow_quick_web_setup": {"allowed": False},
-                },
-            },
-        )
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-
-        _write_json(
-            os.path.join(claude_dir, "policy-limits.json"),
-            {
-                "restrictions": {
-                    "allow_remote_control": {"allowed": True},
-                    "allow_quick_web_setup": {"allowed": False},
-                },
-            },
-        )
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-
-        assert len(alerts) == 1
-        assert alerts[0].alert_type == "policy_changed"
-        assert alerts[0].severity == "critical"
-
-    def test_remote_control_stays_false(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-        assert not any(a.alert_type == "policy_changed" for a in alerts)
-
-    def test_permission_added(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-
-        _write_json(
-            os.path.join(claude_dir, "settings.local.json"),
-            {
-                "permissions": {"allow": ["Bash(python3:*)", "Bash(rm -rf:*)"]},
-            },
-        )
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-
-        assert any(a.alert_type == "permission_added" for a in alerts)
-
-    def test_multiple_changes(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        old = repo.capture_snapshot()
-
-        # Plugin installed + remote control enabled
-        _write_json(
-            os.path.join(claude_dir, "plugins/installed_plugins.json"),
-            {
-                "version": 2,
-                "plugins": {
-                    "code-review@official": [{}],
-                    "swift-lsp@official": [{}],
-                    "evil-plugin@bad": [{}],
-                },
-            },
-        )
-        _write_json(
-            os.path.join(claude_dir, "policy-limits.json"),
-            {
-                "allow_remote_control": True,
-            },
-        )
-        new = repo.capture_snapshot()
-        alerts = repo.diff_snapshots(old, new)
-
-        types = {a.alert_type for a in alerts}
-        assert "plugin_installed" in types
-        assert "policy_changed" in types
-
-
 class TestCheckPermissionMode:
     def test_detects_unrestricted(self, tmp_path: str) -> None:
         jsonl_path = os.path.join(tmp_path, "session.jsonl")
@@ -361,8 +148,8 @@ class TestCheckPermissionMode:
         assert repo.check_permission_mode("/project") is None
 
 
-class TestCheckSuspiciousCommands:
-    def test_detects_rm_rf(self, tmp_path: str) -> None:
+class TestReadBashCommands:
+    def test_extracts_commands(self, tmp_path: str) -> None:
         jsonl_path = os.path.join(tmp_path, "session.jsonl")
         entry = {
             "type": "assistant",
@@ -379,33 +166,27 @@ class TestCheckSuspiciousCommands:
         session_log.read_tail.return_value = json.dumps(entry)
         repo = SecurityRepository(str(tmp_path), session_log=session_log)
 
-        alerts = repo.check_suspicious_commands("/project", "myproject")
-        assert len(alerts) == 1
-        assert alerts[0].alert_type == "suspicious_command"
+        commands = repo.read_bash_commands("/project")
+        assert commands == ["rm -rf /tmp/all"]
 
-    def test_no_alert_for_safe_command(self, tmp_path: str) -> None:
-        jsonl_path = os.path.join(tmp_path, "session.jsonl")
+    def test_returns_empty_without_session_log(self, tmp_path: str) -> None:
+        repo = SecurityRepository(str(tmp_path))
+        assert repo.read_bash_commands("/project") == []
+
+    def test_returns_empty_for_safe_tool(self, tmp_path: str) -> None:
         entry = {
             "type": "assistant",
             "message": {
                 "role": "assistant",
-                "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}}],
+                "content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "/tmp/x"}}],
             },
         }
-        with open(jsonl_path, "w") as f:
-            f.write(json.dumps(entry) + "\n")
-
         session_log = MagicMock()
-        session_log.find_most_recent.return_value = jsonl_path
+        session_log.find_most_recent.return_value = "/fake"
         session_log.read_tail.return_value = json.dumps(entry)
         repo = SecurityRepository(str(tmp_path), session_log=session_log)
 
-        alerts = repo.check_suspicious_commands("/project", "myproject")
-        assert alerts == []
-
-    def test_returns_empty_without_session_log(self, tmp_path: str) -> None:
-        repo = SecurityRepository(str(tmp_path))
-        assert repo.check_suspicious_commands("/project", "myproject") == []
+        assert repo.read_bash_commands("/project") == []
 
 
 class TestRemovePermissionRule:
@@ -521,26 +302,7 @@ class TestUninstallPlugin:
         assert not repo.uninstall_plugin("nonexistent@fake")
 
 
-class TestPublicAPI:
-    def test_get_plugin_keys(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        snap = repo.capture_snapshot()
-        keys = repo.get_plugin_keys(snap)
-        assert "code-review@official" in keys
-        assert "swift-lsp@official" in keys
-
-    def test_get_policy_value(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        snap = repo.capture_snapshot()
-        assert repo.get_policy_value(snap, "allow_remote_control") is False
-
-    def test_get_blocklist_entries(self, claude_dir: str) -> None:
-        repo = SecurityRepository(claude_dir)
-        snap = repo.capture_snapshot()
-        entries = repo.get_blocklist_entries(snap)
-        assert len(entries) == 1
-        assert entries[0]["plugin"] == "malicious@evil"
-
+class TestGlobalPermissions:
     def test_get_global_permissions(self, claude_dir: str) -> None:
         repo = SecurityRepository(claude_dir)
         path, rules = repo.get_global_permissions()

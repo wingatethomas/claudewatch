@@ -1,4 +1,4 @@
-"""Tests for SecurityService — facade wiring, alert dispatch, deduplication."""
+"""Tests for SecurityService — diff logic, alert dispatch, deduplication, runtime checks."""
 
 from unittest.mock import MagicMock, patch
 
@@ -48,10 +48,11 @@ class TestCheckConfig:
     def test_detects_changes(self) -> None:
         repo = MagicMock()
         old_snap = ConfigSnapshot()
-        new_snap = ConfigSnapshot()
+        new_snap = ConfigSnapshot(
+            plugins_installed={"plugins": {"new-plugin@bad": [{}]}},
+        )
         repo.load_baseline.return_value = old_snap
         repo.capture_snapshot.return_value = new_snap
-        repo.diff_snapshots.return_value = [_make_alert("plugin_installed", "Plugin 'x' installed")]
 
         svc = _make_service(repo=repo)
         svc._initialized = True
@@ -74,10 +75,12 @@ class TestCheckConfig:
 
     def test_deduplicates(self) -> None:
         repo = MagicMock()
-        repo.load_baseline.return_value = ConfigSnapshot()
-        repo.capture_snapshot.return_value = ConfigSnapshot()
-        alert = _make_alert("plugin_installed", "Plugin 'x' installed")
-        repo.diff_snapshots.return_value = [alert]
+        old_snap = ConfigSnapshot()
+        new_snap = ConfigSnapshot(
+            plugins_installed={"plugins": {"x@test": [{}]}},
+        )
+        repo.load_baseline.return_value = old_snap
+        repo.capture_snapshot.return_value = new_snap
 
         svc = _make_service(repo=repo)
         svc._initialized = True
@@ -95,7 +98,7 @@ class TestCheckRuntime:
     def test_detects_unrestricted(self) -> None:
         repo = MagicMock()
         repo.check_permission_mode.return_value = "bypasstool"
-        repo.check_suspicious_commands.return_value = []
+        repo.read_bash_commands.return_value = []
 
         svc = _make_service(repo=repo)
 
@@ -116,7 +119,7 @@ class TestCheckRuntime:
     def test_no_alert_for_default_mode(self) -> None:
         repo = MagicMock()
         repo.check_permission_mode.return_value = "default"
-        repo.check_suspicious_commands.return_value = []
+        repo.read_bash_commands.return_value = []
 
         svc = _make_service(repo=repo)
 
@@ -135,7 +138,7 @@ class TestCheckRuntime:
     def test_alerts_once_per_pid(self) -> None:
         repo = MagicMock()
         repo.check_permission_mode.return_value = "bypasstool"
-        repo.check_suspicious_commands.return_value = []
+        repo.read_bash_commands.return_value = []
 
         svc = _make_service(repo=repo)
 
@@ -160,6 +163,211 @@ class TestCheckRuntime:
             alerts = svc.check_runtime([])
 
         assert alerts == []
+
+    def test_detects_suspicious_commands(self) -> None:
+        repo = MagicMock()
+        repo.check_permission_mode.return_value = None
+        repo.read_bash_commands.return_value = ["rm -rf /tmp/all"]
+
+        svc = _make_service(repo=repo)
+
+        session = MagicMock()
+        session.pid = 1234
+        session.cwd = "/project"
+        session.project = "myproject"
+
+        with patch(f"{_MOD}.features") as mock_features:
+            mock_features.is_enabled.return_value = True
+            mock_features.get_facet.return_value = True
+            alerts = svc.check_runtime([session])
+
+        assert len(alerts) == 1
+        assert alerts[0].alert_type == "suspicious_command"
+
+    def test_safe_commands_not_flagged(self) -> None:
+        repo = MagicMock()
+        repo.check_permission_mode.return_value = None
+        repo.read_bash_commands.return_value = ["ls -la", "git status"]
+
+        svc = _make_service(repo=repo)
+
+        session = MagicMock()
+        session.pid = 1234
+        session.cwd = "/project"
+        session.project = "myproject"
+
+        with patch(f"{_MOD}.features") as mock_features:
+            mock_features.is_enabled.return_value = True
+            mock_features.get_facet.return_value = True
+            alerts = svc.check_runtime([session])
+
+        assert alerts == []
+
+
+class TestDiffSnapshots:
+    def test_no_changes(self) -> None:
+        svc = _make_service()
+        snap = ConfigSnapshot()
+        assert svc.diff_snapshots(snap, snap) == []
+
+    def test_plugin_installed(self) -> None:
+        svc = _make_service()
+        old = ConfigSnapshot()
+        new = ConfigSnapshot(plugins_installed={"plugins": {"new-plugin@sketchy": [{}]}})
+        alerts = svc.diff_snapshots(old, new)
+
+        assert len(alerts) == 1
+        assert alerts[0].alert_type == "plugin_installed"
+        assert "new-plugin@sketchy" in alerts[0].message
+
+    def test_plugin_uninstalled(self) -> None:
+        svc = _make_service()
+        old = ConfigSnapshot(plugins_installed={"plugins": {"old@official": [{}]}})
+        new = ConfigSnapshot()
+        alerts = svc.diff_snapshots(old, new)
+
+        assert len(alerts) == 1
+        assert alerts[0].alert_type == "plugin_uninstalled"
+
+    def test_plugin_enabled(self) -> None:
+        svc = _make_service()
+        old = ConfigSnapshot(settings={"enabledPlugins": {"a@official": True}})
+        new = ConfigSnapshot(settings={"enabledPlugins": {"a@official": True, "b@official": True}})
+        alerts = svc.diff_snapshots(old, new)
+
+        assert any(a.alert_type == "plugin_enabled" for a in alerts)
+        assert any("b@official" in a.message for a in alerts)
+
+    def test_plugin_disabled(self) -> None:
+        svc = _make_service()
+        old = ConfigSnapshot(settings={"enabledPlugins": {"a@official": True, "b@official": True}})
+        new = ConfigSnapshot(settings={"enabledPlugins": {"a@official": True}})
+        alerts = svc.diff_snapshots(old, new)
+
+        assert any(a.alert_type == "plugin_disabled" for a in alerts)
+
+    def test_plugin_unblocked(self) -> None:
+        svc = _make_service()
+        old = ConfigSnapshot(plugins_blocklist={"plugins": [{"plugin": "evil@bad"}]})
+        new = ConfigSnapshot(plugins_blocklist={"plugins": []})
+        alerts = svc.diff_snapshots(old, new)
+
+        assert len(alerts) == 1
+        assert alerts[0].alert_type == "plugin_unblocked"
+        assert alerts[0].severity == "warning"
+
+    def test_new_marketplace(self) -> None:
+        svc = _make_service()
+        old = ConfigSnapshot(known_marketplaces={"marketplaces": {"official": {}}})
+        new = ConfigSnapshot(known_marketplaces={"marketplaces": {"official": {}, "sketchy": {}}})
+        alerts = svc.diff_snapshots(old, new)
+
+        assert any(a.alert_type == "marketplace_added" for a in alerts)
+        assert any("sketchy" in a.message for a in alerts)
+
+    def test_remote_control_enabled_flat(self) -> None:
+        svc = _make_service()
+        old = ConfigSnapshot(policy_limits={"allow_remote_control": False})
+        new = ConfigSnapshot(policy_limits={"allow_remote_control": True})
+        alerts = svc.diff_snapshots(old, new)
+
+        assert len(alerts) == 1
+        assert alerts[0].alert_type == "policy_changed"
+        assert alerts[0].severity == "critical"
+
+    def test_remote_control_enabled_nested(self) -> None:
+        svc = _make_service()
+        old = ConfigSnapshot(
+            policy_limits={"restrictions": {"allow_remote_control": {"allowed": False}}}
+        )
+        new = ConfigSnapshot(
+            policy_limits={"restrictions": {"allow_remote_control": {"allowed": True}}}
+        )
+        alerts = svc.diff_snapshots(old, new)
+
+        assert len(alerts) == 1
+        assert alerts[0].alert_type == "policy_changed"
+        assert alerts[0].severity == "critical"
+
+    def test_remote_control_stays_false(self) -> None:
+        svc = _make_service()
+        snap = ConfigSnapshot(policy_limits={"allow_remote_control": False})
+        assert not any(a.alert_type == "policy_changed" for a in svc.diff_snapshots(snap, snap))
+
+    def test_permission_added(self) -> None:
+        svc = _make_service()
+        old = ConfigSnapshot(settings_local={"permissions": {"allow": ["Bash(python3:*)"]}})
+        new = ConfigSnapshot(settings_local={"permissions": {"allow": ["Bash(python3:*)", "Bash(rm -rf:*)"]}})
+        alerts = svc.diff_snapshots(old, new)
+
+        assert any(a.alert_type == "permission_added" for a in alerts)
+
+    def test_multiple_changes(self) -> None:
+        svc = _make_service()
+        old = ConfigSnapshot()
+        new = ConfigSnapshot(
+            plugins_installed={"plugins": {"evil-plugin@bad": [{}]}},
+            policy_limits={"allow_remote_control": True},
+        )
+        alerts = svc.diff_snapshots(old, new)
+
+        types = {a.alert_type for a in alerts}
+        assert "plugin_installed" in types
+        assert "policy_changed" in types
+
+
+class TestCheckSuspiciousCommands:
+    def test_detects_rm_rf(self) -> None:
+        repo = MagicMock()
+        repo.read_bash_commands.return_value = ["rm -rf /tmp/all"]
+        svc = _make_service(repo=repo)
+
+        alerts = svc.check_suspicious_commands("/project", "myproject")
+        assert len(alerts) == 1
+        assert alerts[0].alert_type == "suspicious_command"
+
+    def test_no_alert_for_safe_command(self) -> None:
+        repo = MagicMock()
+        repo.read_bash_commands.return_value = ["ls -la"]
+        svc = _make_service(repo=repo)
+
+        alerts = svc.check_suspicious_commands("/project", "myproject")
+        assert alerts == []
+
+    def test_returns_empty_when_no_commands(self) -> None:
+        repo = MagicMock()
+        repo.read_bash_commands.return_value = []
+        svc = _make_service(repo=repo)
+
+        assert svc.check_suspicious_commands("/project", "myproject") == []
+
+
+class TestPublicDataExtraction:
+    def test_get_plugin_keys(self) -> None:
+        svc = _make_service()
+        snap = ConfigSnapshot(plugins_installed={"plugins": {"a@official": [{}], "b@official": [{}]}})
+        keys = svc.get_plugin_keys(snap)
+        assert "a@official" in keys
+        assert "b@official" in keys
+
+    def test_get_policy_value(self) -> None:
+        svc = _make_service()
+        snap = ConfigSnapshot(policy_limits={"allow_remote_control": False})
+        assert svc.get_policy_value(snap, "allow_remote_control") is False
+
+    def test_get_policy_value_nested(self) -> None:
+        svc = _make_service()
+        snap = ConfigSnapshot(
+            policy_limits={"restrictions": {"allow_remote_control": {"allowed": True}}}
+        )
+        assert svc.get_policy_value(snap, "allow_remote_control") is True
+
+    def test_get_blocklist_entries(self) -> None:
+        svc = _make_service()
+        snap = ConfigSnapshot(plugins_blocklist={"plugins": [{"plugin": "evil@bad", "reason": "security"}]})
+        entries = svc.get_blocklist_entries(snap)
+        assert len(entries) == 1
+        assert entries[0]["plugin"] == "evil@bad"
 
 
 class TestProcessAlerts:

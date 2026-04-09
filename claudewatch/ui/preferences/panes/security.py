@@ -45,12 +45,13 @@ class SecurityPane(BasePane):
     def subtitle(self) -> str:
         return "Claude Code plugins, policies, and permissions"
 
-    def build_content(self, view: NSView, content_top: float) -> None:
-        repo = get_security_service().repository
+    def build_content(self, view: NSView, content_top: float) -> None:  # noqa: PLR0915
+        svc = get_security_service()
+        repo = svc.repository
         snapshot = repo.capture_snapshot()
 
         plugins_data = snapshot.plugins_installed.get("plugins", {})
-        blocklist_entries = repo.get_blocklist_entries(snapshot)
+        blocklist_entries = svc.get_blocklist_entries(snapshot)
         global_path, global_rules_list = repo.get_global_permissions()
         global_rules = set(global_rules_list)
         project_perms = repo.get_all_project_permissions()
@@ -81,7 +82,7 @@ class SecurityPane(BasePane):
             ("allow_quick_web_setup", "Quick Web Setup", "Browser-based Claude configuration"),
         ]
         policy_h = _CARD_PAD + len(policies) * _TALL_ROW_H + _CARD_PAD
-        stack.add(self._build_policies_card(repo, snapshot, policies), height=policy_h)
+        stack.add(self._build_policies_card(svc, snapshot, policies), height=policy_h)
 
         # Blocklisted plugins
         if blocklist_entries:
@@ -90,7 +91,7 @@ class SecurityPane(BasePane):
             stack.add(self._build_section_header("BLOCKLISTED PLUGINS"), height=14)
             stack.add(self._build_blocklist_source(fetched_date), height=14)
             blocked_h = _CARD_PAD + len(blocklist_entries) * _TALL_ROW_H + _CARD_PAD
-            stack.add(self._build_blocklist_card(repo, snapshot, blocklist_entries), height=blocked_h)
+            stack.add(self._build_blocklist_card(svc, snapshot, blocklist_entries), height=blocked_h)
 
         # Permissions
         total_perm_rows = 0
@@ -213,7 +214,7 @@ class SecurityPane(BasePane):
 
     def _build_policies_card(  # noqa: PLR0913
         self,
-        repo: object,
+        svc: object,
         snapshot: object,
         policies: list[tuple[str, str, str]],
     ) -> NSView:
@@ -227,7 +228,7 @@ class SecurityPane(BasePane):
 
         for key, display_name, description in policies:
             row_y -= _TALL_ROW_H
-            val = repo.get_policy_value(snapshot, key)
+            val = svc.get_policy_value(snapshot, key)
             status = "Enabled" if val else "Disabled"
             color = theme.danger if val else theme.secondary
 
@@ -255,12 +256,12 @@ class SecurityPane(BasePane):
         link_btn.setAction_(objc.selector(self.delegate.openBlocklistSource_, signature=b"v@:@"))
         return link_btn
 
-    def _build_blocklist_card(self, repo: object, snapshot: object, entries: list[dict[str, str]]) -> NSView:
+    def _build_blocklist_card(self, svc: object, snapshot: object, entries: list[dict[str, str]]) -> NSView:
         card_h = _CARD_PAD + len(entries) * _TALL_ROW_H + _CARD_PAD
         blocked_card = card(self.card_width, card_h)
         content = blocked_card.contentView()
         row_y = card_h - _CARD_PAD
-        installed_plugins = repo.get_plugin_keys(snapshot)
+        installed_plugins = svc.get_plugin_keys(snapshot)
 
         for entry in entries:
             row_y -= _TALL_ROW_H
