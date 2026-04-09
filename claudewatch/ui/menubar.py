@@ -120,12 +120,7 @@ class ClaudeWatchApp:
         self._has_polled = False
         self._check_accessibility()
         self._menu_builder = MenuBuilder(self, self._menu, delegate)
-        # Run first detection synchronously so menu has data immediately
-        try:
-            self.sessions = self._detection_service.detect()
-            self._has_polled = True
-        except Exception:
-            log.exception("initial detection failed")
+        # Show placeholder immediately, first detection runs async via poll loop
         self.update_display()
         # Kick off background update check
         threading.Thread(target=self._update_service.check, daemon=True).start()
