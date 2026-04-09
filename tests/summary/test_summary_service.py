@@ -337,7 +337,7 @@ class TestPriorityQueue:
             patch.object(svc, "_ensure_bg_thread"),
         ):
             svc.track_session("/new-cwd")
-        assert "/new-cwd" in svc._priority_queue
+        assert ("/new-cwd", "") in svc._priority_queue
 
     def test_track_skips_if_cached(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-cached"

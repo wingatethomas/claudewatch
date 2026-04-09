@@ -147,9 +147,9 @@ class SummaryService(BaseService):
 
         # Background thread
         self._bg_thread: threading.Thread | None = None
-        self._tracked_cwds: set[str] = set()
+        self._tracked_cwds: set[str] = set()  # cache keys
         self._tracked_lock = threading.Lock()
-        self._priority_queue: list[str] = []
+        self._priority_queue: list[tuple[str, str]] = []  # (cwd, session_id)
         self._priority_lock = threading.Lock()
 
     # -- Persistent store ---------------------------------------------------
@@ -201,11 +201,18 @@ class SummaryService(BaseService):
 
     # -- Public API ---------------------------------------------------------
 
-    def _get_entry(self, cwd: str) -> SummaryEntry | None:
+    @staticmethod
+    def _cache_key(cwd: str, session_id: str = "") -> str:
+        """Build a unique cache key. Uses session_id when available to distinguish
+        multiple sessions in the same CWD."""
+        return f"{cwd}::{session_id}" if session_id else cwd
+
+    def _get_entry(self, cwd: str, session_id: str = "") -> SummaryEntry | None:
         """Return the cached entry if JSONL hasn't changed significantly since generation."""
+        key = self._cache_key(cwd, session_id)
         with self._store_lock:
             self._load_store()
-            entry = self._store.get(cwd)
+            entry = self._store.get(key)
         if not entry:
             return None
         current_mtime = self._get_jsonl_mtime(cwd)
@@ -217,45 +224,45 @@ class SummaryService(BaseService):
             return None
         return entry
 
-    def get_cached(self, cwd: str) -> str | None:
+    def get_cached(self, cwd: str, session_id: str = "") -> str | None:
         """Return the title (one-liner). Backward compatible — used by menu bar."""
-        entry = self._get_entry(cwd)
+        entry = self._get_entry(cwd, session_id)
         if not entry:
             return None
-        # Support old format (plain "summary" string) and new format ("title" + "summary")
         return entry.title or entry.summary
 
-    def get_cached_title(self, cwd: str) -> str | None:
+    def get_cached_title(self, cwd: str, session_id: str = "") -> str | None:
         """Return the short title (what's happening now)."""
-        return self.get_cached(cwd)
+        return self.get_cached(cwd, session_id)
 
-    def get_cached_summary(self, cwd: str) -> str | None:
+    def get_cached_summary(self, cwd: str, session_id: str = "") -> str | None:
         """Return the bulleted summary of all session actions."""
-        entry = self._get_entry(cwd)
+        entry = self._get_entry(cwd, session_id)
         if not entry:
             return None
         return entry.summary
 
-    def cache(self, cwd: str, summary: str) -> None:
-        """Persist a summary. Accepts plain string (becomes title) or title+summary."""
+    def cache(self, cwd: str, summary: str, session_id: str = "") -> None:
+        """Persist a summary."""
+        key = self._cache_key(cwd, session_id)
         mtime = self._get_jsonl_mtime(cwd) or time.time()
         with self._store_lock:
             self._load_store()
-            existing = self._store.get(cwd)
+            existing = self._store.get(key)
             if existing and existing.summary:
-                # Preserve existing summary if only updating title
-                self._store[cwd] = SummaryEntry(title=summary, summary=existing.summary, mtime=mtime)
+                self._store[key] = SummaryEntry(title=summary, summary=existing.summary, mtime=mtime)
             else:
-                self._store[cwd] = SummaryEntry(title=summary, summary="", mtime=mtime)
+                self._store[key] = SummaryEntry(title=summary, summary="", mtime=mtime)
             self._save_store()
 
-    def cache_full(self, cwd: str, title: str, summary: str) -> None:
+    def cache_full(self, cwd: str, title: str, summary: str, session_id: str = "") -> None:
         """Persist both title and bulleted summary."""
+        key = self._cache_key(cwd, session_id)
         mtime = self._get_jsonl_mtime(cwd) or time.time()
         size = self._get_jsonl_size(cwd)
         with self._store_lock:
             self._load_store()
-            self._store[cwd] = SummaryEntry(title=title, summary=summary, mtime=mtime, jsonl_size=size)
+            self._store[key] = SummaryEntry(title=title, summary=summary, mtime=mtime, jsonl_size=size)
             self._save_store()
 
     def clear_all(self) -> None:
@@ -264,39 +271,42 @@ class SummaryService(BaseService):
             self._store.clear()
             self._save_store()
 
-    def is_generating(self, cwd: str) -> bool:
-        """Check if a summary is currently being generated for a CWD."""
+    def is_generating(self, cwd: str, session_id: str = "") -> bool:
+        """Check if a summary is currently being generated."""
+        key = self._cache_key(cwd, session_id)
         with self._in_progress_lock:
-            return cwd in self._in_progress
+            return key in self._in_progress
 
-    def get_status(self, cwd: str) -> str:
-        """Get the summary status for a CWD: 'cached', 'generating', 'failed', or 'pending'."""
-        if self._get_entry(cwd):
+    def get_status(self, cwd: str, session_id: str = "") -> str:
+        """Get the summary status: 'cached', 'generating', 'failed', or 'pending'."""
+        key = self._cache_key(cwd, session_id)
+        if self._get_entry(cwd, session_id):
             return "cached"
-        if self.is_generating(cwd):
-            return "generating"
+        with self._in_progress_lock:
+            if key in self._in_progress:
+                return "generating"
         with self._failures_lock:
-            fail_entry = self._failures.get(cwd)
+            fail_entry = self._failures.get(key)
             if fail_entry is not None:
                 fail_count = fail_entry[0] if isinstance(fail_entry, tuple) else fail_entry
                 if fail_count >= _MAX_FAILURES:
                     return "failed"
         return "pending"
 
-    def generate_and_cache(self, cwd: str) -> str:  # noqa: PLR0912
+    def generate_and_cache(self, cwd: str, session_id: str = "") -> str:  # noqa: PLR0912
         """Generate a summary via claude -p and persist it.
 
         Skips if already cached and fresh, if another generation is in progress,
-        or if this CWD has failed too many times consecutively.
+        or if this session has failed too many times consecutively.
         """
-        cached = self.get_cached(cwd)
+        key = self._cache_key(cwd, session_id)
+        cached = self.get_cached(cwd, session_id)
         if cached is not None:
             return cached
 
         with self._failures_lock:
-            fail_entry = self._failures.get(cwd)
+            fail_entry = self._failures.get(key)
             if fail_entry is not None:
-                # Handle both old format (int) and new format (count, mtime)
                 if isinstance(fail_entry, tuple):
                     fail_count, fail_mtime = fail_entry
                 else:
@@ -304,14 +314,14 @@ class SummaryService(BaseService):
                 if fail_count >= _MAX_FAILURES:
                     current_mtime = self._get_jsonl_mtime(cwd)
                     if current_mtime and current_mtime > fail_mtime:
-                        self._failures.pop(cwd, None)
+                        self._failures.pop(key, None)
                     else:
                         return ""
 
         with self._in_progress_lock:
-            if cwd in self._in_progress:
+            if key in self._in_progress:
                 return ""
-            self._in_progress.add(cwd)
+            self._in_progress.add(key)
 
         try:
             if not self._generating.acquire(timeout=1):
@@ -320,15 +330,15 @@ class SummaryService(BaseService):
                 raw = self._call_claude(cwd)
                 if raw:
                     title, bullets = _parse_summary_response(raw)
-                    self.cache_full(cwd, title, bullets)
+                    self.cache_full(cwd, title, bullets, session_id)
                     with self._failures_lock:
-                        self._failures.pop(cwd, None)
+                        self._failures.pop(key, None)
                 else:
                     with self._failures_lock:
-                        prev = self._failures.get(cwd)
+                        prev = self._failures.get(key)
                         prev_count = prev[0] if isinstance(prev, tuple) else (prev or 0)
                         mtime = self._get_jsonl_mtime(cwd)
-                        self._failures[cwd] = (prev_count + 1, mtime)
+                        self._failures[key] = (prev_count + 1, mtime)
                         count = prev_count + 1
                     if count >= _MAX_FAILURES:
                         log.warning(
@@ -342,34 +352,37 @@ class SummaryService(BaseService):
                 self._generating.release()
         finally:
             with self._in_progress_lock:
-                self._in_progress.discard(cwd)
+                self._in_progress.discard(key)
 
-    def invalidate_cache(self, cwd: str) -> None:
-        """Remove a CWD from the summary store and reset failure count."""
+    def invalidate_cache(self, cwd: str, session_id: str = "") -> None:
+        """Remove a session from the summary store and reset failure count."""
+        key = self._cache_key(cwd, session_id)
         with self._store_lock:
             self._load_store()
-            self._store.pop(cwd, None)
+            self._store.pop(key, None)
             self._save_store()
         with self._failures_lock:
-            self._failures.pop(cwd, None)
+            self._failures.pop(key, None)
 
     # -- Background refresh -------------------------------------------------
 
-    def track_session(self, cwd: str, *, urgent: bool = False) -> None:
-        """Register a CWD for periodic background summary refresh.
+    def track_session(self, cwd: str, *, urgent: bool = False, session_id: str = "") -> None:
+        """Register a session for periodic background summary refresh.
 
         If no summary exists yet, queues it for generation.
         *urgent* sessions (Attention/Working) are inserted at the front of the queue.
         """
+        key = self._cache_key(cwd, session_id)
         with self._tracked_lock:
-            self._tracked_cwds.add(cwd)
-        if self.get_cached(cwd) is None:
+            self._tracked_cwds.add(key)
+        if self.get_cached(cwd, session_id) is None:
             with self._priority_lock:
-                if cwd not in self._priority_queue:
+                entry = (cwd, session_id)
+                if entry not in self._priority_queue:
                     if urgent:
-                        self._priority_queue.insert(0, cwd)
+                        self._priority_queue.insert(0, entry)
                     else:
-                        self._priority_queue.append(cwd)
+                        self._priority_queue.append(entry)
         self._ensure_bg_thread()
 
     def pending_summary_count(self) -> int:
@@ -393,23 +406,29 @@ class SummaryService(BaseService):
     def _bg_refresh_loop(self) -> None:
         """Process priority queue first, then periodically refresh stale summaries."""
         while True:
-            cwd = None
+            entry = None
             with self._priority_lock:
                 if self._priority_queue:
-                    cwd = self._priority_queue.pop(0)
-            if cwd:
+                    entry = self._priority_queue.pop(0)
+            if entry:
+                cwd, session_id = entry
                 log.debug("bg_priority: generating summary for %s", cwd)
-                self.generate_and_cache(cwd)
+                self.generate_and_cache(cwd, session_id)
                 time.sleep(2)
                 continue
 
             time.sleep(_REFRESH_INTERVAL)
             with self._tracked_lock:
-                cwds = list(self._tracked_cwds)
-            for cwd in cwds:
-                if self.get_cached(cwd) is None:
+                keys = list(self._tracked_cwds)
+            for key in keys:
+                # Parse key back to cwd + session_id
+                if "::" in key:
+                    cwd, session_id = key.split("::", 1)
+                else:
+                    cwd, session_id = key, ""
+                if self.get_cached(cwd, session_id) is None:
                     log.debug("bg_refresh: regenerating stale summary for %s", cwd)
-                    self.generate_and_cache(cwd)
+                    self.generate_and_cache(cwd, session_id)
 
     # -- Internal helpers ---------------------------------------------------
 

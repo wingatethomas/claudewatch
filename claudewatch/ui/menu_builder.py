@@ -188,13 +188,15 @@ class MenuBuilder:
                     activity=self._app._make_history_activity_handler(pin.project, pin.cwd),
                     resume=self._app._make_resume_handler(pin.session_id, pin.cwd),
                     unbookmark=self._app._make_unbookmark_handler(pin.cwd),
-                    track_summary=lambda cwd=pin.cwd: self._app._summary_service.track_session(cwd),
+                    track_summary=lambda cwd=pin.cwd, sid=pin.session_id: self._app._summary_service.track_session(
+                        cwd, session_id=sid or ""
+                    ),
                     usage_lines=format_tokens_breakdown(token_data),
                 )
                 pin_agents = self._app._analytics_service.agents_for_session(pin.session_id) if pin.session_id else []
                 sub = build_session_submenu(
                     delegate=d,
-                    summary=self._app._summary_service.get_cached_summary(pin.cwd),
+                    summary=self._app._summary_service.get_cached_summary(pin.cwd, pin.session_id or ""),
                     actions=actions,
                     agents=pin_agents,
                 )
@@ -241,7 +243,9 @@ class MenuBuilder:
                     activity=self._app._make_history_activity_handler(entry.project, entry.cwd),
                     resume=self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else None,
                     remove=self._app._make_remove_history_handler(entry.cwd),
-                    track_summary=lambda cwd=entry.cwd: self._app._summary_service.track_session(cwd),
+                    track_summary=lambda cwd=entry.cwd, sid=entry.session_id: self._app._summary_service.track_session(
+                        cwd, session_id=sid or ""
+                    ),
                     usage_lines=format_tokens_breakdown(token_data),
                 )
                 entry_agents = (
@@ -249,13 +253,13 @@ class MenuBuilder:
                 )
                 item_sub = build_session_submenu(
                     delegate=d,
-                    summary=self._app._summary_service.get_cached_summary(entry.cwd),
+                    summary=self._app._summary_service.get_cached_summary(entry.cwd, entry.session_id or ""),
                     actions=actions,
                     agents=entry_agents,
                 )
                 item.setSubmenu_(item_sub)
                 recent_submenu.addItem_(item)
-                self._app._summary_service.track_session(entry.cwd)  # background thread will generate summary
+                self._app._summary_service.track_session(entry.cwd, session_id=entry.session_id or "")
             recent_menu_item.setSubmenu_(recent_submenu)
             self._menu.addItem_(recent_menu_item)
 
@@ -321,27 +325,27 @@ class MenuBuilder:
             bookmark=self._app._make_bookmark_handler(s) if not pinned and s.session_id else None,
             unbookmark=self._app._make_unbookmark_handler(s.cwd) if pinned else None,
             quit=self._app._make_quit_handler(s),
-            track_summary=lambda cwd=s.cwd, urgent=is_active: self._app._summary_service.track_session(
-                cwd, urgent=urgent
+            track_summary=lambda cwd=s.cwd, sid=s.session_id, urgent=is_active: self._app._summary_service.track_session(
+                cwd, urgent=urgent, session_id=sid
             ),
             usage_lines=format_tokens_breakdown(token_data),
         )
         agents = self._app._analytics_service.agents_for_session(s.session_id) if s.session_id else []
         sub = build_session_submenu(
             delegate=d,
-            summary=self._app._summary_service.get_cached_summary(s.cwd),
-            generating=self._app._summary_service.is_generating(s.cwd),
+            summary=self._app._summary_service.get_cached_summary(s.cwd, s.session_id),
+            generating=self._app._summary_service.is_generating(s.cwd, s.session_id),
             actions=actions,
             agents=agents,
         )
-        self._app._summary_service.track_session(s.cwd, urgent=is_active)
+        self._app._summary_service.track_session(s.cwd, urgent=is_active, session_id=s.session_id)
         item.setSubmenu_(sub)
         self._menu.addItem_(item)
         # Detail line: model + summary (or status as fallback)
         model = self._app._usage_service.get_model(s.cwd)
-        cached = self._app._summary_service.get_cached(s.cwd)
+        cached = self._app._summary_service.get_cached(s.cwd, s.session_id)
         _max_detail_total = 55
-        status = self._app._summary_service.get_status(s.cwd)
+        status = self._app._summary_service.get_status(s.cwd, s.session_id)
         if cached:
             oneliner = cached.replace("\n", " ").strip()
         elif status == "generating":
