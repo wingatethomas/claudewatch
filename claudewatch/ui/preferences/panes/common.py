@@ -6,6 +6,7 @@ and the standard interface that window.py calls.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 
 from AppKit import NSView
@@ -14,6 +15,8 @@ from Foundation import NSMakeRect
 from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.labels import pane_title, secondary_label
 from claudewatch.ui.theme import theme
+
+log = logging.getLogger("claudewatch")
 
 # Standard pane layout — derived from design tokens
 PANE_PADDING = Spacing.MD  # 12 — top/bottom padding inside pane
@@ -54,7 +57,17 @@ class BasePane(ABC):
     def build(self) -> NSView:
         """Build the complete pane view with header + content."""
         view, content_top = self._build_header()
-        self.build_content(view, content_top)
+        try:
+            self.build_content(view, content_top)
+        except Exception:
+            log.exception("pane '%s' failed to build", self.title)
+            err = secondary_label(
+                f"Failed to load {self.title}. Check the audit log for details.",
+                size=Font.SECONDARY,
+            )
+            err.setTextColor_(theme.danger)
+            err.setFrame_(NSMakeRect(CONTENT_PADDING, content_top - 30, self.card_width, 18))
+            view.addSubview_(err)
         return view
 
     @abstractmethod

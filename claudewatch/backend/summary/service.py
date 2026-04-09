@@ -291,28 +291,32 @@ class SummaryService(BaseService):
     def _bg_refresh_loop(self) -> None:
         """Process priority queue first, then periodically refresh stale summaries."""
         while True:
-            entry = None
-            with self._priority_lock:
-                if self._priority_queue:
-                    entry = self._priority_queue.pop(0)
-            if entry:
-                cwd, sid = entry
-                log.debug("bg_priority: generating summary for %s", cwd)
-                self.generate_and_cache(cwd, sid)
-                time.sleep(2)
-                continue
-
-            time.sleep(_REFRESH_INTERVAL)
-            with self._tracked_lock:
-                keys = list(self._tracked_cwds)
-            for key in keys:
-                if "::" in key:
-                    cwd, sid = key.split("::", 1)
-                else:
-                    cwd, sid = key, ""
-                if self.get_cached(cwd, sid) is None:
-                    log.debug("bg_refresh: regenerating stale summary for %s", cwd)
+            try:
+                entry = None
+                with self._priority_lock:
+                    if self._priority_queue:
+                        entry = self._priority_queue.pop(0)
+                if entry:
+                    cwd, sid = entry
+                    log.debug("bg_priority: generating summary for %s", cwd)
                     self.generate_and_cache(cwd, sid)
+                    time.sleep(2)
+                    continue
+
+                time.sleep(_REFRESH_INTERVAL)
+                with self._tracked_lock:
+                    keys = list(self._tracked_cwds)
+                for key in keys:
+                    if "::" in key:
+                        cwd, sid = key.split("::", 1)
+                    else:
+                        cwd, sid = key, ""
+                    if self.get_cached(cwd, sid) is None:
+                        log.debug("bg_refresh: regenerating stale summary for %s", cwd)
+                        self.generate_and_cache(cwd, sid)
+            except Exception:
+                log.exception("bg_refresh_loop iteration failed")
+                time.sleep(_REFRESH_INTERVAL)
 
     # -- Business logic (extraction, LLM calls) -----------------------------
 
