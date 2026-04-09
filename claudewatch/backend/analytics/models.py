@@ -14,6 +14,26 @@ log = logging.getLogger("claudewatch")
 
 _SCHEMA_VERSION = 1
 
+# --- Tool metadata (shared between ingest and queries) ---
+
+FILE_TOOLS: dict[str, str] = {
+    "Read": "file_path",
+    "Edit": "file_path",
+    "Write": "file_path",
+    "Grep": "path",
+    "Glob": "path",
+    "NotebookEdit": "file_path",
+}
+
+ACCESS_TYPE: dict[str, str] = {
+    "Read": "read",
+    "Edit": "edit",
+    "Write": "write",
+    "Grep": "grep",
+    "Glob": "glob",
+    "NotebookEdit": "edit",
+}
+
 
 # --- ORM base ---
 

@@ -13,6 +13,8 @@ from sqlalchemy import desc, distinct, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from claudewatch.backend.analytics.models import (
+    ACCESS_TYPE,
+    FILE_TOOLS,
     AgentInfo,
     AgentRow,
     BranchActivity,
@@ -38,24 +40,6 @@ from claudewatch.backend.analytics.models import (
 from claudewatch.backend.core.paths import is_safe_projects_path
 
 log = logging.getLogger("claudewatch")
-
-_FILE_TOOLS: dict[str, str] = {
-    "Read": "file_path",
-    "Edit": "file_path",
-    "Write": "file_path",
-    "Grep": "path",
-    "Glob": "path",
-    "NotebookEdit": "file_path",
-}
-
-_ACCESS_TYPE: dict[str, str] = {
-    "Read": "read",
-    "Edit": "edit",
-    "Write": "write",
-    "Grep": "grep",
-    "Glob": "glob",
-    "NotebookEdit": "edit",
-}
 
 _PR_PATTERN = re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)")
 
@@ -249,7 +233,7 @@ class Ingest:
             command = None
             pattern = None
 
-            path_field = _FILE_TOOLS.get(tool_name)
+            path_field = FILE_TOOLS.get(tool_name)
             if path_field:
                 file_path = (tool_input.get(path_field) or "")[:_MAX_FILE_PATH]
             elif tool_name == "Bash":
@@ -277,7 +261,7 @@ class Ingest:
             s.flush()
 
             if file_path:
-                access_type = _ACCESS_TYPE.get(tool_name, "read")
+                access_type = ACCESS_TYPE.get(tool_name, "read")
                 s.add(
                     FileRow(
                         tool_id=tool_row.id,
