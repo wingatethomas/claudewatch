@@ -2,7 +2,6 @@
 
 import json
 import subprocess
-import time
 from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.core.process.service import ProcessService
@@ -65,10 +64,13 @@ class TestParseSummaryResponse:
 
 def _make_service(tmp_path, projects_dir=None):
     """Create a SummaryService wired to tmp_path fixtures."""
+    from claudewatch.backend.summary.repository import SummaryRepository
+
     session_log_service = SessionLogService()
     process_service = ProcessService()
     store_path = str(tmp_path / "summaries.json")
-    return SummaryService(session_log_service, process_service, store_path=store_path), projects_dir
+    repo = SummaryRepository(session_log_service, store_path=store_path)
+    return SummaryService(repo, session_log_service, process_service), projects_dir
 
 
 def _write_jsonl(path, entries):
@@ -250,88 +252,46 @@ class TestCallClaude:
         assert result == ""
 
 
-class TestPersistentStore:
-    def test_load_from_file(self, tmp_path):
-        store_file = tmp_path / "summaries.json"
-        store_file.write_text(json.dumps({"/test": {"summary": "hello", "mtime": time.time()}}))
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
-        svc._load_store()
-        assert svc._store["/test"].summary == "hello"
-
-    def test_load_missing_file(self, tmp_path):
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(tmp_path / "nope.json"))
-        svc._load_store()
-        assert svc._store == {}
-
-    def test_load_corrupt_file(self, tmp_path):
-        store_file = tmp_path / "summaries.json"
-        store_file.write_text("{corrupt")
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
-        svc._load_store()
-        assert svc._store == {}
-
-    def test_save_writes_to_disk(self, tmp_path):
-        store_file = tmp_path / "summaries.json"
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
-        svc._store = {"/test": SummaryEntry(title="", summary="hi", mtime=1.0)}
-        svc._save_store()
-        with open(store_file) as f:
-            data = json.load(f)
-        assert data["/test"]["summary"] == "hi"
-
-    def test_load_caches(self, tmp_path):
-        store_file = tmp_path / "summaries.json"
-        store_file.write_text(json.dumps({}))
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
-        svc._load_store()
-        svc._load_store()  # should not re-read
-        assert svc._store_loaded is True
-
-
 class TestCacheSummary:
     def test_cache_and_get(self, tmp_path):
+        svc, _ = _make_service(tmp_path)
         proj_dir = tmp_path / "projects" / "-test"
         proj_dir.mkdir(parents=True)
-        jsonl_file = proj_dir / "s.jsonl"
-        jsonl_file.write_text("{}\n")
+        (proj_dir / "s.jsonl").write_text("{}\n")
 
-        store_file = tmp_path / "store.json"
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             svc.cache("/test", "test summary")
             result = svc.get_cached("/test")
         assert result == "test summary"
 
     def test_stale_cache_returns_none(self, tmp_path):
+        svc, _ = _make_service(tmp_path)
         proj_dir = tmp_path / "projects" / "-test"
         proj_dir.mkdir(parents=True)
-        jsonl_file = proj_dir / "s.jsonl"
-        jsonl_file.write_text("{}\n")
+        (proj_dir / "s.jsonl").write_text("{}\n")
 
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(tmp_path / "store.json"))
-        svc._store_loaded = True
-        svc._store = {"/test": SummaryEntry(title="", summary="old", mtime=1.0)}
+        svc._repo._store_loaded = True
+        svc._repo._store = {"/test": SummaryEntry(title="", summary="old", mtime=1.0)}
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.get_cached("/test")
-        # mtime of jsonl > cached mtime of 1.0, so stale
         assert result is None
 
 
 class TestIsGenerating:
     def test_false_when_not_generating(self, tmp_path):
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(tmp_path / "s.json"))
+        svc, _ = _make_service(tmp_path)
         assert svc.is_generating("/test") is False
 
     def test_true_when_generating(self, tmp_path):
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(tmp_path / "s.json"))
+        svc, _ = _make_service(tmp_path)
         svc._in_progress.add("/test")
         assert svc.is_generating("/test") is True
 
 
 class TestPriorityQueue:
     def test_track_adds_to_priority_queue(self, tmp_path):
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(tmp_path / "s.json"))
-        svc._store_loaded = True
+        svc, _ = _make_service(tmp_path)
+        svc._repo._store_loaded = True
         with (
             patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")),
             patch.object(svc, "_ensure_bg_thread"),
@@ -340,13 +300,11 @@ class TestPriorityQueue:
         assert ("/new-cwd", "") in svc._priority_queue
 
     def test_track_skips_if_cached(self, tmp_path):
+        svc, _ = _make_service(tmp_path)
         proj_dir = tmp_path / "projects" / "-cached"
         proj_dir.mkdir(parents=True)
-        jsonl_file = proj_dir / "s.jsonl"
-        jsonl_file.write_text("{}\n")
+        (proj_dir / "s.jsonl").write_text("{}\n")
 
-        store_file = tmp_path / "store.json"
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
         with (
             patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
             patch.object(svc, "_ensure_bg_thread"),
@@ -356,19 +314,18 @@ class TestPriorityQueue:
         assert "/cached" not in svc._priority_queue
 
     def test_pending_count(self, tmp_path):
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(tmp_path / "s.json"))
+        svc, _ = _make_service(tmp_path)
         svc._priority_queue.extend(["/a", "/b", "/c"])
         assert svc.pending_summary_count() == 3
 
 
 class TestInvalidateCache:
     def test_invalidate_removes_entry(self, tmp_path):
+        svc, _ = _make_service(tmp_path)
         proj_dir = tmp_path / "projects" / "-test"
         proj_dir.mkdir(parents=True)
         (proj_dir / "s.jsonl").write_text("{}\n")
 
-        store_file = tmp_path / "store.json"
-        svc = SummaryService(SessionLogService(), ProcessService(), store_path=str(store_file))
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             svc.cache("/test", "summary")
             assert svc.get_cached("/test") == "summary"
