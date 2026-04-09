@@ -85,7 +85,7 @@ class ClaudeWatchApp:
         bookmark_service: BookmarkService,
         history_service: HistoryService,
         analytics_service: AnalyticsService,
-        graph_service: GraphService,
+        graph_service_factory: object,
         security_service: SecurityService,
     ) -> None:
         self._delegate = delegate
@@ -104,7 +104,8 @@ class ClaudeWatchApp:
         self._bookmark_service = bookmark_service
         self._history_service = history_service
         self._analytics_service = analytics_service
-        self._graph_service = graph_service
+        self._graph_service_factory = graph_service_factory
+        self._graph_service: GraphService | None = None
         self._security_service = security_service
         self._future: Future | None = None  # type: ignore[type-arg]
         self._last_poll_time = 0.0
@@ -243,6 +244,8 @@ class ClaudeWatchApp:
     def _bg_scan(self) -> None:
         try:
             self._analytics_service.incremental_scan()
+            if self._graph_service is None:
+                self._graph_service = self._graph_service_factory()
             self._graph_service.ingest_sessions()
         except Exception:
             log.exception("background scan failed")
@@ -628,7 +631,7 @@ def main() -> None:
         bookmark_service=get_bookmark_service(),
         history_service=get_history_service(),
         analytics_service=get_analytics_service(),
-        graph_service=get_graph_service(),
+        graph_service_factory=get_graph_service,
         security_service=get_security_service(),
     )
     delegate._app = app
