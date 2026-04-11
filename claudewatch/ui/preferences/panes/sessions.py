@@ -28,8 +28,10 @@ from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
 from claudewatch.ui.components.composites.session_row import build_session_row
 from claudewatch.ui.components.tokens import Font, Spacing
+from claudewatch.ui.components.widgets.labels import secondary_label
 from claudewatch.ui.icons import sf_icon
 from claudewatch.ui.preferences.panes.common import BasePane
+from claudewatch.ui.theme import theme
 
 _PAD = 24
 _CARD_PAD = 16
@@ -159,10 +161,17 @@ def rebuild_rows(delegate: object) -> None:
     total_h = max(scroll.frame().size.height, len(entries) * _ROW_H)
     inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, total_h))
 
-    y = total_h
-    for entry in entries:
-        y -= _ROW_H
-        _add_row(inner, delegate, entry, 0, y, w, _ROW_H, pinned_cwds, usage_svc, summary_svc)
+    if not entries:
+        empty_label = secondary_label("No sessions found", size=13.0)
+        empty_label.setTextColor_(theme.tertiary)
+        empty_label.setAlignment_(1)  # NSTextAlignmentCenter
+        empty_label.setFrame_(NSMakeRect(0, total_h // 2, w, 18))
+        inner.addSubview_(empty_label)
+    else:
+        y = total_h
+        for entry in entries:
+            y -= _ROW_H
+            _add_row(inner, delegate, entry, 0, y, w, _ROW_H, pinned_cwds, usage_svc, summary_svc)
 
     scroll.setDocumentView_(inner)
     inner.scrollPoint_((0, total_h))  # scroll to top (newest first)

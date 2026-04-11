@@ -186,6 +186,7 @@ def _build_top_sessions_card(delegate: object, card_w: float, top: list[tuple[st
         project_btn.setBordered_(False)
         project_btn.setAlignment_(0)
         project_btn.cell().setRepresentedObject_(project)
+        project_btn.setLineBreakMode_(5)  # NSLineBreakByTruncatingTail
         project_btn.setFrame_(NSMakeRect(_CARD_PAD, row_y, 160, 18))
         content.addSubview_(project_btn)
         # Date
