@@ -42,7 +42,11 @@ from claudewatch.backend.core.paths import is_safe_projects_path
 
 log = logging.getLogger("claudewatch")
 
-_PR_PATTERN = re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)")
+_PR_PATTERNS = [
+    re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)"),
+    re.compile(r"https?://gitlab\.com/([^/]+/[^/]+)/-/merge_requests/(\d+)"),
+    re.compile(r"https?://bitbucket\.org/([^/]+/[^/]+)/pull-requests/(\d+)"),
+]
 
 _MAX_FILE_PATH = 2048
 _MAX_PATTERN = 1024
@@ -122,6 +126,9 @@ class Ingest:
                     if cp.file_mtime == mtime and cp.file_size == size:
                         return 0
                     byte_offset = cp.byte_offset
+                    if byte_offset > size:
+                        log.debug("ingest: file truncated, re-processing %s", path)
+                        byte_offset = 0
 
             count = 0
             new_offset = byte_offset
@@ -242,6 +249,9 @@ class Ingest:
                 file_path = (tool_input.get(path_field) or "")[:_MAX_FILE_PATH]
             elif tool_name == "Bash":
                 command = (tool_input.get("command") or "")[:200]
+            elif tool_name == "Agent":
+                command = (tool_input.get("subagent_type") or tool_input.get("type") or "")[:200]
+                pattern = (tool_input.get("description") or "")[:_MAX_PATTERN]
 
             if not file_path:
                 file_path = (tool_input.get("file_path") or "")[:_MAX_FILE_PATH]
@@ -347,28 +357,29 @@ class Ingest:
         ts: str,
         ts_epoch: float,
     ) -> None:
-        for match in _PR_PATTERN.finditer(text):
-            repo = match.group(1)
-            number = int(match.group(2))
-            url = match.group(0)
-            existing = s.execute(
-                select(PullRequestRow).where(
-                    PullRequestRow.session_id == session_id,
-                    PullRequestRow.url == url,
-                )
-            ).first()
-            if not existing:
-                s.add(
-                    PullRequestRow(
-                        session_id=session_id,
-                        number=number,
-                        url=url,
-                        repository=repo,
-                        timestamp=ts,
-                        ts_epoch=ts_epoch,
-                        proj_key=proj_key,
+        for pat in _PR_PATTERNS:
+            for match in pat.finditer(text):
+                repo = match.group(1)
+                number = int(match.group(2))
+                url = match.group(0)
+                existing = s.execute(
+                    select(PullRequestRow).where(
+                        PullRequestRow.session_id == session_id,
+                        PullRequestRow.url == url,
                     )
-                )
+                ).first()
+                if not existing:
+                    s.add(
+                        PullRequestRow(
+                            session_id=session_id,
+                            number=number,
+                            url=url,
+                            repository=repo,
+                            timestamp=ts,
+                            ts_epoch=ts_epoch,
+                            proj_key=proj_key,
+                        )
+                    )
 
     def _update_session(self, s: Session, session_id: str, proj_key: str) -> None:
         """Recompute session summary row from event/tool/token tables."""

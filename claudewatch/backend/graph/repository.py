@@ -28,7 +28,11 @@ from claudewatch.backend.graph.models import (
 
 log = logging.getLogger("claudewatch")
 
-_PR_PATTERN = re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)")
+_PR_PATTERNS = [
+    re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)"),
+    re.compile(r"https?://gitlab\.com/([^/]+/[^/]+)/-/merge_requests/(\d+)"),
+    re.compile(r"https?://bitbucket\.org/([^/]+/[^/]+)/pull-requests/(\d+)"),
+]
 
 # Checkpoint table lives in a separate SQLite DB (not worth graph nodes)
 _CHECKPOINT_DDL = """
@@ -187,6 +191,9 @@ class SessionETL:
             if row[2] == mtime and row[1] == size:
                 return 0
             byte_offset = row[0]
+            if byte_offset > size:
+                log.debug("graph etl: file truncated, re-processing %s", path)
+                byte_offset = 0
 
         # Ensure project and session nodes exist
         project_path = _proj_key_to_path(proj_key)
@@ -220,6 +227,9 @@ class SessionETL:
                     )
                     count += 1
         except OSError:
+            return 0
+        except Exception:
+            log.exception("graph etl: error processing %s, not advancing checkpoint", path)
             return 0
 
         self._ckpt.execute(
@@ -376,18 +386,19 @@ class SessionETL:
         )
 
     def _extract_prs(self, text: str, session_id: str, _ts: str) -> None:
-        for match in _PR_PATTERN.finditer(text):
-            repo = match.group(1)
-            number = int(match.group(2))
-            url = match.group(0)
-            self._safe_execute(
-                "MERGE (pr:PR {url: $url}) SET pr.number = $num, pr.repository = $repo",
-                {"url": url, "num": number, "repo": repo},
-            )
-            self._safe_execute(
-                "MATCH (s:Session {id: $sid}), (pr:PR {url: $url}) MERGE (s)-[:REFERENCES]->(pr)",
-                {"sid": session_id, "url": url},
-            )
+        for pat in _PR_PATTERNS:
+            for match in pat.finditer(text):
+                repo = match.group(1)
+                number = int(match.group(2))
+                url = match.group(0)
+                self._safe_execute(
+                    "MERGE (pr:PR {url: $url}) SET pr.number = $num, pr.repository = $repo",
+                    {"url": url, "num": number, "repo": repo},
+                )
+                self._safe_execute(
+                    "MATCH (s:Session {id: $sid}), (pr:PR {url: $url}) MERGE (s)-[:REFERENCES]->(pr)",
+                    {"sid": session_id, "url": url},
+                )
 
     def _merge_project(self, path: str, name: str) -> None:
         self._safe_execute(
@@ -701,8 +712,13 @@ class EditMapper:
 
     _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
-    def _find_edit_line(self, file_path: str, new_text: str, old_text: str) -> int | None:  # noqa: PLR0911
-        """Find the line number of an edit in the current file."""
+    def _find_edit_line(self, file_path: str, new_text: str, old_text: str) -> int | None:  # noqa: PLR0911, PLR0912
+        """Find the line number of an edit in the current file.
+
+        Verifies the file hasn't changed since CodeETL indexed it by comparing
+        SHA256 hashes. If the file changed, returns None — the mapping will be
+        retried after the next CodeETL reindex.
+        """
         if not os.path.isfile(file_path):
             return None
         try:
@@ -712,6 +728,18 @@ class EditMapper:
                 content = f.read()
         except OSError:
             return None
+
+        # Verify file hasn't changed since CodeETL indexed it
+        current_hash = hashlib.sha256(content.encode()).hexdigest()
+        result = self._safe_execute(
+            "MATCH (f:File {path: $path}) RETURN f.hash",
+            {"path": file_path},
+        )
+        if result and result.has_next():
+            stored_hash = result.get_next()[0]
+            if stored_hash and stored_hash != current_hash:
+                log.debug("mapper: file changed since indexing, skipping %s", file_path)
+                return None
 
         # Try finding new_text first (post-edit state)
         search_text = new_text if new_text else old_text
