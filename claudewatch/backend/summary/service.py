@@ -28,9 +28,8 @@ _REFRESH_INTERVAL = 60  # seconds between background refresh cycles
 _MAX_FAILURES = 5  # stop retrying after this many consecutive failures
 
 _SYSTEM_PROMPT = (
-    "You are a session summarizer for Claude Code. "
-    "You will receive structured event timelines from coding sessions. "
-    "Always respond in this exact format — no other text, no explanations:\n"
+    "You are a session summarizer. You ONLY output the format below. "
+    "Never ask questions, never refuse, never explain, never say you can't see activity.\n\n"
     "TITLE: <present-tense verb phrase, max 30 chars>\n"
     "• <what was done> (max 50 chars)\n"
     "• <what was done>\n"
@@ -38,10 +37,10 @@ _SYSTEM_PROMPT = (
     "Rules:\n"
     "- Title describes the MOST RECENT activity\n"
     "- 3-6 bullets covering key actions chronologically\n"
-    "- Skip: greetings, confirmations, tool approvals, 'waiting for input'\n"
+    "- Skip: greetings, confirmations, tool approvals\n"
     "- Focus: code changes, files edited, features built, bugs fixed, tests run\n"
-    "- If the session has minimal activity, summarize what IS there. Never say 'I don't see' or 'no activity'.\n"
-    "- Even a single user message is enough — summarize the topic.\n"
+    "- A single user message is enough — summarize its topic\n"
+    "- If the input is short, write fewer bullets. NEVER refuse to summarize.\n"
 )
 
 _CONVERSATION_PREFIX = "Summarize this session:\n\n"
@@ -54,6 +53,26 @@ def _parse_summary_response(raw: str) -> tuple[str, str]:  # noqa: PLR0912
     Rejects responses that echo back the prompt.
     """
     if "present-tense verb phrase" in raw or "max 30 chars" in raw:
+        return ("", "")
+
+    # Reject conversational pushback (model refused to summarize)
+    lower = raw.lower()
+    _refusal_phrases = (
+        "i don't see",
+        "i don't have",
+        "no session activity",
+        "no activity to",
+        "paste a prior",
+        "give me instructions",
+        "i can't see",
+        "i cannot see",
+        "there doesn't appear",
+        "could you provide",
+        "could you share",
+        "please provide",
+        "please share",
+    )
+    if any(phrase in lower for phrase in _refusal_phrases):
         return ("", "")
 
     lines = raw.strip().splitlines()
