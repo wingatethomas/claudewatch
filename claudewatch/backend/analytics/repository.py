@@ -10,6 +10,7 @@ import time
 from datetime import UTC, datetime
 
 from sqlalchemy import desc, distinct, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from claudewatch.backend.analytics.models import (
@@ -96,7 +97,7 @@ class Ingest:
                     log.exception("ingest: error processing %s", path)
         return stats
 
-    def process_file(
+    def process_file(  # noqa: PLR0912
         self,
         path: str,
         session_id: str,
@@ -138,8 +139,11 @@ class Ingest:
                             continue
                         if not isinstance(entry, dict):
                             continue
-                        self._process_entry(s, entry, session_id, proj_key)
-                        count += 1
+                        try:
+                            self._process_entry(s, entry, session_id, proj_key)
+                            count += 1
+                        except IntegrityError:
+                            s.rollback()  # duplicate UUID — skip this entry
             except OSError:
                 log.warning("ingest: failed to read %s", path)
                 return 0
