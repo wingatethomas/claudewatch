@@ -19,6 +19,14 @@ _CLAUDE_DIR = os.path.expanduser("~/.claude")
 _BASELINE_KEY = "security.last_config_snapshot"
 
 
+def _atomic_json_write(path: str, data: dict[str, object]) -> None:
+    """Write JSON atomically via tmp file + rename."""
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
+
+
 class SecurityRepository:
     """Reads Claude config files, persists baselines, and manages caches."""
 
@@ -148,8 +156,7 @@ class SecurityRepository:
         data["permissions"] = perms
 
         try:
-            with open(settings_path, "w") as f:
-                json.dump(data, f, indent=2)
+            _atomic_json_write(settings_path, data)
             log.info("security: removed permission rule '%s' from %s", rule[:50], settings_path)
             self.invalidate_project_cache()
             return True
@@ -173,8 +180,7 @@ class SecurityRepository:
         data["permissions"] = perms
 
         try:
-            with open(settings_path, "w") as f:
-                json.dump(data, f, indent=2)
+            _atomic_json_write(settings_path, data)
             log.info("security: cleared all permissions from %s", settings_path)
             self.invalidate_project_cache()
             return True
@@ -220,8 +226,7 @@ class SecurityRepository:
             perms["allow"] = safe_rules
             data["permissions"] = perms
             try:
-                with open(settings_path, "w") as f:
-                    json.dump(data, f, indent=2)
+                _atomic_json_write(settings_path, data)
                 log.info("security: removed %d dangerous permissions from %s", removed, settings_path)
                 self.invalidate_project_cache()
             except OSError:
@@ -244,8 +249,7 @@ class SecurityRepository:
             if isinstance(plugins, dict) and plugin_name in plugins:
                 del plugins[plugin_name]
                 data["plugins"] = plugins
-                with open(installed_path, "w") as f:
-                    json.dump(data, f, indent=2)
+                _atomic_json_write(installed_path, data)
                 success = True
         except (OSError, json.JSONDecodeError):
             log.warning("security: failed to update installed_plugins.json")
@@ -258,8 +262,7 @@ class SecurityRepository:
             if isinstance(enabled, dict) and plugin_name in enabled:
                 del enabled[plugin_name]
                 data["enabledPlugins"] = enabled
-                with open(settings_path, "w") as f:
-                    json.dump(data, f, indent=2)
+                _atomic_json_write(settings_path, data)
         except (OSError, json.JSONDecodeError):
             log.warning("security: failed to update settings.json")
 
