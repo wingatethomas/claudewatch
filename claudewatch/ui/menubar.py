@@ -497,13 +497,21 @@ class ClaudeWatchApp:
                 return
             # Open a new Terminal tab, cd to the project dir, and resume
             safe_cwd = escape_applescript(cwd) if cwd else ""
-            cd_cmd = f'cd \\"{safe_cwd}\\" && ' if safe_cwd else ""
-            run_applescript(f"""
-                tell application "Terminal"
-                    activate
-                    do script "{cd_cmd}claude -r {session_id}"
-                end tell
-            """)
+            if safe_cwd:
+                run_applescript(f"""
+                    do shell script "open -a Terminal \\"{safe_cwd}\\""
+                    delay 0.5
+                    tell application "Terminal"
+                        do script "claude -r {session_id}" in front window
+                    end tell
+                """)
+            else:
+                run_applescript(f"""
+                    tell application "Terminal"
+                        activate
+                        do script "claude -r {session_id}"
+                    end tell
+                """)
             log.info("session resumed: %s", session_id[:8])
 
         return handler

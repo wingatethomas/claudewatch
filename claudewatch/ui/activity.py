@@ -122,9 +122,10 @@ class _ActivityDelegate(NSObject):
             return
         safe_cwd = escape_applescript(self._cwd)
         run_applescript(f'''
+            do shell script "open -a Terminal \\"{safe_cwd}\\""
+            delay 0.5
             tell application "Terminal"
-                activate
-                do script "cd \\"{safe_cwd}\\" && claude -r {sid}"
+                do script "claude -r {sid}" in front window
             end tell
         ''')
 
