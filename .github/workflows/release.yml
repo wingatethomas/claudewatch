@@ -24,9 +24,20 @@ jobs:
 
       - name: Build .app bundle
         run: |
-          uv run briefcase create macOS --no-input || true
-          uv run briefcase build macOS --no-input
+          uv run briefcase create macOS --no-input --python-version 3.13
+          uv run briefcase build macOS --no-input --python-version 3.13
           uv run briefcase package macOS --adhoc-sign --no-input
+
+      - name: Verify bundle has packages
+        run: |
+          APP_PKGS="build/claudewatch/macos/app/ClaudeWatch.app/Contents/Resources/app_packages"
+          COUNT=$(find "$APP_PKGS" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')
+          if [ "$COUNT" -lt 5 ]; then
+            echo "ERROR: app_packages has only $COUNT entries — package installation likely failed"
+            ls "$APP_PKGS"
+            exit 1
+          fi
+          echo "OK: app_packages has $COUNT entries"
 
       - name: Zip the app and generate checksums
         run: |
