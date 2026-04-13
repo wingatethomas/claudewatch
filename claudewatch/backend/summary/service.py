@@ -448,21 +448,40 @@ class SummaryService(BaseService):
         session_id = self._summary_session_id
         if session_id and use_session:
             cmd = [
-                claude_path, "-p", _CONVERSATION_PREFIX + conversation,
-                "-r", session_id, "--model", model, "--effort", effort,
+                claude_path,
+                "-p",
+                _CONVERSATION_PREFIX + conversation,
+                "-r",
+                session_id,
+                "--model",
+                model,
+                "--effort",
+                effort,
             ]
             log.debug("summarize: reusing session %s", session_id[:8])
         elif use_session:
             session_id = str(uuid.uuid4())
             cmd = [
-                claude_path, "-p", _SYSTEM_PROMPT + _CONVERSATION_PREFIX + conversation,
-                "--session-id", session_id, "--model", model, "--effort", effort,
+                claude_path,
+                "-p",
+                _SYSTEM_PROMPT + _CONVERSATION_PREFIX + conversation,
+                "--session-id",
+                session_id,
+                "--model",
+                model,
+                "--effort",
+                effort,
             ]
             log.info("summarize: creating session %s", session_id[:8])
         else:
             cmd = [
-                claude_path, "-p", _SYSTEM_PROMPT + _CONVERSATION_PREFIX + conversation,
-                "--model", model, "--effort", effort,
+                claude_path,
+                "-p",
+                _SYSTEM_PROMPT + _CONVERSATION_PREFIX + conversation,
+                "--model",
+                model,
+                "--effort",
+                effort,
             ]
             log.debug("summarize: using non-session fallback")
 
