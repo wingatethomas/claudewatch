@@ -33,7 +33,8 @@ Never assume the structure of Claude Code config files (plugins, blocklist, sett
 ## LLM output parsing
 
 When parsing output from an LLM (via `claude -p` or any subprocess that calls a model):
-- Validate **structurally** (expected format elements present), not **semantically** (checking for specific phrases like "I don't see" or "no activity"). LLM responses are unpredictable — string matching will always miss edge cases.
+- Primary validation is **structural** (expected format elements present). If the response has a TITLE line and bullet points, accept it.
+- Secondary defense: reject responses containing known refusal phrases ("I don't see", "please provide", etc.) as a safety net. This catches cases where the model refuses but produces superficially valid structure. Keep the phrase list in the parser, not scattered across callers.
 - Test the parser with realistic bad inputs: empty response, refusal text, echoed prompt, malformed format, partial format (title but no bullets, bullets but no title).
 - If the response doesn't match the expected structure, treat it as a failure and retry — don't display it to the user.
 

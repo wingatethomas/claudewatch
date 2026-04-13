@@ -22,7 +22,7 @@ paths:
 
 Each domain is a package under `backend/` with at minimum:
 
-- `service.py` — extends `BaseService`, thin facade that delegates to other modules. Never implements persistence or business logic directly.
+- `service.py` — extends `BaseService`. Owns business logic and orchestration (diffing, pattern matching, extraction, background threads). Delegates persistence to the repository. Never does file I/O or database access directly.
 - `dependencies.py` — `@lru_cache(maxsize=1)` factory function `get_*_service()` that wires constructor args and caches the singleton. This is the only entry point for UI code.
 
 Additional modules as needed:
@@ -46,6 +46,10 @@ Cross-layer DTOs (`BookmarkDTO`, `HistoryEntryDTO`, etc.) live in `core/dto.py` 
   - Delegate handler methods in `preferences/delegate.py` (lazy imports to avoid circular deps with handler modules)
   - Test files using `from X import Y` inside test methods when the import triggers side effects
 - If ruff flags `PLC0415` for a lazy import, move it to the top of the file. Do not suppress with `# noqa: PLC0415`.
+
+## Startup Rules
+
+- Services with expensive initialization (database creation, schema DDL, large file reads) must defer that work to first use on a background thread. Never block app startup for a service that isn't needed immediately. Use a factory callable (`graph_service_factory=get_graph_service`) and lazy-init on first access.
 
 ## Encapsulation Rules
 
