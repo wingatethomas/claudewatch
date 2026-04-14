@@ -1,6 +1,6 @@
 [project]
 name = "claudewatch"
-version = "0.8.0"
+version = "0.8.1"
 description = "macOS menu bar app for monitoring Claude Code sessions"
 readme = "README.md"
 license = "MIT"
@@ -37,7 +37,7 @@ packages = ["claudewatch"]
 [tool.briefcase]
 project_name = "ClaudeWatch"
 bundle = "com.claudewatch"
-version = "0.8.0"
+version = "0.8.1"
 url = "https://github.com/wingatethomas/claudewatch"
 license.file = "LICENSE"
 author = "ClaudeWatch Contributors"
