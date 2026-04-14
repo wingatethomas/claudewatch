@@ -24,9 +24,9 @@ jobs:
 
       - name: Build .app bundle
         run: |
-          uv run briefcase create macOS --no-input --python-version 3.13
-          uv run briefcase build macOS --no-input --python-version 3.13
-          uv run briefcase package macOS --adhoc-sign --no-input
+          uv run python -m briefcase create macOS --no-input
+          uv run python -m briefcase build macOS --no-input
+          uv run python -m briefcase package macOS --adhoc-sign --no-input
 
       - name: Verify bundle has packages
         run: |
