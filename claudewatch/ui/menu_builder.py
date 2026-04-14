@@ -325,8 +325,8 @@ class MenuBuilder:
             bookmark=self._app._make_bookmark_handler(s) if not pinned and s.session_id else None,
             unbookmark=self._app._make_unbookmark_handler(s.cwd) if pinned else None,
             quit=self._app._make_quit_handler(s),
-            track_summary=lambda cwd=s.cwd, sid=s.session_id, urgent=is_active: self._app._summary_service.track_session(
-                cwd, urgent=urgent, session_id=sid
+            track_summary=lambda cwd=s.cwd, sid=s.session_id, urgent=is_active: (
+                self._app._summary_service.track_session(cwd, urgent=urgent, session_id=sid)
             ),
             usage_lines=format_tokens_breakdown(token_data),
         )

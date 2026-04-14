@@ -277,12 +277,8 @@ class TestDiffSnapshots:
 
     def test_remote_control_enabled_nested(self) -> None:
         svc = _make_service()
-        old = ConfigSnapshot(
-            policy_limits={"restrictions": {"allow_remote_control": {"allowed": False}}}
-        )
-        new = ConfigSnapshot(
-            policy_limits={"restrictions": {"allow_remote_control": {"allowed": True}}}
-        )
+        old = ConfigSnapshot(policy_limits={"restrictions": {"allow_remote_control": {"allowed": False}}})
+        new = ConfigSnapshot(policy_limits={"restrictions": {"allow_remote_control": {"allowed": True}}})
         alerts = svc.diff_snapshots(old, new)
 
         assert len(alerts) == 1
@@ -357,9 +353,7 @@ class TestPublicDataExtraction:
 
     def test_get_policy_value_nested(self) -> None:
         svc = _make_service()
-        snap = ConfigSnapshot(
-            policy_limits={"restrictions": {"allow_remote_control": {"allowed": True}}}
-        )
+        snap = ConfigSnapshot(policy_limits={"restrictions": {"allow_remote_control": {"allowed": True}}})
         assert svc.get_policy_value(snap, "allow_remote_control") is True
 
     def test_get_blocklist_entries(self) -> None:

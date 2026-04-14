@@ -114,7 +114,6 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -129,7 +128,6 @@ class TestNotifyIfNeeded:
         svc._center = mock_center
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
-
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -145,7 +143,6 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-
         ):
             s = _make_session(pid=200, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -159,7 +156,6 @@ class TestNotifyIfNeeded:
         svc._center = mock_center
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
-
         ):
             s = _make_session(pid=100, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -193,7 +189,6 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-
         ):
             s = _make_session(pid=500, status=SessionStatus.ATTENTION)
             svc.notify_if_needed([s])
@@ -227,7 +222,6 @@ class TestNotifyIfNeeded:
         with (
             patch(f"{_MOD}.features.is_enabled", return_value=True),
             patch(f"{_MOD}.NSUserNotification", mock_cls),
-
         ):
             s = _make_session(
                 pid=600,
