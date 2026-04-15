@@ -8,14 +8,14 @@ import os
 import plistlib
 import sys
 
-from claudewatch.backend.core.features import Facet, FacetType, Feature, register
+from claudewatch.backend.core.features import Facet, FacetType, Feature, FeatureKey, register
 
 log = logging.getLogger("claudewatch")
 
-register(Feature(key="launch_at_login", description="Launch at login", default_enabled=False))
+register(Feature(key=FeatureKey.LAUNCH_AT_LOGIN, description="Launch at login", default_enabled=False))
 register(
     Feature(
-        key="accessibility",
+        key=FeatureKey.ACCESSIBILITY,
         description="Accessibility",
         default_enabled=True,
         facets=(

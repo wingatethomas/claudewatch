@@ -1,12 +1,12 @@
 from functools import lru_cache
 
-from claudewatch.backend.core.features import Facet, FacetType, Feature, register
+from claudewatch.backend.core.features import Facet, FacetType, Feature, FeatureKey, register
 from claudewatch.backend.core.settings import get_available_sounds
 from claudewatch.backend.notifications.service import NotificationService
 
 register(
     Feature(
-        key="notifications",
+        key=FeatureKey.NOTIFICATIONS,
         description="Notifications",
         facets=(
             Facet(

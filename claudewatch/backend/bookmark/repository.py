@@ -8,6 +8,7 @@ from typing import TypedDict
 
 from claudewatch.backend.core import features
 from claudewatch.backend.core.dto import BookmarkDTO
+from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.paths import PINS_PATH
 
 log = logging.getLogger("claudewatch")
@@ -31,7 +32,7 @@ def _load() -> list[_BookmarkRecord]:
                 return []
     except (OSError, json.JSONDecodeError):
         return []
-    raw = features.get_facet("bookmarks", "expiry_days") or "30 days"
+    raw = features.get_facet(FeatureKey.BOOKMARKS, "expiry_days") or "30 days"
     try:
         ttl_days = 0 if raw == "Never" else int(str(raw).rstrip(" days"))
     except (ValueError, TypeError):

@@ -16,6 +16,7 @@ from collections.abc import Callable
 from claudewatch import __version__
 from claudewatch.backend.core import features
 from claudewatch.backend.core.dto import ChangelogEntryDTO, UpdateInfoDTO
+from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.service import BaseService
 
 log = logging.getLogger("claudewatch")
@@ -142,7 +143,7 @@ class UpdateService(BaseService):
 
     def check(self) -> UpdateInfoDTO | None:
         """Check for a newer release. Updates instance cache. Thread-safe."""
-        if not features.is_enabled("auto_updates"):
+        if not features.is_enabled(FeatureKey.AUTO_UPDATES):
             return None
         now = time.time()
         with self._cache_lock:

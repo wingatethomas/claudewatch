@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from claudewatch.backend.core.features import Facet, FacetType, Feature, register
+from claudewatch.backend.core.features import Facet, FacetType, Feature, FeatureKey, register
 from claudewatch.backend.core.session_log.dependencies import get_session_log_service
 from claudewatch.backend.notifications.dependencies import get_notification_service
 from claudewatch.backend.security.repository import SecurityRepository
@@ -10,7 +10,7 @@ from claudewatch.backend.security.service import SecurityService
 
 register(
     Feature(
-        key="security",
+        key=FeatureKey.SECURITY,
         description="Security Monitoring",
         default_enabled=True,
         facets=(

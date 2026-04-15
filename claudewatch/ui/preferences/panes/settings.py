@@ -16,7 +16,7 @@ from AppKit import (
 from Foundation import NSMakeRect
 
 from claudewatch.backend.core import features
-from claudewatch.backend.core.features import FacetType
+from claudewatch.backend.core.features import FacetType, FeatureKey
 from claudewatch.ui.components.tokens import Font, Spacing, get_scheme
 from claudewatch.ui.components.widgets.buttons import Size, button
 from claudewatch.ui.components.widgets.cards import card
@@ -25,20 +25,20 @@ from claudewatch.ui.preferences.panes.common import CONTENT_PADDING, BasePane
 from claudewatch.ui.theme import theme
 
 _FEATURE_DETAILS: dict[str, str] = {
-    "bookmarks": "Save sessions to resume later from the menu bar.",
-    "notifications": "Get alerts when Claude needs your attention.",
-    "background_summaries": "Periodically regenerate session summaries in the background.",
-    "auto_updates": "Check GitHub for new releases periodically.",
-    "launch_at_login": "Start ClaudeWatch automatically when you log in.",
-    "accessibility": "Color scheme for status dots in the menu bar.",
-    "security": "Monitor Claude Code config for plugin installs, policy changes, and unsafe sessions.",
+    FeatureKey.BOOKMARKS: "Save sessions to resume later from the menu bar.",
+    FeatureKey.NOTIFICATIONS: "Get alerts when Claude needs your attention.",
+    FeatureKey.BACKGROUND_SUMMARIES: "Periodically regenerate session summaries in the background.",
+    FeatureKey.AUTO_UPDATES: "Check GitHub for new releases periodically.",
+    FeatureKey.LAUNCH_AT_LOGIN: "Start ClaudeWatch automatically when you log in.",
+    FeatureKey.ACCESSIBILITY: "Color scheme for status dots in the menu bar.",
+    FeatureKey.SECURITY: "Monitor Claude Code config for plugin installs, policy changes, and unsafe sessions.",
 }
 
 # Feature groups — defines section order and which features belong to each
 _FEATURE_GROUPS: list[tuple[str, list[str]]] = [
-    ("Sessions", ["bookmarks", "background_summaries"]),
-    ("Notifications", ["notifications"]),
-    ("App", ["launch_at_login", "auto_updates", "accessibility"]),
+    ("Sessions", [FeatureKey.BOOKMARKS, FeatureKey.BACKGROUND_SUMMARIES]),
+    ("Notifications", [FeatureKey.NOTIFICATIONS]),
+    ("App", [FeatureKey.LAUNCH_AT_LOGIN, FeatureKey.AUTO_UPDATES, FeatureKey.ACCESSIBILITY]),
 ]
 
 

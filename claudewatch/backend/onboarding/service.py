@@ -11,6 +11,7 @@ import time
 from typing import TYPE_CHECKING
 
 from claudewatch.backend.core import features
+from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.settings import get_setting, set_setting
 
@@ -73,7 +74,7 @@ class OnboardingService(BaseService):
         """
         if self.is_tip_shown(tip_id):
             return False
-        if not features.is_enabled("notifications"):
+        if not features.is_enabled(FeatureKey.NOTIFICATIONS):
             return False
 
         tip = TIPS.get(tip_id)

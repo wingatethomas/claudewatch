@@ -30,6 +30,7 @@ from claudewatch.backend.analytics.service import AnalyticsService
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core import features
+from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.login_item import refresh_login_item
 from claudewatch.backend.core.models import ClaudeSession
@@ -224,7 +225,7 @@ class ClaudeWatchApp:
 
     def _run_security_checks(self) -> None:
         """Run throttled security config + runtime checks."""
-        interval_str = str(features.get_facet("security", "check_interval") or "30s")
+        interval_str = str(features.get_facet(FeatureKey.SECURITY, "check_interval") or "30s")
         interval = self._INTERVAL_MAP.get(interval_str, 30)
         now = time.time()
         if now - self._last_security_check < interval:
