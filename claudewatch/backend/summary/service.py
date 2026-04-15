@@ -15,6 +15,7 @@ import time
 import uuid
 
 from claudewatch.backend.core import features
+from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
@@ -268,7 +269,7 @@ class SummaryService(BaseService):
                         return ""
 
         # Recap-only mode: if claude -p is disabled, don't attempt subprocess
-        if not features.is_enabled("background_summaries"):
+        if not features.is_enabled(FeatureKey.BACKGROUND_SUMMARIES):
             return ""
 
         with self._in_progress_lock:
@@ -480,8 +481,8 @@ class SummaryService(BaseService):
         if not conversation:
             return ""
 
-        model = str(features.get_facet("background_summaries", "model") or "haiku")
-        effort = str(features.get_facet("background_summaries", "effort") or "low")
+        model = str(features.get_facet(FeatureKey.BACKGROUND_SUMMARIES, "model") or "haiku")
+        effort = str(features.get_facet(FeatureKey.BACKGROUND_SUMMARIES, "effort") or "low")
 
         use_session = self._session_failures < self._session_failure_threshold
 

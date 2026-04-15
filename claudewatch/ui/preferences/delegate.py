@@ -238,8 +238,9 @@ class PrefsDelegate(NSObject):
         from AppKit import NSSound
 
         from claudewatch.backend.core import features
+        from claudewatch.backend.core.features import FeatureKey
 
-        sound_name = features.get_facet("notifications", "sound") or "Glass"
+        sound_name = features.get_facet(FeatureKey.NOTIFICATIONS, "sound") or "Glass"
         sound = NSSound.soundNamed_(sound_name)
         if sound:
             sound.play()

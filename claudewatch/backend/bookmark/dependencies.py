@@ -1,11 +1,11 @@
 from functools import lru_cache
 
 from claudewatch.backend.bookmark.service import BookmarkService
-from claudewatch.backend.core.features import Facet, FacetType, Feature, register
+from claudewatch.backend.core.features import Facet, FacetType, Feature, FeatureKey, register
 
 register(
     Feature(
-        key="bookmarks",
+        key=FeatureKey.BOOKMARKS,
         description="Bookmarks",
         facets=(
             Facet(
