@@ -234,7 +234,7 @@ class SummaryService(BaseService):
                     recap = content.strip()
         return recap
 
-    def generate_and_cache(self, cwd: str, session_id: str = "") -> str:  # noqa: PLR0912, PLR0915
+    def generate_and_cache(self, cwd: str, session_id: str = "") -> str:  # noqa: PLR0911, PLR0912, PLR0915
         """Generate a summary via claude -p and persist it."""
         key = self._cache_key(cwd, session_id)
         cached = self.get_cached(cwd, session_id)
@@ -266,6 +266,10 @@ class SummaryService(BaseService):
                         self._failures.pop(key, None)
                     else:
                         return ""
+
+        # Recap-only mode: if claude -p is disabled, don't attempt subprocess
+        if not features.is_enabled("background_summaries"):
+            return ""
 
         with self._in_progress_lock:
             if key in self._in_progress:
@@ -338,8 +342,6 @@ class SummaryService(BaseService):
             self._tracked_cwds.discard(cwd)
 
     def _ensure_bg_thread(self) -> None:
-        if not features.is_enabled("background_summaries"):
-            return
         if self._bg_thread is not None and self._bg_thread.is_alive():
             return
         self._bg_thread = threading.Thread(target=self._bg_refresh_loop, daemon=True)
