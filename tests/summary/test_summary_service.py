@@ -272,7 +272,6 @@ class TestExtractRecap:
             cached = svc.get_cached_summary("/Users/dev/myapp")
             assert cached == "Fixed auth middleware and added integration tests."
 
-
     def test_generate_skips_claude_p_when_feature_off(self, tmp_path):
         """With background_summaries off and no recap, generate_and_cache returns empty without subprocess."""
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
