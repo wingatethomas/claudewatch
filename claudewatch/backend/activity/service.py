@@ -39,10 +39,8 @@ class ActivityService(BaseService):
 
             dtype = d.get("type", "")
             ts = d.get("timestamp", "")
-            msg = d.get("message", {})
-            if not isinstance(msg, dict):
-                continue
 
+            # Recaps live on the entry itself (d.content), not in message
             if dtype == "system" and d.get("subtype") == "away_summary":
                 content = d.get("content", "")
                 if isinstance(content, str) and content.strip():
@@ -54,8 +52,13 @@ class ActivityService(BaseService):
                             timestamp=ts,
                         )
                     )
+                continue
 
-            elif dtype == "user":
+            msg = d.get("message", {})
+            if not isinstance(msg, dict):
+                continue
+
+            if dtype == "user":
                 content = msg.get("content", "")
                 if isinstance(content, str) and content.strip():
                     entries.append(
