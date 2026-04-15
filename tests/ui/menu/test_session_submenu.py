@@ -70,3 +70,16 @@ class TestSessionSubmenu:
         sub = build_session_submenu(delegate=self._make_delegate(), summary=None, actions=act)
         titles = _menu_titles(sub)
         assert "Remove" in titles
+
+    def test_no_generating_when_not_generating(self) -> None:
+        """When generating=False and no summary, submenu should not show 'Generating...'."""
+        sub = build_session_submenu(delegate=self._make_delegate(), summary=None, generating=False)
+        summary_item = sub.itemArray()[0]
+        sub_titles = _menu_titles(summary_item.submenu())
+        assert not any("Generating" in t for t in sub_titles)
+
+    def test_track_summary_called_when_no_summary(self) -> None:
+        tracker = MagicMock()
+        act = SessionActions(track_summary=tracker)
+        build_session_submenu(delegate=self._make_delegate(), summary=None, actions=act)
+        tracker.assert_called_once()

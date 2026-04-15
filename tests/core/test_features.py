@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from claudewatch.backend.core import features
-from claudewatch.backend.core.features import Facet, Feature
+from claudewatch.backend.core.features import Facet, Feature, FeatureKey
 
 
 class TestFeatureRegistry:
@@ -124,3 +124,20 @@ class TestFacets:
     def test_get_facet_unregistered_facet(self):
         features.register(Feature(key="x", description="X"))
         assert features.get_facet("x", "nope") is None
+
+
+class TestFeatureKeyEnum:
+    """Verify FeatureKey enum matches registered features."""
+
+    def test_all_enum_values_are_strings(self):
+        for key in FeatureKey:
+            assert isinstance(key.value, str)
+
+    def test_enum_compares_equal_to_string(self):
+        assert FeatureKey.BOOKMARKS == "bookmarks"
+        assert FeatureKey.SECURITY == "security"
+
+    def test_enum_works_as_feature_key(self):
+        features._registry.clear()
+        features.register(Feature(key=FeatureKey.NOTIFICATIONS, description="Notifications"))
+        assert features.get_all()[0].key == "notifications"

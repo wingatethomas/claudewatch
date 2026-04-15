@@ -273,6 +273,51 @@ class TestExtractRecap:
             assert cached == "Fixed auth middleware and added integration tests."
 
 
+    def test_generate_skips_claude_p_when_feature_off(self, tmp_path):
+        """With background_summaries off and no recap, generate_and_cache returns empty without subprocess."""
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [{"type": "user", "message": {"content": "fix auth"}, "timestamp": ""}],
+        )
+        svc, _ = _make_service(tmp_path)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.features.is_enabled", return_value=False),
+            patch.object(svc, "_call_claude") as mock_claude,
+        ):
+            result = svc.generate_and_cache("/Users/dev/myapp")
+            mock_claude.assert_not_called()
+        assert result == ""
+
+    def test_generate_uses_recap_even_when_feature_off(self, tmp_path):
+        """Native recaps work regardless of the background_summaries toggle."""
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "user", "message": {"content": "fix auth"}, "timestamp": ""},
+                {
+                    "type": "system",
+                    "subtype": "away_summary",
+                    "content": "Fixed auth middleware.",
+                    "timestamp": "2026-01-01T00:05:00Z",
+                },
+            ],
+        )
+        svc, _ = _make_service(tmp_path)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.features.is_enabled", return_value=False),
+            patch.object(svc, "_call_claude") as mock_claude,
+        ):
+            result = svc.generate_and_cache("/Users/dev/myapp")
+            mock_claude.assert_not_called()
+        assert result  # recap title returned
+
+
 class TestCallClaude:
     """Tests for SummaryService._call_claude."""
 
