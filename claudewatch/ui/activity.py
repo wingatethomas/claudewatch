@@ -48,6 +48,7 @@ _KIND_CONFIG = {
     "user": {"icon": "❯", "color": NSColor.systemGreenColor(), "label": "You"},
     "assistant": {"icon": "◇", "color": NSColor.systemBlueColor(), "label": "Claude"},
     "tool": {"icon": "⚙", "color": NSColor.systemOrangeColor(), "label": "Tool"},
+    "recap": {"icon": "✻", "color": NSColor.systemPurpleColor(), "label": "Recap"},
 }
 _MONO = NSFont.monospacedSystemFontOfSize_weight_(Font.SMALL, 0)
 _MONO_BOLD = NSFont.monospacedSystemFontOfSize_weight_(Font.SMALL, 0.5)

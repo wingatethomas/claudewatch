@@ -43,7 +43,19 @@ class ActivityService(BaseService):
             if not isinstance(msg, dict):
                 continue
 
-            if dtype == "user":
+            if dtype == "system" and d.get("subtype") == "away_summary":
+                content = d.get("content", "")
+                if isinstance(content, str) and content.strip():
+                    entries.append(
+                        ActivityEventDTO(
+                            kind="recap",
+                            summary=_truncate(content.strip(), 80),
+                            detail=content.strip(),
+                            timestamp=ts,
+                        )
+                    )
+
+            elif dtype == "user":
                 content = msg.get("content", "")
                 if isinstance(content, str) and content.strip():
                     entries.append(
