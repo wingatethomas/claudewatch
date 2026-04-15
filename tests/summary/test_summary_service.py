@@ -153,6 +153,126 @@ class TestExtractConversationText:
         assert result == ""
 
 
+class TestExtractRecap:
+    """Tests for SummaryService._extract_recap."""
+
+    def test_returns_recap_from_away_summary(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "user", "message": {"content": "fix auth"}, "timestamp": ""},
+                {
+                    "type": "system",
+                    "subtype": "away_summary",
+                    "content": "Fixed auth middleware and added tests.",
+                    "timestamp": "2026-01-01T00:05:00Z",
+                },
+            ],
+        )
+        svc, _ = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc._extract_recap("/Users/dev/myapp")
+        assert result == "Fixed auth middleware and added tests."
+
+    def test_returns_most_recent_recap(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {
+                    "type": "system",
+                    "subtype": "away_summary",
+                    "content": "Old recap.",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                },
+                {"type": "user", "message": {"content": "more work"}, "timestamp": ""},
+                {
+                    "type": "system",
+                    "subtype": "away_summary",
+                    "content": "Newer recap after more work.",
+                    "timestamp": "2026-01-01T01:00:00Z",
+                },
+            ],
+        )
+        svc, _ = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc._extract_recap("/Users/dev/myapp")
+        assert result == "Newer recap after more work."
+
+    def test_returns_none_when_no_recap(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [{"type": "user", "message": {"content": "hello"}, "timestamp": ""}],
+        )
+        svc, _ = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc._extract_recap("/Users/dev/myapp")
+        assert result is None
+
+    def test_returns_none_for_missing_project(self, tmp_path):
+        svc, _ = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
+            result = svc._extract_recap("/Users/dev/myapp")
+        assert result is None
+
+    def test_ignores_other_system_subtypes(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "system", "subtype": "other_thing", "content": "not a recap", "timestamp": ""},
+            ],
+        )
+        svc, _ = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc._extract_recap("/Users/dev/myapp")
+        assert result is None
+
+    def test_skips_empty_recap_content(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "system", "subtype": "away_summary", "content": "", "timestamp": ""},
+            ],
+        )
+        svc, _ = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc._extract_recap("/Users/dev/myapp")
+        assert result is None
+
+    def test_generate_uses_recap_over_claude_p(self, tmp_path):
+        """generate_and_cache should use native recap instead of spawning claude -p."""
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "user", "message": {"content": "fix auth"}, "timestamp": ""},
+                {
+                    "type": "system",
+                    "subtype": "away_summary",
+                    "content": "Fixed auth middleware and added integration tests.",
+                    "timestamp": "2026-01-01T00:05:00Z",
+                },
+            ],
+        )
+        svc, _ = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc.generate_and_cache("/Users/dev/myapp")
+            assert result  # got a title back
+            # Full recap should be in the cached summary
+            cached = svc.get_cached_summary("/Users/dev/myapp")
+            assert cached == "Fixed auth middleware and added integration tests."
+
+
 class TestCallClaude:
     """Tests for SummaryService._call_claude."""
 

@@ -208,12 +208,50 @@ class SummaryService(BaseService):
                     return "failed"
         return "pending"
 
-    def generate_and_cache(self, cwd: str, session_id: str = "") -> str:  # noqa: PLR0912
+    def _extract_recap(self, cwd: str) -> str | None:
+        """Extract the most recent away_summary (recap) from the JSONL session log.
+
+        Claude Code writes these automatically when a session is resumed.
+        Returns the recap text, or None if no recap exists.
+        """
+        path = self._session_log_service.find_most_recent(cwd)
+        if not path:
+            return None
+
+        tail = self._session_log_service.read_tail(path, tail_bytes=200000)
+        if not tail:
+            return None
+
+        recap = None
+        for line in tail.strip().splitlines():
+            try:
+                d = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if d.get("type") == "system" and d.get("subtype") == "away_summary":
+                content = d.get("content", "")
+                if isinstance(content, str) and content.strip():
+                    recap = content.strip()
+        return recap
+
+    def generate_and_cache(self, cwd: str, session_id: str = "") -> str:  # noqa: PLR0912, PLR0915
         """Generate a summary via claude -p and persist it."""
         key = self._cache_key(cwd, session_id)
         cached = self.get_cached(cwd, session_id)
         if cached is not None:
             return cached
+
+        # Check for a native Claude recap before spawning a subprocess
+        recap = self._extract_recap(cwd)
+        if recap:
+            _max_title = 30
+            title = recap[:_max_title]
+            last_space = title.rfind(" ")
+            if len(recap) > _max_title and last_space > _max_title // 2:
+                title = title[:last_space]
+            self.cache_full(cwd, title, recap, session_id)
+            log.debug("summarize: using native recap for %s", os.path.basename(cwd))
+            return title
 
         with self._failures_lock:
             fail_entry = self._failures.get(key)
