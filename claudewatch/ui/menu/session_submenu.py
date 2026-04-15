@@ -53,10 +53,9 @@ def build_session_submenu(
     summary_sub = NSMenu.alloc().init()
     if summary:
         add_summary_lines(summary_sub, summary, d)
-    elif generating:
-        summary_sub.addItem_(make_menu_item("Generating…", None, d))
     else:
-        summary_sub.addItem_(make_menu_item("Generating…", None, d))
+        if generating:
+            summary_sub.addItem_(make_menu_item("Generating…", None, d))
         if act.track_summary:
             act.track_summary()
     summary_item.setSubmenu_(summary_sub)

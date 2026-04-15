@@ -321,6 +321,7 @@ class MenuBuilder:
         # Build submenu using shared session_submenu builder
         is_active = s.status in (SessionStatus.ATTENTION, SessionStatus.WORKING)
         token_data = self._app._usage_service.get_tokens(s.cwd)
+        summaries_on = features.is_enabled(FeatureKey.BACKGROUND_SUMMARIES)
         actions = SessionActions(
             activity=self._app._make_activity_handler(s),
             bookmark=self._app._make_bookmark_handler(s) if not pinned and s.session_id else None,
@@ -332,10 +333,11 @@ class MenuBuilder:
             usage_lines=format_tokens_breakdown(token_data),
         )
         agents = self._app._analytics_service.agents_for_session(s.session_id) if s.session_id else []
+        cached_summary = self._app._summary_service.get_cached_summary(s.cwd, s.session_id)
         sub = build_session_submenu(
             delegate=d,
-            summary=self._app._summary_service.get_cached_summary(s.cwd, s.session_id),
-            generating=self._app._summary_service.is_generating(s.cwd, s.session_id),
+            summary=cached_summary,
+            generating=summaries_on and self._app._summary_service.is_generating(s.cwd, s.session_id),
             actions=actions,
             agents=agents,
         )
@@ -346,13 +348,16 @@ class MenuBuilder:
         model = self._app._usage_service.get_model(s.cwd)
         cached = self._app._summary_service.get_cached(s.cwd, s.session_id)
         _max_detail_total = 55
-        status = self._app._summary_service.get_status(s.cwd, s.session_id)
         if cached:
             oneliner = cached.replace("\n", " ").strip()
-        elif status == "generating":
-            oneliner = "Generating summary…"
-        elif status == "failed":
-            oneliner = "Summary unavailable"
+        elif summaries_on:
+            status = self._app._summary_service.get_status(s.cwd, s.session_id)
+            if status == "generating":
+                oneliner = "Generating summary…"
+            elif status == "failed":
+                oneliner = "Summary unavailable"
+            else:
+                oneliner = s.detail_line
         else:
             oneliner = s.detail_line
         detail_parts = [p for p in [model, oneliner] if p]
