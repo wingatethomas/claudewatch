@@ -45,6 +45,13 @@ class MenuBuilder:
         self._app = app
         self._menu = menu
         self._delegate = delegate
+        self._summaries_on = features.is_enabled(FeatureKey.BACKGROUND_SUMMARIES)
+
+    def _get_summary(self, cwd: str, session_id: str = "") -> str | None:
+        """Return cached summary if summaries are enabled, else None."""
+        if not self._summaries_on:
+            return None
+        return self._app._summary_service.get_cached_summary(cwd, session_id)
 
     def build(self, sessions: list[ClaudeSession]) -> None:  # noqa: PLR0912, PLR0915
         attention = [s for s in sessions if s.status == SessionStatus.ATTENTION]
@@ -197,7 +204,7 @@ class MenuBuilder:
                 pin_agents = self._app._analytics_service.agents_for_session(pin.session_id) if pin.session_id else []
                 sub = build_session_submenu(
                     delegate=d,
-                    summary=self._app._summary_service.get_cached_summary(pin.cwd, pin.session_id or ""),
+                    summary=self._get_summary(pin.cwd, pin.session_id or ""),
                     actions=actions,
                     agents=pin_agents,
                 )
@@ -254,7 +261,7 @@ class MenuBuilder:
                 )
                 item_sub = build_session_submenu(
                     delegate=d,
-                    summary=self._app._summary_service.get_cached_summary(entry.cwd, entry.session_id or ""),
+                    summary=self._get_summary(entry.cwd, entry.session_id or ""),
                     actions=actions,
                     agents=entry_agents,
                 )
@@ -321,7 +328,6 @@ class MenuBuilder:
         # Build submenu using shared session_submenu builder
         is_active = s.status in (SessionStatus.ATTENTION, SessionStatus.WORKING)
         token_data = self._app._usage_service.get_tokens(s.cwd)
-        summaries_on = features.is_enabled(FeatureKey.BACKGROUND_SUMMARIES)
         actions = SessionActions(
             activity=self._app._make_activity_handler(s),
             bookmark=self._app._make_bookmark_handler(s) if not pinned and s.session_id else None,
@@ -333,11 +339,10 @@ class MenuBuilder:
             usage_lines=format_tokens_breakdown(token_data),
         )
         agents = self._app._analytics_service.agents_for_session(s.session_id) if s.session_id else []
-        cached_summary = self._app._summary_service.get_cached_summary(s.cwd, s.session_id)
         sub = build_session_submenu(
             delegate=d,
-            summary=cached_summary,
-            generating=summaries_on and self._app._summary_service.is_generating(s.cwd, s.session_id),
+            summary=self._get_summary(s.cwd, s.session_id),
+            generating=self._summaries_on and self._app._summary_service.is_generating(s.cwd, s.session_id),
             actions=actions,
             agents=agents,
         )
@@ -346,11 +351,11 @@ class MenuBuilder:
         self._menu.addItem_(item)
         # Detail line: model + summary (or status as fallback)
         model = self._app._usage_service.get_model(s.cwd)
-        cached = self._app._summary_service.get_cached(s.cwd, s.session_id)
+        cached = self._get_summary(s.cwd, s.session_id)
         _max_detail_total = 55
         if cached:
             oneliner = cached.replace("\n", " ").strip()
-        elif summaries_on:
+        elif self._summaries_on:
             status = self._app._summary_service.get_status(s.cwd, s.session_id)
             if status == "generating":
                 oneliner = "Generating summary…"
