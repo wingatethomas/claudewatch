@@ -22,6 +22,8 @@ from AppKit import (
 from Foundation import NSMakeRect
 
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
+from claudewatch.backend.core import features
+from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.usage.dependencies import get_usage_service
@@ -146,7 +148,11 @@ def rebuild_rows(delegate: object) -> None:
             if search in proj:
                 filtered.append(e)
                 continue
-            cached = summary_svc.get_cached(e.get("cwd", ""))
+            cached = (
+                summary_svc.get_cached(e.get("cwd", ""))
+                if features.is_enabled(FeatureKey.BACKGROUND_SUMMARIES)
+                else None
+            )
             if cached and search in cached.lower():
                 filtered.append(e)
         entries = filtered
@@ -249,7 +255,9 @@ def _build_row_menu(  # noqa: PLR0913, ARG001
     menu = NSMenu.alloc().init()
 
     # Summary bullets
-    bullets = summary_svc.get_cached_summary(cwd) if cwd else None
+    bullets = (
+        summary_svc.get_cached_summary(cwd) if cwd and features.is_enabled(FeatureKey.BACKGROUND_SUMMARIES) else None
+    )
     if bullets:
         for line in bullets.splitlines():
             stripped = line.strip()
