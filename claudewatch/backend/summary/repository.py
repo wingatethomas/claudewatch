@@ -78,13 +78,13 @@ class SummaryRepository:
     # -- Entry access -------------------------------------------------------
 
     @staticmethod
-    def _cache_key(cwd: str, session_id: str = "") -> str:
+    def cache_key(cwd: str, session_id: str = "") -> str:
         """Build a unique cache key."""
         return f"{cwd}::{session_id}" if session_id else cwd
 
     def get_entry(self, cwd: str, session_id: str = "") -> SummaryEntry | None:
         """Return the cached entry if JSONL hasn't changed significantly since generation."""
-        key = self._cache_key(cwd, session_id)
+        key = self.cache_key(cwd, session_id)
         with self._store_lock:
             self.load_store()
             entry = self._store.get(key)
@@ -100,7 +100,7 @@ class SummaryRepository:
 
     def cache(self, cwd: str, summary: str, session_id: str = "") -> None:
         """Persist a summary string as the title."""
-        key = self._cache_key(cwd, session_id)
+        key = self.cache_key(cwd, session_id)
         mtime = self.get_jsonl_mtime(cwd) or time.time()
         with self._store_lock:
             self.load_store()
@@ -113,7 +113,7 @@ class SummaryRepository:
 
     def cache_full(self, cwd: str, title: str, summary: str, session_id: str = "") -> None:
         """Persist both title and bulleted summary."""
-        key = self._cache_key(cwd, session_id)
+        key = self.cache_key(cwd, session_id)
         mtime = self.get_jsonl_mtime(cwd) or time.time()
         size = self.get_jsonl_size(cwd)
         with self._store_lock:
@@ -129,7 +129,7 @@ class SummaryRepository:
 
     def invalidate_entry(self, cwd: str, session_id: str = "") -> None:
         """Remove a single entry from the store."""
-        key = self._cache_key(cwd, session_id)
+        key = self.cache_key(cwd, session_id)
         with self._store_lock:
             self.load_store()
             self._store.pop(key, None)

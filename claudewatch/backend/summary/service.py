@@ -47,6 +47,21 @@ _SYSTEM_PROMPT = (
 _CONVERSATION_PREFIX = "Summarize this session:\n\n"
 
 
+def _find_last_recap(lines: list[str]) -> str | None:
+    """Scan JSONL lines (oldest-first) and return the last away_summary content."""
+    recap = None
+    for line in lines:
+        try:
+            d = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if d.get("type") == "system" and d.get("subtype") == "away_summary":
+            content = d.get("content", "")
+            if isinstance(content, str) and content.strip():
+                recap = content.strip()
+    return recap
+
+
 def _parse_summary_response(raw: str) -> tuple[str, str]:  # noqa: PLR0912
     """Parse the TITLE + bullets format from claude -p output.
 
@@ -144,6 +159,12 @@ class SummaryService(BaseService):
         self._failures: dict[str, tuple[int, float]] = {}
         self._failures_lock = threading.Lock()
 
+        # No-recap skip cache: {key: jsonl_mtime_at_last_check}
+        # Avoids re-scanning the JSONL for every poll when the feature is off
+        # and the session has no recap.
+        self._no_recap_mtimes: dict[str, float] = {}
+        self._no_recap_lock = threading.Lock()
+
         # Background thread
         self._bg_thread: threading.Thread | None = None
         self._tracked_cwds: set[str] = set()  # cache keys
@@ -155,7 +176,7 @@ class SummaryService(BaseService):
 
     @staticmethod
     def _cache_key(cwd: str, session_id: str = "") -> str:
-        return SummaryRepository._cache_key(cwd, session_id)
+        return SummaryRepository.cache_key(cwd, session_id)
 
     def get_cached(self, cwd: str, session_id: str = "") -> str | None:
         """Return the title (one-liner)."""
@@ -203,37 +224,35 @@ class SummaryService(BaseService):
                 return "generating"
         with self._failures_lock:
             fail_entry = self._failures.get(key)
-            if fail_entry is not None:
-                fail_count = fail_entry[0] if isinstance(fail_entry, tuple) else fail_entry
-                if fail_count >= _MAX_FAILURES:
-                    return "failed"
+            if fail_entry is not None and fail_entry[0] >= _MAX_FAILURES:
+                return "failed"
         return "pending"
 
     def _extract_recap(self, cwd: str) -> str | None:
         """Extract the most recent away_summary (recap) from the JSONL session log.
 
         Claude Code writes these automatically when a session is resumed.
-        Returns the recap text, or None if no recap exists.
+        Checks the tail first (fast path), falls back to full scan if no recap
+        is found — recaps sit where the pause happened and can scroll out of
+        the tail window for active sessions.
         """
         path = self._session_log_service.find_most_recent(cwd)
         if not path:
             return None
 
         tail = self._session_log_service.read_tail(path, tail_bytes=200000)
-        if not tail:
-            return None
+        recap = _find_last_recap(tail.strip().splitlines()) if tail else None
+        if recap is not None:
+            return recap
 
-        recap = None
-        for line in tail.strip().splitlines():
-            try:
-                d = json.loads(line)
-            except (json.JSONDecodeError, ValueError):
-                continue
-            if d.get("type") == "system" and d.get("subtype") == "away_summary":
-                content = d.get("content", "")
-                if isinstance(content, str) and content.strip():
-                    recap = content.strip()
-        return recap
+        # Fallback: full scan — handles sessions where activity pushed the recap
+        # past the 200KB tail window.
+        try:
+            with open(path) as f:
+                lines = f.readlines()
+        except OSError:
+            return None
+        return _find_last_recap(lines)
 
     def generate_and_cache(self, cwd: str, session_id: str = "") -> str:  # noqa: PLR0911, PLR0912, PLR0915
         """Generate a summary via claude -p and persist it."""
@@ -241,6 +260,13 @@ class SummaryService(BaseService):
         cached = self.get_cached(cwd, session_id)
         if cached is not None:
             return cached
+
+        # Skip if we already checked and found no recap, and the JSONL hasn't changed
+        current_mtime = self._repo.get_jsonl_mtime(cwd)
+        with self._no_recap_lock:
+            last_check = self._no_recap_mtimes.get(key)
+            if last_check is not None and current_mtime and last_check == current_mtime:
+                return ""
 
         # Check for a native Claude recap before spawning a subprocess
         recap = self._extract_recap(cwd)
@@ -257,19 +283,20 @@ class SummaryService(BaseService):
         with self._failures_lock:
             fail_entry = self._failures.get(key)
             if fail_entry is not None:
-                if isinstance(fail_entry, tuple):
-                    fail_count, fail_mtime = fail_entry
-                else:
-                    fail_count, fail_mtime = fail_entry, 0.0
+                fail_count, fail_mtime = fail_entry
                 if fail_count >= _MAX_FAILURES:
-                    current_mtime = self._repo.get_jsonl_mtime(cwd)
-                    if current_mtime and current_mtime > fail_mtime:
+                    fresh_mtime = self._repo.get_jsonl_mtime(cwd)
+                    if fresh_mtime and fresh_mtime > fail_mtime:
                         self._failures.pop(key, None)
                     else:
                         return ""
 
-        # Recap-only mode: if claude -p is disabled, don't attempt subprocess
+        # Recap-only mode: if claude -p is disabled, don't attempt subprocess.
+        # Record the JSONL mtime so subsequent polls skip until the file changes.
         if not features.is_enabled(FeatureKey.BACKGROUND_SUMMARIES):
+            mtime = self._repo.get_jsonl_mtime(cwd)
+            with self._no_recap_lock:
+                self._no_recap_mtimes[key] = mtime
             return ""
 
         with self._in_progress_lock:
@@ -290,7 +317,7 @@ class SummaryService(BaseService):
                 else:
                     with self._failures_lock:
                         prev = self._failures.get(key)
-                        prev_count = prev[0] if isinstance(prev, tuple) else (prev or 0)
+                        prev_count = prev[0] if prev else 0
                         mtime = self._repo.get_jsonl_mtime(cwd)
                         self._failures[key] = (prev_count + 1, mtime)
                         count = prev_count + 1
