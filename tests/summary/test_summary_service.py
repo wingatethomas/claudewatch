@@ -1,6 +1,7 @@
 """Tests for claudewatch.backend.summary.service.SummaryService."""
 
 import json
+import os
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -317,6 +318,149 @@ class TestExtractRecap:
         assert result  # recap title returned
 
 
+class TestNoRecapSkip:
+    """Tests for the no-recap skip cache that avoids re-reading unchanged JSONLs."""
+
+    def test_skips_second_call_when_mtime_unchanged(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [{"type": "user", "message": {"content": "work"}, "timestamp": ""}],
+        )
+        svc, _ = _make_service(tmp_path)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.features.is_enabled", return_value=False),
+            patch.object(svc, "_extract_recap", return_value=None) as mock_extract,
+        ):
+            svc.generate_and_cache("/Users/dev/myapp")
+            svc.generate_and_cache("/Users/dev/myapp")
+            # First call scans; second call should skip
+            assert mock_extract.call_count == 1
+
+    def test_rescans_when_mtime_changes(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        jsonl = proj_dir / "session.jsonl"
+        _write_jsonl(jsonl, [{"type": "user", "message": {"content": "work"}, "timestamp": ""}])
+        svc, _ = _make_service(tmp_path)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.features.is_enabled", return_value=False),
+            patch.object(svc, "_extract_recap", return_value=None) as mock_extract,
+        ):
+            svc.generate_and_cache("/Users/dev/myapp")
+            # Bump mtime
+            os.utime(jsonl, (9999999999, 9999999999))
+            svc.generate_and_cache("/Users/dev/myapp")
+            assert mock_extract.call_count == 2
+
+
+class TestFailureTracking:
+    """Tests for the _failures counting and MAX_FAILURES threshold."""
+
+    def test_increments_on_empty_claude_response(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [{"type": "user", "message": {"content": "work"}, "timestamp": ""}],
+        )
+        svc, _ = _make_service(tmp_path)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.features.is_enabled", return_value=True),
+            patch.object(svc, "_call_claude", return_value=""),
+        ):
+            svc.generate_and_cache("/Users/dev/myapp")
+            assert svc._failures["/Users/dev/myapp"][0] == 1
+            svc.generate_and_cache("/Users/dev/myapp")
+            assert svc._failures["/Users/dev/myapp"][0] == 2
+
+    def test_resets_failures_on_success(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [{"type": "user", "message": {"content": "work"}, "timestamp": ""}],
+        )
+        svc, _ = _make_service(tmp_path)
+        svc._failures["/Users/dev/myapp"] = (2, 100.0)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.features.is_enabled", return_value=True),
+            patch.object(svc, "_call_claude", return_value="TITLE: Done\n• did a thing"),
+        ):
+            svc.generate_and_cache("/Users/dev/myapp")
+        assert "/Users/dev/myapp" not in svc._failures
+
+    def test_gives_up_after_max_failures(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [{"type": "user", "message": {"content": "work"}, "timestamp": ""}],
+        )
+        svc, _ = _make_service(tmp_path)
+        # Seed with MAX_FAILURES threshold already reached at current mtime
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            mtime = svc._repo.get_jsonl_mtime("/Users/dev/myapp")
+        svc._failures["/Users/dev/myapp"] = (5, mtime)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.features.is_enabled", return_value=True),
+            patch.object(svc, "_call_claude") as mock_claude,
+        ):
+            result = svc.generate_and_cache("/Users/dev/myapp")
+            mock_claude.assert_not_called()
+        assert result == ""
+
+    def test_retries_after_mtime_advances_past_failure(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [{"type": "user", "message": {"content": "work"}, "timestamp": ""}],
+        )
+        svc, _ = _make_service(tmp_path)
+        # Seed failures at an old mtime — newer mtime should trigger retry
+        svc._failures["/Users/dev/myapp"] = (5, 100.0)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch("claudewatch.backend.summary.service.features.is_enabled", return_value=True),
+            patch.object(svc, "_call_claude", return_value="TITLE: Recovered\n• got a response"),
+        ):
+            result = svc.generate_and_cache("/Users/dev/myapp")
+        assert result  # should have tried and succeeded
+        assert "/Users/dev/myapp" not in svc._failures
+
+
+class TestExtractRecapFullScan:
+    """Verify the full-scan fallback catches recaps outside the 200KB tail window."""
+
+    def test_full_scan_finds_recap_past_tail(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        entries = [
+            {
+                "type": "system",
+                "subtype": "away_summary",
+                "content": "Early recap deep in the file.",
+                "timestamp": "2026-01-01T00:00:00Z",
+            },
+        ]
+        # Pad with many user messages to push recap past the 200KB tail window
+        filler = {"type": "user", "message": {"content": "x" * 500}, "timestamp": ""}
+        entries.extend([filler] * 500)  # ~250KB of filler
+        _write_jsonl(proj_dir / "session.jsonl", entries)
+
+        svc, _ = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc._extract_recap("/Users/dev/myapp")
+        assert result == "Early recap deep in the file."
+
+
 class TestCallClaude:
     """Tests for SummaryService._call_claude."""
 
@@ -479,7 +623,7 @@ class TestPriorityQueue:
 
     def test_pending_count(self, tmp_path):
         svc, _ = _make_service(tmp_path)
-        svc._priority_queue.extend(["/a", "/b", "/c"])
+        svc._priority_queue.extend([("/a", ""), ("/b", ""), ("/c", "")])
         assert svc.pending_summary_count() == 3
 
 

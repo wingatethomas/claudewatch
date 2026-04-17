@@ -141,3 +141,25 @@ class TestFeatureKeyEnum:
         features._registry.clear()
         features.register(Feature(key=FeatureKey.NOTIFICATIONS, description="Notifications"))
         assert features.get_all()[0].key == "notifications"
+
+    def test_every_enum_value_has_a_registered_feature(self):
+        """Importing dependency modules registers all features — no dead enum entries."""
+        features._registry.clear()
+        # Importing these modules triggers features.register() as a side effect.
+        from claudewatch.backend.bookmark import dependencies as _bookmark_deps  # noqa: F401
+        from claudewatch.backend.core import login_item as _login_item  # noqa: F401
+        from claudewatch.backend.notifications import dependencies as _notif_deps  # noqa: F401
+        from claudewatch.backend.security import dependencies as _security_deps  # noqa: F401
+        from claudewatch.backend.summary import dependencies as _summary_deps  # noqa: F401
+        from claudewatch.backend.updates import dependencies as _updates_deps  # noqa: F401
+
+        registered = set(features._registry.keys())
+        enum_values = {str(k) for k in FeatureKey}
+        assert enum_values == registered, f"enum vs registry mismatch: {enum_values ^ registered}"
+
+    def test_is_enabled_accepts_enum(self):
+        features._registry.clear()
+        features.register(Feature(key=FeatureKey.BOOKMARKS, description="B", default_enabled=True))
+        # Works with both enum and string
+        assert features.is_enabled(FeatureKey.BOOKMARKS) is True
+        assert features.is_enabled("bookmarks") is True
