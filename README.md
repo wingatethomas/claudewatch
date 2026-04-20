@@ -51,11 +51,13 @@ Click any session to focus its window. Hover for actions: Activity log, Bookmark
 ### Features
 
 - **Multi-environment** — Terminal.app, PyCharm, VS Code, tmux
-- **Activity feed** — timeline of user messages, assistant responses, and tool calls
+- **Activity feed** — timeline of user messages, assistant responses, tool calls, and native Claude recaps
 - **Bookmarked sessions** — save sessions to resume later from the Bookmarks submenu
 - **Notifications** — native macOS alerts when sessions need attention, with context about what's being asked
-- **Session summaries** — auto-generated titles and bulleted action summaries
+- **Session summaries** — instant native recaps from Claude's session logs, with `claude -p` fallback generation
 - **Token usage** — per-session and aggregated usage stats with top sessions breakdown
+- **Insights** — aggregate analytics across sessions (tool usage, model distribution, agent tracking)
+- **Security monitoring** — runtime alerts for Claude Code config changes, suspicious commands, and plugin drift
 - **Self-update** — checks GitHub Releases periodically, one-click update from the menu
 - **Preferences** — sidebar settings with feature toggles, session history with search/sort/filter, usage dashboard, changelog
 
