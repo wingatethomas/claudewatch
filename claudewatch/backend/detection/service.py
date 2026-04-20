@@ -24,6 +24,8 @@ _MAX_SESSIONS = 50
 _TEXT_MAX_LEN = 80
 _WIN_SPLIT_FIELDS = 3
 _TERMINAL_CACHE_TTL = 3  # seconds between AppleScript refreshes
+_JSONL_STREAMING_THRESHOLD = 5  # JSONL modified within this → actively streaming
+_JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
 
 
 class DetectionService(BaseService):
@@ -188,25 +190,20 @@ class DetectionService(BaseService):
 
     # -- JSONL status helpers -----------------------------------------------
 
-    def _read_jsonl_tail(self, jsonl_path: str | None) -> tuple[str, bool]:
-        """Read the JSONL tail and check freshness. Returns (tail_text, is_fresh).
+    def _read_jsonl_tail(self, jsonl_path: str | None) -> tuple[str, float]:
+        """Read the JSONL tail and return (tail_text, age_seconds).
 
-        Shared by idle and pending-tool checks to avoid duplicate file reads.
+        Age is -1 when the file can't be stat'd. Shared by idle and
+        pending-tool checks to avoid duplicate file reads.
         """
         if not jsonl_path:
-            return ("", False)
-
-        _active_threshold = 5
-        is_fresh = False
+            return ("", -1.0)
         try:
             age = time.time() - os.path.getmtime(jsonl_path)
-            if age < _active_threshold:
-                is_fresh = True
         except OSError:
-            pass
-
+            age = -1.0
         tail = self._session_log_service.read_tail(jsonl_path)
-        return (tail, is_fresh)
+        return (tail, age)
 
     def _check_jsonl_for_idle(self, tail: str) -> SessionStatus:
         """Determine idle/working status from a pre-read JSONL tail."""
@@ -399,14 +396,21 @@ class DetectionService(BaseService):
                 continue
             if s.cwd not in cwd_status_cache:
                 jpath = jsonl_path_cache.get(s.cwd)
-                tail, is_fresh = self._read_jsonl_tail(jpath)
-                if is_fresh:
-                    # JSONL modified < 5s ago — Claude is actively working, skip checks
+                tail, age = self._read_jsonl_tail(jpath)
+                if 0 <= age < _JSONL_STREAMING_THRESHOLD:
+                    # JSONL modified < 5s ago — Claude is actively streaming
                     tool_result = PendingToolResult(has_pending=False, one_line="", context="")
                     jsonl_status = SessionStatus.WORKING
                 else:
                     tool_result = self._check_jsonl_for_pending_tool(tail)
-                    jsonl_status = self._check_jsonl_for_idle(tail) if not tool_result.has_pending else s.status
+                    if tool_result.has_pending:
+                        jsonl_status = s.status
+                    elif age >= _JSONL_IDLE_THRESHOLD:
+                        # Not modified in 60s+ — definitely idle. The last-message
+                        # heuristic is unreliable for abandoned sessions that ended on a user message.
+                        jsonl_status = SessionStatus.IDLE
+                    else:
+                        jsonl_status = self._check_jsonl_for_idle(tail)
                 cwd_status_cache[s.cwd] = (tool_result, jsonl_status)
 
             tool_result, jsonl_status = cwd_status_cache[s.cwd]
