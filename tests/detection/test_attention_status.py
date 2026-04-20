@@ -143,9 +143,9 @@ class TestPendingToolDetection:
                 },
             ],
         )
-        # File was just written — mtime is now, so _read_jsonl_tail returns is_fresh=True
-        tail, is_fresh = service._read_jsonl_tail(jsonl_path)
-        assert is_fresh is True
+        # File was just written — mtime is now, age should be small
+        tail, age = service._read_jsonl_tail(jsonl_path)
+        assert 0 <= age < 5
 
     def test_no_pending_when_tool_result_received(self, tmp_path: str) -> None:
         """Tool completed — tool_result after tool_use means not pending."""
