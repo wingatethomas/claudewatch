@@ -115,15 +115,15 @@ class TestReadJsonlTail:
 class TestMultipleSessionsPerCwd:
     """When multiple sessions share a CWD, each should be classified by its own title."""
 
-    def test_idle_title_not_overridden_by_sibling_session_activity(self, tmp_path):
+    def test_idle_title_not_overridden_by_sibling_session_activity(self):
         """Regression: sibling session's fresh JSONL should not flip an IDLE title to WORKING.
 
         Scenario: 3 sessions in /myapp. One is active (fresh JSONL).
         The two idle sessions have `✳` in their titles. They should stay IDLE
         even though find_most_recent(cwd) returns the active session's fresh file.
         """
-        # This is tested by the full detect() integration path. Unit-level: verify
-        # _determine_status trusts ✳ and _has_working_indicator rejects non-braille.
+        # Verify _determine_status trusts ✳. The caller now only applies the
+        # shared-CWD jsonl_status when the title has no indicator.
         assert _determine_status("myapp — ✳ Claude Code") == SessionStatus.IDLE
 
 
