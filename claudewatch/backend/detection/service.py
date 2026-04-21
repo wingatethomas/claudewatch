@@ -415,6 +415,7 @@ class DetectionService(BaseService):
 
             tool_result, jsonl_status = cwd_status_cache[s.cwd]
             title_confirms_working = _has_working_indicator(s.window_title)
+            title_confirms_idle = IDLE_INDICATOR in s.window_title
 
             if tool_result.has_pending and not title_confirms_working:
                 # JSONL has unresolved tool_use, and window title doesn't show active work.
@@ -422,10 +423,12 @@ class DetectionService(BaseService):
                 s.status = SessionStatus.ATTENTION
                 s.prompt_text = tool_result.one_line
                 s.prompt_context = tool_result.context
-            elif not tool_result.has_pending and not title_confirms_working:
-                # No pending tools and not actively streaming — use JSONL status
+            elif not tool_result.has_pending and not title_confirms_working and not title_confirms_idle:
+                # Title has no indicator (IDE session or unknown host) — use JSONL status.
+                # Note: JSONL status is shared across all sessions with the same CWD, so
+                # we only apply it when the title gives no signal.
                 s.status = jsonl_status
-            # else: title confirms working — keep the WORKING status from window title
+            # else: title confirms IDLE or WORKING — trust it over the shared-CWD JSONL
 
         return sessions
 
