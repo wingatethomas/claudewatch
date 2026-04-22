@@ -54,7 +54,6 @@ def record_session(session_id: str, project: str, cwd: str, model: str, host_app
     """Record a session when it ends. Deduplicates by CWD (keeps latest)."""
     entries = _load()
     ts = datetime.now(tz=UTC).isoformat()
-    # Remove existing entry for same CWD (keep only latest)
     entries = [e for e in entries if e["cwd"] != cwd]
     entries.append(
         _HistoryRecord(
@@ -66,7 +65,6 @@ def record_session(session_id: str, project: str, cwd: str, model: str, host_app
             ended_at=ts,
         )
     )
-    # Cap at max
     if len(entries) > _MAX_ENTRIES:
         entries = entries[-_MAX_ENTRIES:]
     _save(entries)
@@ -105,12 +103,10 @@ def _seed_from_jsonl() -> list[_HistoryRecord]:
             jsonls = [f for f in os.listdir(proj_dir) if f.endswith(".jsonl")]
             if not jsonls:
                 continue
-            # Most recent JSONL
             jsonls.sort(key=lambda f: os.path.getmtime(os.path.join(proj_dir, f)), reverse=True)
             session_id = jsonls[0].removesuffix(".jsonl")
             cwd = proj_key_to_cwd(proj_key)
             project = os.path.basename(cwd)
-            # Get model from last few lines
             model = ""
             jsonl_path = os.path.join(proj_dir, jsonls[0])
             if not is_safe_jsonl_path(jsonl_path):

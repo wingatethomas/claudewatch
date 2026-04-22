@@ -329,7 +329,7 @@ class SecurityService(BaseService):
                     cmd = inner.split(":*")[0] if ":*" in inner else inner
                     bases.append(cmd)
             if bases:
-                SecurityRepository.warm_whatis_cache(bases)
+                self._repo.warm_whatis_cache(bases)
         except Exception:
             log.debug("failed to warm whatis cache", exc_info=True)
 

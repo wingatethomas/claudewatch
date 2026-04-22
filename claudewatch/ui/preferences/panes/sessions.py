@@ -212,7 +212,7 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     # Gather display data
     token_data = usage_svc.get_tokens(cwd)
     token_compact = format_tokens_compact(token_data)
-    cached_title = summary_svc.get_cached_title(cwd) if cwd else ""
+    cached_title = summary_svc.get_cached(cwd) if cwd else ""
 
     # Bookmark callback wiring
     if is_pinned:

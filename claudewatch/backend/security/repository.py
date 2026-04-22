@@ -17,6 +17,7 @@ log = logging.getLogger("claudewatch")
 
 _CLAUDE_DIR = os.path.expanduser("~/.claude")
 _BASELINE_KEY = "security.last_config_snapshot"
+_WHATIS_SETTINGS_KEY = "security.whatis_cache"
 
 
 def _atomic_json_write(path: str, data: dict[str, object]) -> None:
@@ -37,6 +38,8 @@ class SecurityRepository:
         self._session_log = session_log
         self._project_perms_cache: list[tuple[str, str, list[str]]] | None = None
         self._project_perms_cache_time: float = 0.0
+        self._whatis_cache: dict[str, str] | None = None
+        self._whatis_warming: bool = False
 
     # -- Config capture --
 
@@ -337,98 +340,26 @@ class SecurityRepository:
 
     # -- Command descriptions --
 
-    _BUILTIN_DESCRIPTIONS: dict[str, str] = {
-        "gh": "GitHub CLI",
-        "gh pr": "Manage pull requests",
-        "gh pr diff": "View changes in a pull request",
-        "gh pr view": "View a pull request",
-        "gh pr create": "Create a pull request",
-        "gh pr merge": "Merge a pull request",
-        "gh pr checkout": "Check out a pull request",
-        "gh pr list": "List pull requests",
-        "gh issue": "Manage issues",
-        "gh issue list": "List issues",
-        "gh issue create": "Create an issue",
-        "gh issue view": "View an issue",
-        "gh api": "Make GitHub API requests",
-        "git": "Version control",
-        "git fetch": "Download from remote",
-        "git checkout": "Switch branches or restore files",
-        "git rev-parse": "Git reference resolution",
-        "git pull": "Fetch and merge from remote",
-        "git push": "Upload to remote",
-        "git status": "Show working tree status",
-        "git diff": "Show changes",
-        "git add": "Stage file changes",
-        "git commit": "Record changes",
-        "git mv": "Move or rename files",
-        "python3": "Python interpreter",
-        "python3 -m py_compile": "Check Python syntax",
-        "python3 -m pytest": "Run Python tests",
-        "python": "Python interpreter",
-        "node": "Node.js runtime",
-        "npm": "Node package manager",
-        "npx": "Run package binaries",
-        "pnpm": "Fast Node package manager",
-        "uv": "Python package manager",
-        "uv run": "Run in virtual environment",
-        "uv run pytest": "Run tests in venv",
-        "pip": "Python package installer",
-        "pip show": "Show package info",
-        "docker": "Container platform",
-        "ruff": "Python linter",
-        "ruff check": "Run Python linter",
-        "mypy": "Python type checker",
-        "pytest": "Python test framework",
-        "find": "Search for files",
-        "grep": "Search file contents",
-        "cat": "Read file contents",
-        "ls": "List directory contents",
-        "wc": "Count lines/words/bytes",
-        "echo": "Print text",
-        "curl": "Transfer data from URLs",
-        "wget": "Download files",
-        "make": "Build automation",
-        "source": "Execute script in current shell",
-        "poetry": "Python dependency manager",
-        "pnpm run typecheck": "Run type checking",
-        "pnpm run lint": "Run linter",
-        "pnpm test": "Run tests",
-        "pnpm eslint": "Run ESLint",
-        "npx eslint": "Run ESLint",
-        "npx tsc": "Run TypeScript compiler",
-        "pnpm tsc": "Run TypeScript compiler",
-    }
+    def _load_whatis_cache(self) -> dict[str, str]:
+        if self._whatis_cache is None:
+            raw = get_setting(_WHATIS_SETTINGS_KEY)
+            self._whatis_cache = dict(raw) if isinstance(raw, dict) else {}
+        return self._whatis_cache
 
-    _whatis_cache: dict[str, str] | None = None
-    _whatis_warming: bool = False
-    _WHATIS_SETTINGS_KEY = "security.whatis_cache"
+    def _save_whatis_cache(self) -> None:
+        if self._whatis_cache:
+            set_setting(_WHATIS_SETTINGS_KEY, self._whatis_cache)
 
-    @classmethod
-    def _load_whatis_cache(cls) -> dict[str, str]:
-        if cls._whatis_cache is None:
-            raw = get_setting(cls._WHATIS_SETTINGS_KEY)
-            cls._whatis_cache = dict(raw) if isinstance(raw, dict) else {}
-        return cls._whatis_cache
+    def get_command_description(self, command: str) -> str:
+        """Get a one-line description for a command from the whatis cache.
 
-    @classmethod
-    def _save_whatis_cache(cls) -> None:
-        if cls._whatis_cache:
-            set_setting(cls._WHATIS_SETTINGS_KEY, cls._whatis_cache)
-
-    @classmethod
-    def get_command_description(cls, command: str) -> str:
-        """Get a one-line description for a command. Checks built-in table first, then whatis cache."""
+        Returns the longest-matching multi-word key (e.g. `gh pr create` before `gh`).
+        """
         _max_desc = 40
         words = [w for w in command.split() if "=" not in w]
         if not words:
             return ""
-        for length in range(len(words), 0, -1):
-            key = " ".join(words[:length])
-            desc = cls._BUILTIN_DESCRIPTIONS.get(key)
-            if desc:
-                return desc[:_max_desc] if len(desc) > _max_desc else desc
-        cache = cls._load_whatis_cache()
+        cache = self._load_whatis_cache()
         for length in range(len(words), 0, -1):
             key = " ".join(words[:length])
             desc = cache.get(key, "")
@@ -436,14 +367,13 @@ class SecurityRepository:
                 return desc[:_max_desc] if len(desc) > _max_desc else desc
         return ""
 
-    @classmethod
-    def warm_whatis_cache(cls, commands: list[str]) -> None:
+    def warm_whatis_cache(self, commands: list[str]) -> None:
         """Pre-warm the whatis cache for a list of commands. Call from background thread."""
-        if cls._whatis_warming:
+        if self._whatis_warming:
             return
-        cls._whatis_warming = True
+        self._whatis_warming = True
         try:
-            cache = cls._load_whatis_cache()
+            cache = self._load_whatis_cache()
             keys_needed: set[str] = set()
 
             for cmd in commands:
@@ -460,14 +390,14 @@ class SecurityRepository:
                 desc = ""
                 for length in range(len(words), 0, -1):
                     hyphenated = "-".join(words[:length])
-                    desc = cls._lookup_whatis(hyphenated)
+                    desc = self._lookup_whatis(hyphenated)
                     if desc:
                         break
                 cache[key] = desc
 
-            cls._save_whatis_cache()
+            self._save_whatis_cache()
         finally:
-            cls._whatis_warming = False
+            self._whatis_warming = False
 
     @staticmethod
     def _lookup_whatis(command: str) -> str:

@@ -19,7 +19,6 @@ from Foundation import NSMakeRect
 from claudewatch.backend.core import features
 from claudewatch.backend.security.dependencies import get_security_service
 from claudewatch.backend.security.models import is_dangerous_permission
-from claudewatch.backend.security.repository import SecurityRepository
 from claudewatch.ui.components.layout import VStack
 from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.cards import card
@@ -461,7 +460,7 @@ class SecurityPane(BasePane):
                 clean_cmd = inner.split(":*")[0]
                 words = clean_cmd.split()
                 words = [w for w in words if "=" not in w]  # drop VAR=val prefixes
-                desc = SecurityRepository.get_command_description(" ".join(words))
+                desc = get_security_service().repository.get_command_description(" ".join(words))
                 display = f"{cmd}  —  {desc}" if desc else cmd
                 if len(display) > _MAX_RULE_LEN:
                     return display[: _MAX_RULE_LEN - 1] + "…"
@@ -491,7 +490,7 @@ class SecurityPane(BasePane):
         base_cmd = inner.split(":*")[0] if ":*" in inner else inner.split()[0] if inner.split() else inner
 
         # Look up man page description
-        desc = SecurityRepository.get_command_description(base_cmd)
+        desc = get_security_service().repository.get_command_description(base_cmd)
 
         if ":*" in inner:
             tool = inner.split(":*")[0]
