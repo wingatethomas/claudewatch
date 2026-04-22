@@ -26,11 +26,6 @@ _CHECK_INTERVAL = 6 * 60 * 60  # 6 hours
 _REPO = "wingatethomas/claudewatch"
 
 
-# ---------------------------------------------------------------------------
-# Pure / stateless helpers — kept at module level
-# ---------------------------------------------------------------------------
-
-
 def _parse_version(tag: str) -> tuple[int, ...]:
     """Parse 'v1.2.3' or '1.2.3' into (1, 2, 3)."""
     stripped = tag.lstrip("v")
@@ -125,11 +120,6 @@ def _find_app_bundle() -> str | None:
         if part.endswith(".app"):
             return "/".join(parts[: i + 1])
     return None
-
-
-# ---------------------------------------------------------------------------
-# UpdateService class
-# ---------------------------------------------------------------------------
 
 
 class UpdateService(BaseService):

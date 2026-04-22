@@ -433,9 +433,6 @@ class DetectionService(BaseService):
         return sessions
 
 
-# ── Module-level pure functions ─────────────
-
-
 def _format_tool_use(tool: dict) -> ToolUseInfo:
     """Format a tool_use block into ToolUseInfo with one_line and context."""
     name = tool.get("name", "Unknown")

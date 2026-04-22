@@ -28,6 +28,18 @@ from claudewatch.backend.graph.models import (
 
 log = logging.getLogger("claudewatch")
 
+
+def _safe_execute(
+    conn: kuzu.Connection, query: str, params: dict[str, object] | None = None
+) -> kuzu.QueryResult | None:
+    """Execute a Kuzu query, logging and returning None on RuntimeError."""
+    try:
+        return conn.execute(query, params or {})
+    except RuntimeError:
+        log.debug("graph query failed: %s", query[:80])
+        return None
+
+
 _PR_PATTERNS = [
     re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)"),
     re.compile(r"https?://gitlab\.com/([^/]+/[^/]+)/-/merge_requests/(\d+)"),
@@ -450,11 +462,7 @@ class SessionETL:
         )
 
     def _safe_execute(self, query: str, params: dict[str, object] | None = None) -> kuzu.QueryResult | None:
-        try:
-            return self._conn.execute(query, params or {})
-        except RuntimeError:
-            log.debug("graph query failed: %s", query[:80])
-            return None
+        return _safe_execute(self._conn, query, params)
 
     def close(self) -> None:
         self._ckpt.close()
@@ -648,11 +656,7 @@ class CodeETL:
                     )
 
     def _safe_execute(self, query: str, params: dict[str, object] | None = None) -> kuzu.QueryResult | None:
-        try:
-            return self._conn.execute(query, params or {})
-        except RuntimeError:
-            log.debug("code etl query failed: %s", query[:80])
-            return None
+        return _safe_execute(self._conn, query, params)
 
 
 class EditMapper:
@@ -766,11 +770,7 @@ class EditMapper:
         return None
 
     def _safe_execute(self, query: str, params: dict[str, object] | None = None) -> kuzu.QueryResult | None:
-        try:
-            return self._conn.execute(query, params or {})
-        except RuntimeError:
-            log.debug("mapper query failed: %s", query[:80])
-            return None
+        return _safe_execute(self._conn, query, params)
 
 
 class GraphQueries:
@@ -987,8 +987,4 @@ class GraphQueries:
         return result.get_next()[0] or 0
 
     def _safe_execute(self, query: str, params: dict[str, object] | None = None) -> kuzu.QueryResult | None:
-        try:
-            return self._conn.execute(query, params or {})
-        except RuntimeError:
-            log.debug("graph query failed: %s", query[:80])
-            return None
+        return _safe_execute(self._conn, query, params)

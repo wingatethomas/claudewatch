@@ -45,6 +45,33 @@ _SYSTEM_PROMPT = (
 )
 
 _CONVERSATION_PREFIX = "Summarize this session:\n\n"
+_MAX_TITLE_LEN = 30
+_REFUSAL_PHRASES = (
+    "i don't see",
+    "i don't have",
+    "no session activity",
+    "no activity to",
+    "paste a prior",
+    "give me instructions",
+    "i can't see",
+    "i cannot see",
+    "there doesn't appear",
+    "could you provide",
+    "could you share",
+    "please provide",
+    "please share",
+)
+
+
+def _truncate_title(title: str) -> str:
+    """Truncate a title to _MAX_TITLE_LEN, preferring word boundaries."""
+    if len(title) <= _MAX_TITLE_LEN:
+        return title
+    truncated = title[:_MAX_TITLE_LEN]
+    last_space = truncated.rfind(" ")
+    if last_space > _MAX_TITLE_LEN // 2:
+        truncated = truncated[:last_space]
+    return truncated
 
 
 def _find_last_recap(lines: list[str]) -> str | None:
@@ -73,22 +100,7 @@ def _parse_summary_response(raw: str) -> tuple[str, str]:  # noqa: PLR0912
 
     # Reject conversational pushback (model refused to summarize)
     lower = raw.lower()
-    _refusal_phrases = (
-        "i don't see",
-        "i don't have",
-        "no session activity",
-        "no activity to",
-        "paste a prior",
-        "give me instructions",
-        "i can't see",
-        "i cannot see",
-        "there doesn't appear",
-        "could you provide",
-        "could you share",
-        "please provide",
-        "please share",
-    )
-    if any(phrase in lower for phrase in _refusal_phrases):
+    if any(phrase in lower for phrase in _REFUSAL_PHRASES):
         return ("", "")
 
     lines = raw.strip().splitlines()
@@ -120,15 +132,7 @@ def _parse_summary_response(raw: str) -> tuple[str, str]:  # noqa: PLR0912
     if not title and not bullets:
         return ("", "")
 
-    _max_title = 30
-    if len(title) > _max_title:
-        truncated = title[:_max_title]
-        last_space = truncated.rfind(" ")
-        if last_space > _max_title // 2:
-            truncated = truncated[:last_space]
-        title = truncated
-
-    return title, "\n".join(bullets)
+    return _truncate_title(title), "\n".join(bullets)
 
 
 class SummaryService(BaseService):
@@ -179,15 +183,11 @@ class SummaryService(BaseService):
         return SummaryRepository.cache_key(cwd, session_id)
 
     def get_cached(self, cwd: str, session_id: str = "") -> str | None:
-        """Return the title (one-liner)."""
+        """Return the cached title (falls back to full summary if title is empty)."""
         entry = self._repo.get_entry(cwd, session_id)
         if not entry:
             return None
         return entry.title or entry.summary
-
-    def get_cached_title(self, cwd: str, session_id: str = "") -> str | None:
-        """Return the short title."""
-        return self.get_cached(cwd, session_id)
 
     def get_cached_summary(self, cwd: str, session_id: str = "") -> str | None:
         """Return the bulleted summary."""
@@ -271,11 +271,7 @@ class SummaryService(BaseService):
         # Check for a native Claude recap before spawning a subprocess
         recap = self._extract_recap(cwd)
         if recap:
-            _max_title = 30
-            title = recap[:_max_title]
-            last_space = title.rfind(" ")
-            if len(recap) > _max_title and last_space > _max_title // 2:
-                title = title[:last_space]
+            title = _truncate_title(recap)
             self.cache_full(cwd, title, recap, session_id)
             log.debug("summarize: using native recap for %s", os.path.basename(cwd))
             return title
