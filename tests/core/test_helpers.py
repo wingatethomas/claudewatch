@@ -1,9 +1,18 @@
-"""Tests for claudewatch.backend.core.helpers — escape_applescript, run_applescript, is_accessibility_trusted."""
+"""Tests for claudewatch.backend.core.helpers — escape_applescript, run_applescript, is_accessibility_trusted, atomic_json_write."""
 
+import json
 import logging
+import os
 from unittest.mock import MagicMock, patch
 
-from claudewatch.backend.core.helpers import escape_applescript, is_accessibility_trusted, run_applescript
+import pytest
+
+from claudewatch.backend.core.helpers import (
+    atomic_json_write,
+    escape_applescript,
+    is_accessibility_trusted,
+    run_applescript,
+)
 
 
 class TestRunApplescript:
@@ -123,3 +132,60 @@ class TestIsAccessibilityTrusted:
             mock_ctypes.cdll.LoadLibrary.side_effect = OSError("not found")
 
             assert is_accessibility_trusted() is False
+
+
+class TestAtomicJsonWrite:
+    """atomic_json_write writes via tmp + os.replace."""
+
+    def test_writes_dict(self, tmp_path) -> None:
+        path = str(tmp_path / "out.json")
+        atomic_json_write(path, {"a": 1, "b": [2, 3]})
+        with open(path) as f:
+            assert json.load(f) == {"a": 1, "b": [2, 3]}
+
+    def test_writes_list(self, tmp_path) -> None:
+        path = str(tmp_path / "out.json")
+        atomic_json_write(path, [{"x": 1}, {"x": 2}])
+        with open(path) as f:
+            assert json.load(f) == [{"x": 1}, {"x": 2}]
+
+    def test_overwrites_existing(self, tmp_path) -> None:
+        path = str(tmp_path / "out.json")
+        with open(path, "w") as f:
+            json.dump({"old": True}, f)
+        atomic_json_write(path, {"new": True})
+        with open(path) as f:
+            assert json.load(f) == {"new": True}
+
+    def test_no_tmp_file_remains_on_success(self, tmp_path) -> None:
+        path = str(tmp_path / "out.json")
+        atomic_json_write(path, {"ok": 1})
+        assert not os.path.exists(f"{path}.tmp")
+
+    def test_indent_default_is_two(self, tmp_path) -> None:
+        path = str(tmp_path / "out.json")
+        atomic_json_write(path, {"a": 1})
+        with open(path) as f:
+            text = f.read()
+        assert '  "a"' in text  # 2-space indent
+
+    def test_indent_none_writes_compact(self, tmp_path) -> None:
+        path = str(tmp_path / "out.json")
+        atomic_json_write(path, {"a": 1, "b": 2}, indent=None)
+        with open(path) as f:
+            text = f.read()
+        assert "\n" not in text
+
+    def test_raises_oserror_for_bad_target_dir(self, tmp_path) -> None:
+        bad_path = str(tmp_path / "does_not_exist" / "out.json")
+        with pytest.raises(FileNotFoundError):
+            atomic_json_write(bad_path, {"a": 1})
+
+    def test_target_unchanged_when_serialization_fails(self, tmp_path) -> None:
+        """Non-JSON-serializable input raises before os.replace runs; target file stays as it was."""
+        path = str(tmp_path / "out.json")
+        atomic_json_write(path, {"original": True})
+        with pytest.raises(TypeError):
+            atomic_json_write(path, {"bad": object()})
+        with open(path) as f:
+            assert json.load(f) == {"original": True}
