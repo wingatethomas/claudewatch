@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+import platform
 import re
 import subprocess
+import sys
 
 from AppKit import (
     NSAlert,
@@ -14,6 +16,7 @@ from AppKit import (
     NSPasteboardTypeString,
 )
 
+from claudewatch import __version__
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.paths import LOG_PATH
@@ -21,6 +24,8 @@ from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.safety import get_represented_object
+
+_DIAGNOSTIC_TAIL_BYTES = 50_000
 
 
 def handle_resume(delegate: object, sender: object) -> None:  # noqa: ARG001
@@ -120,3 +125,39 @@ def handle_view_audit_log(delegate: object, sender: object) -> None:  # noqa: AR
     """Open the audit log in Console.app."""
     if os.path.exists(LOG_PATH):
         subprocess.run(["open", "-a", "Console", LOG_PATH], check=False)  # noqa: S603, S607
+
+
+def build_diagnostic_text(log_path: str = LOG_PATH, *, tail_bytes: int = _DIAGNOSTIC_TAIL_BYTES) -> str:
+    """Build a diagnostic blob for paste-into-issue: version banner + log tail.
+
+    The audit log already excludes session content, prompts, and assistant
+    output (per privacy.md), so the tail is safe to share. The banner adds the
+    minimum context a maintainer needs to triage: app version, macOS version,
+    Python version, and log size.
+    """
+    banner_lines = [
+        f"ClaudeWatch v{__version__}",
+        f"macOS {platform.mac_ver()[0] or 'unknown'}",
+        f"Python {sys.version.split()[0]}",
+    ]
+    log_tail = ""
+    log_note = ""
+    try:
+        size = os.path.getsize(log_path)
+        with open(log_path, "rb") as f:
+            if size > tail_bytes:
+                f.seek(size - tail_bytes)
+                f.readline()  # discard partial first line
+            log_tail = f.read().decode("utf-8", errors="replace")
+        log_note = f"--- claudewatch.log (last {len(log_tail)} bytes of {size}) ---"
+    except OSError:
+        log_note = f"--- claudewatch.log unreadable at {log_path} ---"
+    return "\n".join([*banner_lines, "", log_note, log_tail])
+
+
+def handle_copy_diagnostic(delegate: object, sender: object) -> None:  # noqa: ARG001
+    """Copy a paste-ready diagnostic blob to the clipboard for issue reports."""
+    text = build_diagnostic_text()
+    pb = NSPasteboard.generalPasteboard()
+    pb.clearContents()
+    pb.setString_forType_(text, NSPasteboardTypeString)
