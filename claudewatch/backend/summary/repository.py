@@ -8,6 +8,7 @@ import os
 import threading
 import time
 
+from claudewatch.backend.core.helpers import atomic_json_write
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.summary.models import SummaryEntry
 
@@ -63,15 +64,12 @@ class SummaryRepository:
 
     def _save_store(self) -> None:
         """Atomically write the store to disk."""
-        tmp = self._store_path + ".tmp"
+        serialized = {
+            k: {"title": v.title, "summary": v.summary, "mtime": v.mtime, "jsonl_size": v.jsonl_size}
+            for k, v in self._store.items()
+        }
         try:
-            serialized = {
-                k: {"title": v.title, "summary": v.summary, "mtime": v.mtime, "jsonl_size": v.jsonl_size}
-                for k, v in self._store.items()
-            }
-            with open(tmp, "w") as f:
-                json.dump(serialized, f, indent=2)
-            os.replace(tmp, self._store_path)
+            atomic_json_write(self._store_path, serialized)
         except OSError:
             log.warning("Failed to save summaries to %s", self._store_path)
 

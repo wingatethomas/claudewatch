@@ -8,6 +8,7 @@ import os
 import subprocess
 import time
 
+from claudewatch.backend.core.helpers import atomic_json_write
 from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, proj_key_to_cwd
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.core.settings import get_setting, set_setting
@@ -18,14 +19,6 @@ log = logging.getLogger("claudewatch")
 _CLAUDE_DIR = os.path.expanduser("~/.claude")
 _BASELINE_KEY = "security.last_config_snapshot"
 _WHATIS_SETTINGS_KEY = "security.whatis_cache"
-
-
-def _atomic_json_write(path: str, data: dict[str, object]) -> None:
-    """Write JSON atomically via tmp file + rename."""
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp, path)
 
 
 class SecurityRepository:
@@ -159,7 +152,7 @@ class SecurityRepository:
         data["permissions"] = perms
 
         try:
-            _atomic_json_write(settings_path, data)
+            atomic_json_write(settings_path, data)
             log.info("security: removed permission rule '%s' from %s", rule[:50], settings_path)
             self.invalidate_project_cache()
             return True
@@ -183,7 +176,7 @@ class SecurityRepository:
         data["permissions"] = perms
 
         try:
-            _atomic_json_write(settings_path, data)
+            atomic_json_write(settings_path, data)
             log.info("security: cleared all permissions from %s", settings_path)
             self.invalidate_project_cache()
             return True
@@ -229,7 +222,7 @@ class SecurityRepository:
             perms["allow"] = safe_rules
             data["permissions"] = perms
             try:
-                _atomic_json_write(settings_path, data)
+                atomic_json_write(settings_path, data)
                 log.info("security: removed %d dangerous permissions from %s", removed, settings_path)
                 self.invalidate_project_cache()
             except OSError:
@@ -252,7 +245,7 @@ class SecurityRepository:
             if isinstance(plugins, dict) and plugin_name in plugins:
                 del plugins[plugin_name]
                 data["plugins"] = plugins
-                _atomic_json_write(installed_path, data)
+                atomic_json_write(installed_path, data)
                 success = True
         except (OSError, json.JSONDecodeError):
             log.warning("security: failed to update installed_plugins.json")
@@ -265,7 +258,7 @@ class SecurityRepository:
             if isinstance(enabled, dict) and plugin_name in enabled:
                 del enabled[plugin_name]
                 data["enabledPlugins"] = enabled
-                _atomic_json_write(settings_path, data)
+                atomic_json_write(settings_path, data)
         except (OSError, json.JSONDecodeError):
             log.warning("security: failed to update settings.json")
 
