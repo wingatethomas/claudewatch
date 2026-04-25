@@ -60,6 +60,46 @@ class TestTipTracking:
             assert not svc.is_tip_shown("welcome")
 
 
+class TestMarkShown:
+    """Public mark_shown — used by UI for tips that aren't notification-delivered (e.g. menu nudges)."""
+
+    def test_persists_tip_id(self):
+        svc = _make_service()
+        mock_set = MagicMock()
+        with (
+            patch(f"{_MOD}.get_setting", return_value=[]),
+            patch(f"{_MOD}.set_setting", mock_set),
+        ):
+            svc.mark_shown("guide_nudge")
+        mock_set.assert_called_once_with("onboarding_tips_shown", ["guide_nudge"])
+
+    def test_idempotent_skips_duplicate_persist(self):
+        svc = _make_service()
+        mock_set = MagicMock()
+        with (
+            patch(f"{_MOD}.get_setting", return_value=["guide_nudge"]),
+            patch(f"{_MOD}.set_setting", mock_set),
+        ):
+            svc.mark_shown("guide_nudge")
+        mock_set.assert_not_called()
+
+    def test_preserves_existing_shown_tips(self):
+        svc = _make_service()
+        mock_set = MagicMock()
+        with (
+            patch(f"{_MOD}.get_setting", return_value=["welcome", "attention"]),
+            patch(f"{_MOD}.set_setting", mock_set),
+        ):
+            svc.mark_shown("guide_nudge")
+        mock_set.assert_called_once_with("onboarding_tips_shown", ["welcome", "attention", "guide_nudge"])
+
+    def test_in_memory_fallback_blocks_resends(self):
+        svc = _make_service()
+        with patch(f"{_MOD}.set_setting"), patch(f"{_MOD}.get_setting", return_value=[]):
+            svc.mark_shown("guide_nudge")
+        assert svc.is_tip_shown("guide_nudge")
+
+
 class TestShowTip:
     """Tip delivery via NotificationService.send()."""
 

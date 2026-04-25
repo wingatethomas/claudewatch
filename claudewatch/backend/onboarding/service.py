@@ -55,7 +55,7 @@ class OnboardingService(BaseService):
             return list(tips)
         return []
 
-    def _mark_shown(self, tip_id: str) -> None:
+    def mark_shown(self, tip_id: str) -> None:
         """Persist *tip_id* as shown so it is never delivered again."""
         self._shown_this_session.add(tip_id)
         shown = self._shown_tips()
@@ -81,7 +81,7 @@ class OnboardingService(BaseService):
         if not tip:
             return False
 
-        self._mark_shown(tip_id)
+        self.mark_shown(tip_id)
         self._notification_service.send(tip["title"], "ClaudeWatch", tip["message"])
         log.info("onboarding.tip_shown tip=%s", tip_id)
         return True
