@@ -326,11 +326,7 @@ class ClaudeWatchApp:
     def _menu_key(self) -> str:
         parts = [f"scheme:{theme.scheme.name}"]
         for s in self.sessions:
-            cached = (
-                (self._summary_service.get_cached(s.cwd) or "")
-                if features.is_enabled(FeatureKey.BACKGROUND_SUMMARIES)
-                else ""
-            )
+            cached = self._summary_service.get_cached(s.cwd) or ""
             parts.append(f"{s.pid}:{s.status.value}:{s.project}:{s.task_summary}:{s.last_output}:{cached}")
         return "|".join(parts)
 

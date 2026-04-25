@@ -22,8 +22,7 @@ _SECTIONS = [
         "Session Details",
         [
             "Expand a session to see its summary, token usage, and spawned agents.",
-            "Summaries are generated automatically in the background using claude -p.",
-            "Configure the model and effort level for summaries in Settings.",
+            "Summaries come from Claude Code's own recap entries in the session log — no extra processes, no extra cost.",
         ],
     ),
     (
