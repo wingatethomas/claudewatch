@@ -14,6 +14,7 @@ import uuid
 import kuzu
 
 from claudewatch.backend.core.paths import is_safe_projects_path
+from claudewatch.backend.core.session_log.schema import BLOCK_TOOL_USE
 from claudewatch.backend.graph.models import (
     ActionStep,
     BehaviorResult,
@@ -284,7 +285,7 @@ class SessionETL:
                 for block in content:
                     if not isinstance(block, dict):
                         continue
-                    if block.get("type") == "tool_use":
+                    if block.get("type") == BLOCK_TOOL_USE:
                         action_id = self._process_tool(
                             block,
                             session_id,

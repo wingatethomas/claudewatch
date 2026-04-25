@@ -10,6 +10,7 @@ import time
 
 from claudewatch.backend.core.helpers import atomic_json_write
 from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, proj_key_to_cwd
+from claudewatch.backend.core.session_log.schema import BLOCK_TOOL_USE
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.core.settings import get_setting, set_setting
 from claudewatch.backend.security.models import ConfigSnapshot, is_dangerous_permission
@@ -319,7 +320,7 @@ class SecurityRepository:
                 continue
 
             for block in content:
-                if not isinstance(block, dict) or block.get("type") != "tool_use":
+                if not isinstance(block, dict) or block.get("type") != BLOCK_TOOL_USE:
                     continue
                 if block.get("name") != "Bash":
                     continue

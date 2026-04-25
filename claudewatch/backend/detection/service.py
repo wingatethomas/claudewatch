@@ -13,6 +13,7 @@ from claudewatch.backend.core.models import (
 from claudewatch.backend.core.process.models import ProcessInfo
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.service import BaseService
+from claudewatch.backend.core.session_log.schema import BLOCK_TOOL_USE, TYPE_ASSISTANT, TYPE_USER
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.detection.constants import HOST_PROCESS_NAMES, IDLE_INDICATOR
 from claudewatch.backend.detection.models import PendingToolResult, TerminalMatch, ToolUseInfo
@@ -249,7 +250,7 @@ class DetectionService(BaseService):
                 if dtype in ("system", "last-prompt", "pr-link", "queue-operation", "file-history-snapshot"):
                     continue
 
-                if dtype == "user":
+                if dtype == TYPE_USER:
                     content = d.get("message", {}).get("content", [])
                     if isinstance(content, list):
                         has_tool_result = any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
@@ -258,9 +259,9 @@ class DetectionService(BaseService):
                             continue
                     return _empty
 
-                if dtype == "assistant":
+                if dtype == TYPE_ASSISTANT:
                     content = d.get("message", {}).get("content", [])
-                    tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
+                    tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == BLOCK_TOOL_USE]
                     if tool_uses:
                         if seen_tool_result:
                             return _empty
@@ -270,11 +271,11 @@ class DetectionService(BaseService):
 
                 if dtype == "progress":
                     msg = d["data"]["message"]
-                    if msg.get("type") == "user":
+                    if msg.get("type") == TYPE_USER:
                         return _empty
-                    if msg.get("type") == "assistant":
+                    if msg.get("type") == TYPE_ASSISTANT:
                         content = msg.get("message", {}).get("content", [])
-                        tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
+                        tool_uses = [b for b in content if isinstance(b, dict) and b.get("type") == BLOCK_TOOL_USE]
                         if tool_uses:
                             if seen_tool_result:
                                 return _empty

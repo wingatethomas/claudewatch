@@ -7,6 +7,14 @@ import os
 
 from claudewatch.backend.core.dto import ActivityEventDTO
 from claudewatch.backend.core.service import BaseService
+from claudewatch.backend.core.session_log.schema import (
+    BLOCK_TEXT,
+    BLOCK_TOOL_USE,
+    SUBTYPE_AWAY_SUMMARY,
+    TYPE_ASSISTANT,
+    TYPE_SYSTEM,
+    TYPE_USER,
+)
 from claudewatch.backend.core.session_log.service import SessionLogService
 
 
@@ -41,7 +49,7 @@ class ActivityService(BaseService):
             ts = d.get("timestamp", "")
 
             # Recaps live on the entry itself (d.content), not in message
-            if dtype == "system" and d.get("subtype") == "away_summary":
+            if dtype == TYPE_SYSTEM and d.get("subtype") == SUBTYPE_AWAY_SUMMARY:
                 content = d.get("content", "")
                 if isinstance(content, str) and content.strip():
                     entries.append(
@@ -58,7 +66,7 @@ class ActivityService(BaseService):
             if not isinstance(msg, dict):
                 continue
 
-            if dtype == "user":
+            if dtype == TYPE_USER:
                 content = msg.get("content", "")
                 if isinstance(content, str) and content.strip():
                     entries.append(
@@ -70,7 +78,7 @@ class ActivityService(BaseService):
                         )
                     )
 
-            elif dtype in ("assistant", "progress"):
+            elif dtype in (TYPE_ASSISTANT, "progress"):
                 if dtype == "progress":
                     msg = d.get("data", {}).get("message", {})
                     if not isinstance(msg, dict):
@@ -82,9 +90,9 @@ class ActivityService(BaseService):
                     if not isinstance(block, dict):
                         continue
                     bt = block.get("type", "")
-                    if bt == "tool_use":
+                    if bt == BLOCK_TOOL_USE:
                         entries.append(_parse_tool_use_dto(block, ts))
-                    elif bt == "text":
+                    elif bt == BLOCK_TEXT:
                         text = block.get("text", "").strip()
                         if text:
                             entries.append(

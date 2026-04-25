@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from claudewatch.backend.analytics.models import (
     ACCESS_TYPE,
     FILE_TOOLS,
-    AgentInfo,
     AgentRow,
     BranchActivity,
     CheckpointRow,
@@ -38,7 +37,9 @@ from claudewatch.backend.analytics.models import (
     ToolSequence,
     ToolUsage,
 )
+from claudewatch.backend.core.dto import AgentInfoDTO
 from claudewatch.backend.core.paths import is_safe_projects_path
+from claudewatch.backend.core.session_log.schema import BLOCK_TOOL_USE
 
 log = logging.getLogger("claudewatch")
 
@@ -231,7 +232,7 @@ class Ingest:
         if not isinstance(content, list):
             return
         for block in content:
-            if not isinstance(block, dict) or block.get("type") != "tool_use":
+            if not isinstance(block, dict) or block.get("type") != BLOCK_TOOL_USE:
                 continue
             tool_name = block.get("name", "")
             if not tool_name:
@@ -596,7 +597,7 @@ class AgentScanner:
                 or 0
             )
 
-    def agents_for_session(self, session_id: str) -> list[AgentInfo]:
+    def agents_for_session(self, session_id: str) -> list[AgentInfoDTO]:
         """Query agent info from DB for a given session."""
         with self._session_factory() as s:
             rows = (
@@ -605,7 +606,7 @@ class AgentScanner:
                 .all()
             )
             return [
-                AgentInfo(
+                AgentInfoDTO(
                     agent_id=r.agent_id,
                     session_id=r.session_id,
                     parent_agent_id=r.parent_agent_id or "",

@@ -349,15 +349,3 @@ class BranchActivity:
     last_active: str
 
 
-@dataclass(frozen=True)
-class AgentInfo:
-    agent_id: str
-    session_id: str
-    parent_agent_id: str
-    agent_type: str
-    description: str
-    status: AgentStatus | str
-    started_at: str
-    ended_at: str
-    entry_count: int
-    proj_key: str

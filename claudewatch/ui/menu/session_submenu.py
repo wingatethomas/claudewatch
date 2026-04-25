@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from claudewatch.backend.analytics.models import AgentInfo
+    from claudewatch.backend.core.dto import AgentInfoDTO
 
 from AppKit import NSMenu, NSMenuItem
 
@@ -41,7 +41,7 @@ def build_session_submenu(
     summary: str | None,
     generating: bool = False,
     actions: SessionActions | None = None,
-    agents: list[AgentInfo] | None = None,
+    agents: list[AgentInfoDTO] | None = None,
 ) -> NSMenu:
     """Build a session submenu with Summary, Usage, and contextual actions."""
     sub = NSMenu.alloc().init()
@@ -98,7 +98,7 @@ def build_session_submenu(
     return sub
 
 
-def build_agents_submenu(agents: list[AgentInfo], delegate: object) -> NSMenuItem:
+def build_agents_submenu(agents: list[AgentInfoDTO], delegate: object) -> NSMenuItem:
     """Build an Agents (N) submenu showing type and status for each agent."""
     d = delegate
     agents_item = make_menu_item(f"Agents ({len(agents)})", None, d)
