@@ -139,6 +139,9 @@ class ClaudeWatchApp:
         # Kick off background update check
         _safe_bg(self._update_service.check)
         _safe_bg(self._security_service.warm_command_cache)
+        # Pre-populate caches off the main thread so menu builds do no JSON I/O.
+        _safe_bg(self._bookmark_service.warm)
+        _safe_bg(self._history_service.warm)
 
     def run(self) -> None:
         """Start the app: create status bar item, timer, and run the event loop."""
