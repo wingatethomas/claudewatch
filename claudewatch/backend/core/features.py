@@ -21,7 +21,6 @@ _registry: dict[str, Feature] = {}
 class FeatureKey(StrEnum):
     ACCESSIBILITY = "accessibility"
     AUTO_UPDATES = "auto_updates"
-    BACKGROUND_SUMMARIES = "background_summaries"
     BOOKMARKS = "bookmarks"
     LAUNCH_AT_LOGIN = "launch_at_login"
     NOTIFICATIONS = "notifications"
