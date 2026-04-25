@@ -139,21 +139,17 @@ class NotificationService(BaseService):
         self.last_notification_time = now
 
         for s in new_attention:
+            # Privacy: notifications carry only the tool name + project name.
+            # prompt_text from detection is shaped "ToolName: <input snippet>" — drop the snippet.
+            tool_name = s.prompt_text.split(":", 1)[0].strip() if s.prompt_text else ""
             title = "Claude needs attention"
             subtitle = s.project
-            if s.prompt_text:
-                message = s.prompt_text
-            elif s.task_summary:
-                message = s.task_summary
-            elif s.last_output:
-                message = s.last_output
-            else:
-                message = "Waiting for input"
+            message = f"{tool_name} approval needed" if tool_name else "Waiting for input"
 
             log.info(
-                "notification.sent project=%s action=%s host=%s pid=%d",
+                "notification.sent project=%s tool=%s host=%s pid=%d",
                 s.project,
-                s.prompt_text or "permission",
+                tool_name or "permission",
                 s.host_app.value,
                 s.pid,
             )
