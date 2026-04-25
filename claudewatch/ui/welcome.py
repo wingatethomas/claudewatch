@@ -178,7 +178,7 @@ def show_welcome() -> None:  # noqa: PLR0915
     y -= 18
     _add_label(
         root,
-        "AppleScript (Terminal windows) · claude -p (summaries)",
+        "AppleScript (Terminal windows)",
         y,
         height=18,
         color=theme.secondary,

@@ -54,7 +54,7 @@ Click any session to focus its window. Hover for actions: Activity log, Bookmark
 - **Activity feed** — timeline of user messages, assistant responses, tool calls, and native Claude recaps
 - **Bookmarked sessions** — save sessions to resume later from the Bookmarks submenu
 - **Notifications** — native macOS alerts when sessions need attention, with context about what's being asked
-- **Session summaries** — instant native recaps from Claude's session logs, with `claude -p` fallback generation
+- **Session summaries** — instant native recaps from Claude's session logs
 - **Token usage** — per-session and aggregated usage stats with top sessions breakdown
 - **Insights** — aggregate analytics across sessions (tool usage, model distribution, agent tracking)
 - **Security monitoring** — runtime alerts for Claude Code config changes, suspicious commands, and plugin drift

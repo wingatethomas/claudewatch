@@ -45,12 +45,9 @@ class MenuBuilder:
         self._app = app
         self._menu = menu
         self._delegate = delegate
-        self._summaries_on = features.is_enabled(FeatureKey.BACKGROUND_SUMMARIES)
 
     def _get_summary(self, cwd: str, session_id: str = "") -> str | None:
-        """Return cached summary if summaries are enabled, else None."""
-        if not self._summaries_on:
-            return None
+        """Return cached summary."""
         return self._app._summary_service.get_cached_summary(cwd, session_id)
 
     def build(self, sessions: list[ClaudeSession]) -> None:  # noqa: PLR0912, PLR0915
@@ -342,7 +339,7 @@ class MenuBuilder:
         sub = build_session_submenu(
             delegate=d,
             summary=self._get_summary(s.cwd, s.session_id),
-            generating=self._summaries_on and self._app._summary_service.is_generating(s.cwd, s.session_id),
+            generating=False,
             actions=actions,
             agents=agents,
         )
@@ -353,18 +350,7 @@ class MenuBuilder:
         model = self._app._usage_service.get_model(s.cwd)
         cached = self._get_summary(s.cwd, s.session_id)
         _max_detail_total = 55
-        if cached:
-            oneliner = cached.replace("\n", " ").strip()
-        elif self._summaries_on:
-            status = self._app._summary_service.get_status(s.cwd, s.session_id)
-            if status == "generating":
-                oneliner = "Generating summary…"
-            elif status == "failed":
-                oneliner = "Summary unavailable"
-            else:
-                oneliner = s.detail_line
-        else:
-            oneliner = s.detail_line
+        oneliner = cached.replace("\n", " ").strip() if cached else s.detail_line
         detail_parts = [p for p in [model, oneliner] if p]
         if detail_parts:
             detail_text = " · ".join(detail_parts)
