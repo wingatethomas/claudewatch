@@ -80,6 +80,29 @@ class TestReadFull:
         assert result == []
 
 
+class TestListInCwd:
+    """Tests for SessionLogService.list_in_cwd."""
+
+    def test_delegates_to_list_jsonls_in_cwd(self):
+        svc = SessionLogService()
+        paths = ["/proj/-Users-dev/a.jsonl", "/proj/-Users-dev/b.jsonl"]
+        with patch(f"{MODULE}.list_jsonls_in_cwd", return_value=paths) as mock:
+            result = svc.list_in_cwd("/Users/dev/myapp")
+        mock.assert_called_once_with("/Users/dev/myapp")
+        assert result == paths
+
+
+class TestReadAiTitle:
+    """Tests for SessionLogService.read_ai_title."""
+
+    def test_delegates_to_read_ai_title(self):
+        svc = SessionLogService()
+        with patch(f"{MODULE}.read_ai_title", return_value="Review PR #42") as mock:
+            result = svc.read_ai_title("/path/to/x.jsonl")
+        mock.assert_called_once_with("/path/to/x.jsonl")
+        assert result == "Review PR #42"
+
+
 class TestGetSessionId:
     """Tests for SessionLogService.get_session_id."""
 
