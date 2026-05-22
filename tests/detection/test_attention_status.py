@@ -308,8 +308,8 @@ class TestMatchJsonlByTitle:
     """Tests for _match_jsonl_by_title — picks the right JSONL in shared-CWD setups."""
 
     def test_substring_match_returns_path(self):
-        mapping = {"Review backend API pull request #593": "/proj/a.jsonl"}
-        title = "360privacy — ✳ Review backend API pull request #593 — node ◂ claude — 177×47"
+        mapping = {"Wire up search filter": "/proj/a.jsonl"}
+        title = "myapp — ✳ Wire up search filter — node ◂ claude — 177×47"
         assert _match_jsonl_by_title(title, mapping, "/fallback.jsonl") == "/proj/a.jsonl"
 
     def test_longest_match_wins(self):
