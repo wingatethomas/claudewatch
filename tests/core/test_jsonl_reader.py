@@ -6,6 +6,8 @@ from unittest.mock import patch
 from claudewatch.backend.core.session_log.jsonl import (
     find_most_recent_jsonl,
     get_session_id_from_path,
+    list_jsonls_in_cwd,
+    read_ai_title,
     read_jsonl_full,
     read_jsonl_tail,
 )
@@ -107,3 +109,71 @@ class TestGetSessionIdFromPath:
 
     def test_handles_bare_filename(self):
         assert get_session_id_from_path("session.jsonl") == "session"
+
+
+class TestListJsonlsInCwd:
+    """Tests for list_jsonls_in_cwd."""
+
+    def test_returns_empty_for_missing_dir(self, tmp_path):
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
+            assert list_jsonls_in_cwd("/Users/dev/myapp") == []
+
+    def test_returns_mtime_descending(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        old = proj_dir / "old.jsonl"
+        old.write_text("{}\n")
+        os.utime(old, (1000, 1000))
+        new = proj_dir / "new.jsonl"
+        new.write_text("{}\n")
+        os.utime(new, (2000, 2000))
+
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = list_jsonls_in_cwd("/Users/dev/myapp")
+        assert [os.path.basename(p) for p in result] == ["new.jsonl", "old.jsonl"]
+
+    def test_filters_symlink_traversal(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        evil = outside / "evil.jsonl"
+        evil.write_text("{}\n")
+        (proj_dir / "linked.jsonl").symlink_to(evil)
+        safe = proj_dir / "safe.jsonl"
+        safe.write_text("{}\n")
+
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = list_jsonls_in_cwd("/Users/dev/myapp")
+        assert [os.path.basename(p) for p in result] == ["safe.jsonl"]
+
+
+class TestReadAiTitle:
+    """Tests for read_ai_title."""
+
+    def test_returns_empty_when_no_ai_title(self, tmp_path):
+        f = tmp_path / "s.jsonl"
+        f.write_text('{"type": "assistant", "message": {"content": []}}\n')
+        assert read_ai_title(str(f)) == ""
+
+    def test_returns_ai_title(self, tmp_path):
+        f = tmp_path / "s.jsonl"
+        f.write_text('{"type": "ai-title", "aiTitle": "Fix detection logic"}\n')
+        assert read_ai_title(str(f)) == "Fix detection logic"
+
+    def test_returns_latest_when_multiple(self, tmp_path):
+        f = tmp_path / "s.jsonl"
+        f.write_text(
+            '{"type": "ai-title", "aiTitle": "First title"}\n'
+            '{"type": "assistant", "message": {"content": []}}\n'
+            '{"type": "ai-title", "aiTitle": "Updated title"}\n'
+        )
+        assert read_ai_title(str(f)) == "Updated title"
+
+    def test_returns_empty_for_missing_file(self):
+        assert read_ai_title("/nonexistent/x.jsonl") == ""
+
+    def test_skips_malformed_json(self, tmp_path):
+        f = tmp_path / "s.jsonl"
+        f.write_text('not-json-at-all\n{"type": "ai-title", "aiTitle": "Valid title"}\n')
+        assert read_ai_title(str(f)) == "Valid title"
