@@ -319,6 +319,106 @@ class TestDetectPendingTool:
                 p.stop()
 
 
+class TestDetectSharedCwdAttention:
+    """Regression: shared-CWD ATTENTION must use each session's own JSONL.
+
+    Bug: find_most_recent(cwd) returns the most recently modified JSONL in the
+    project dir. When sibling sessions are actively streaming, the idle session
+    waiting for tool approval reads the wrong file and never reaches ATTENTION.
+    Fix matches each session to its own JSONL via the aiTitle in the window title.
+    """
+
+    def test_idle_session_with_pending_tool_gets_attention(self, tmp_path):
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+
+        # Session A: actively streaming, fresh JSONL. Looks like the most-recent.
+        _write_jsonl(
+            os.path.join(proj_dir, "active.jsonl"),
+            [
+                {"type": "ai-title", "aiTitle": "Refactor billing module"},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}},
+            ],
+        )
+        # Session B: idle, JSONL has unresolved tool_use, older mtime.
+        _write_jsonl(
+            os.path.join(proj_dir, "pending.jsonl"),
+            [
+                {"type": "ai-title", "aiTitle": "Review backend API PR 593"},
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [{"type": "tool_use", "name": "Write", "input": {"file_path": "/x/ONBOARDING.md"}}]
+                    },
+                },
+            ],
+            age_seconds=30,
+        )
+        # Session C: idle, no pending tool, oldest mtime.
+        _write_jsonl(
+            os.path.join(proj_dir, "old.jsonl"),
+            [
+                {"type": "ai-title", "aiTitle": "Diagnose API 422"},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}},
+            ],
+            age_seconds=300,
+        )
+
+        svc = _build_service(
+            str(tmp_path),
+            [100, 200, 300],
+            pid_info={
+                100: ProcessInfo(tty="ttys001", ppid=1, comm="claude"),
+                200: ProcessInfo(tty="ttys002", ppid=1, comm="claude"),
+                300: ProcessInfo(tty="ttys003", ppid=1, comm="claude"),
+            },
+            pid_cwds={100: cwd, 200: cwd, 300: cwd},
+            terminal_titles={
+                "/dev/ttys001": ("myapp — ⠂ Refactor billing module — node ◂ claude", 1),
+                "/dev/ttys002": ("myapp — ✳ Review backend API PR 593 — node ◂ claude", 2),
+                "/dev/ttys003": ("myapp — ✳ Diagnose API 422 — node ◂ claude", 3),
+            },
+        )
+        try:
+            sessions = svc.detect()
+            by_pid = {s.pid: s for s in sessions}
+            assert by_pid[100].status == SessionStatus.WORKING
+            assert by_pid[200].status == SessionStatus.ATTENTION
+            assert "Write" in by_pid[200].prompt_text
+            assert by_pid[300].status == SessionStatus.IDLE
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+    def test_brand_new_session_no_ai_title_falls_back(self, tmp_path):
+        """Session with no aiTitle in window title falls back to most-recent JSONL."""
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        _write_jsonl(
+            os.path.join(proj_dir, "s1.jsonl"),
+            [
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}]},
+                },
+            ],
+            age_seconds=30,
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [100],
+            pid_info={100: ProcessInfo(tty="ttys001", ppid=1, comm="claude")},
+            pid_cwds={100: cwd},
+            terminal_titles={"/dev/ttys001": ("myapp — ✳ claude", 1)},
+        )
+        try:
+            sessions = svc.detect()
+            assert sessions[0].status == SessionStatus.ATTENTION
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+
 class TestDetectIdeSession:
     """IDE sessions have no title indicator — JSONL is the only signal."""
 
