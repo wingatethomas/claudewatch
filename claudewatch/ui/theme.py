@@ -17,6 +17,7 @@ from __future__ import annotations
 from AppKit import NSColor, NSFont
 
 from claudewatch.backend.core import features
+from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.models import SessionStatus
 from claudewatch.ui.components.tokens import Colors, Font, StatusScheme, get_scheme
 
@@ -32,7 +33,7 @@ class Theme:
 
     @property
     def scheme(self) -> StatusScheme:
-        scheme_name = str(features.get_facet("accessibility", "color_scheme") or "Default")
+        scheme_name = str(features.get_facet(FeatureKey.ACCESSIBILITY, "color_scheme") or "Default")
         return get_scheme(scheme_name)
 
     def status_color(self, status: SessionStatus) -> NSColor:

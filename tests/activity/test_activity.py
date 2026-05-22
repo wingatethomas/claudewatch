@@ -288,6 +288,40 @@ class TestParseActivity:
         assert len(result) == 1
         assert result[0].detail == "new msg"
 
+    def test_parses_recap_from_away_summary(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "user", "message": {"content": "fix auth"}, "timestamp": "2026-01-01T00:00:00Z"},
+                {
+                    "type": "system",
+                    "subtype": "away_summary",
+                    "content": "Fixed auth middleware and added tests.",
+                    "timestamp": "2026-01-01T00:05:00Z",
+                },
+            ],
+        )
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
+        recaps = [e for e in result if e.kind == "recap"]
+        assert len(recaps) == 1
+        assert recaps[0].detail == "Fixed auth middleware and added tests."
+
+    def test_ignores_non_recap_system_entries(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "system", "subtype": "other", "content": "not a recap", "timestamp": ""},
+            ],
+        )
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp")
+        assert result == []
+
     def test_skips_non_list_assistant_content(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
         proj_dir.mkdir(parents=True)

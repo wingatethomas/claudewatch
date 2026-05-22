@@ -14,6 +14,7 @@ from AppKit import (
 from Foundation import NSRange
 
 from claudewatch.backend.core import features
+from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.models import ClaudeSession, SessionStatus
 from claudewatch.backend.core.paths import is_homebrew_install
 from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_breakdown
@@ -44,6 +45,10 @@ class MenuBuilder:
         self._app = app
         self._menu = menu
         self._delegate = delegate
+
+    def _get_summary(self, cwd: str, session_id: str = "") -> str | None:
+        """Return cached summary."""
+        return self._app._summary_service.get_cached_summary(cwd, session_id)
 
     def build(self, sessions: list[ClaudeSession]) -> None:  # noqa: PLR0912, PLR0915
         attention = [s for s in sessions if s.status == SessionStatus.ATTENTION]
@@ -169,7 +174,7 @@ class MenuBuilder:
                     self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
         # Bookmarked sessions that are NOT currently active (respects feature toggle)
-        pins = self._app._bookmark_service.get_all() if features.is_enabled("bookmarks") else []
+        pins = self._app._bookmark_service.get_all() if features.is_enabled(FeatureKey.BOOKMARKS) else []
         inactive_pins = [p for p in pins if p.cwd not in active_cwds]
         if inactive_pins:
             self._menu.addItem_(NSMenuItem.separatorItem())
@@ -196,7 +201,7 @@ class MenuBuilder:
                 pin_agents = self._app._analytics_service.agents_for_session(pin.session_id) if pin.session_id else []
                 sub = build_session_submenu(
                     delegate=d,
-                    summary=self._app._summary_service.get_cached_summary(pin.cwd, pin.session_id or ""),
+                    summary=self._get_summary(pin.cwd, pin.session_id or ""),
                     actions=actions,
                     agents=pin_agents,
                 )
@@ -253,7 +258,7 @@ class MenuBuilder:
                 )
                 item_sub = build_session_submenu(
                     delegate=d,
-                    summary=self._app._summary_service.get_cached_summary(entry.cwd, entry.session_id or ""),
+                    summary=self._get_summary(entry.cwd, entry.session_id or ""),
                     actions=actions,
                     agents=entry_agents,
                 )
@@ -333,8 +338,8 @@ class MenuBuilder:
         agents = self._app._analytics_service.agents_for_session(s.session_id) if s.session_id else []
         sub = build_session_submenu(
             delegate=d,
-            summary=self._app._summary_service.get_cached_summary(s.cwd, s.session_id),
-            generating=self._app._summary_service.is_generating(s.cwd, s.session_id),
+            summary=self._get_summary(s.cwd, s.session_id),
+            generating=False,
             actions=actions,
             agents=agents,
         )
@@ -343,17 +348,9 @@ class MenuBuilder:
         self._menu.addItem_(item)
         # Detail line: model + summary (or status as fallback)
         model = self._app._usage_service.get_model(s.cwd)
-        cached = self._app._summary_service.get_cached(s.cwd, s.session_id)
+        cached = self._get_summary(s.cwd, s.session_id)
         _max_detail_total = 55
-        status = self._app._summary_service.get_status(s.cwd, s.session_id)
-        if cached:
-            oneliner = cached.replace("\n", " ").strip()
-        elif status == "generating":
-            oneliner = "Generating summary…"
-        elif status == "failed":
-            oneliner = "Summary unavailable"
-        else:
-            oneliner = s.detail_line
+        oneliner = cached.replace("\n", " ").strip() if cached else s.detail_line
         detail_parts = [p for p in [model, oneliner] if p]
         if detail_parts:
             detail_text = " · ".join(detail_parts)

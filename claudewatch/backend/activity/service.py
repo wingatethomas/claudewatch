@@ -39,6 +39,21 @@ class ActivityService(BaseService):
 
             dtype = d.get("type", "")
             ts = d.get("timestamp", "")
+
+            # Recaps live on the entry itself (d.content), not in message
+            if dtype == "system" and d.get("subtype") == "away_summary":
+                content = d.get("content", "")
+                if isinstance(content, str) and content.strip():
+                    entries.append(
+                        ActivityEventDTO(
+                            kind="recap",
+                            summary=_truncate(content.strip(), 80),
+                            detail=content.strip(),
+                            timestamp=ts,
+                        )
+                    )
+                continue
+
             msg = d.get("message", {})
             if not isinstance(msg, dict):
                 continue

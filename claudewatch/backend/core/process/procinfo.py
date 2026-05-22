@@ -11,9 +11,7 @@ import ctypes.util
 
 from claudewatch.backend.core.process.models import ProcessEntry, ProcessInfo
 
-# ---------------------------------------------------------------------------
 # libproc bindings
-# ---------------------------------------------------------------------------
 
 _libproc_path = ctypes.util.find_library("libproc")
 if _libproc_path is None:
@@ -48,9 +46,7 @@ _PBSD_TDEV_OFFSET = 108
 _VNODEPATHINFO_SIZE = 2352
 _VIP_CDIR_PATH_OFFSET = 152
 
-# ---------------------------------------------------------------------------
 # Function prototypes
-# ---------------------------------------------------------------------------
 
 # int proc_listpids(uint32_t type, uint32_t typeinfo, void *buffer, int buffersize)
 _libproc.proc_listpids.argtypes = [
@@ -80,9 +76,7 @@ _libproc.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32
 _libproc.proc_pidpath.restype = ctypes.c_int
 
 
-# ---------------------------------------------------------------------------
 # Internal helpers
-# ---------------------------------------------------------------------------
 
 
 def _list_all_pids() -> list[int]:
@@ -132,9 +126,7 @@ def _dev_to_tty(dev: int) -> str:
     return "??"
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
 
 
 def get_process_info(pids: list[int]) -> dict[int, ProcessInfo]:

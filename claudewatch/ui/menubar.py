@@ -30,6 +30,7 @@ from claudewatch.backend.analytics.service import AnalyticsService
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core import features
+from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.login_item import refresh_login_item
 from claudewatch.backend.core.models import ClaudeSession
@@ -138,6 +139,9 @@ class ClaudeWatchApp:
         # Kick off background update check
         _safe_bg(self._update_service.check)
         _safe_bg(self._security_service.warm_command_cache)
+        # Pre-populate caches off the main thread so menu builds do no JSON I/O.
+        _safe_bg(self._bookmark_service.warm)
+        _safe_bg(self._history_service.warm)
 
     def run(self) -> None:
         """Start the app: create status bar item, timer, and run the event loop."""
@@ -224,7 +228,7 @@ class ClaudeWatchApp:
 
     def _run_security_checks(self) -> None:
         """Run throttled security config + runtime checks."""
-        interval_str = str(features.get_facet("security", "check_interval") or "30s")
+        interval_str = str(features.get_facet(FeatureKey.SECURITY, "check_interval") or "30s")
         interval = self._INTERVAL_MAP.get(interval_str, 30)
         now = time.time()
         if now - self._last_security_check < interval:
@@ -587,11 +591,11 @@ class ClaudeWatchApp:
         show_preferences()
 
     def _open_guide(self, _: NSMenuItem) -> None:
-        self._onboarding_service._mark_shown("guide_nudge")
+        self._onboarding_service.mark_shown("guide_nudge")
         show_preferences(pane="guide")
 
     def _dismiss_guide(self, _: NSMenuItem) -> None:
-        self._onboarding_service._mark_shown("guide_nudge")
+        self._onboarding_service.mark_shown("guide_nudge")
         self._last_menu_key = ""  # force menu rebuild
 
     def _open_github(self, _: NSMenuItem) -> None:

@@ -195,6 +195,84 @@ class TestNotifyIfNeeded:
         user_info = mock_notif.setUserInfo_.call_args[0][0]
         assert user_info["pid"] == 500
 
+    def test_message_never_includes_command_input(self):
+        """Privacy rule: notification body must contain only tool name + project, never input."""
+        svc = NotificationService()
+        svc.last_notification_time = 0.0
+        mock_cls, mock_notif = _mock_notification_class()
+        svc._center = _mock_center()
+        with (
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
+        ):
+            s = _make_session(
+                pid=600,
+                project="myproject",
+                status=SessionStatus.ATTENTION,
+                prompt_text="Bash: rm -rf /private/secret-dir",
+            )
+            svc.notify_if_needed([s])
+        message = mock_notif.setInformativeText_.call_args[0][0]
+        assert "rm -rf" not in message
+        assert "/private" not in message
+        assert message == "Bash approval needed"
+
+    def test_message_falls_back_to_waiting_when_no_tool(self):
+        svc = NotificationService()
+        svc.last_notification_time = 0.0
+        mock_cls, mock_notif = _mock_notification_class()
+        svc._center = _mock_center()
+        with (
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
+        ):
+            s = _make_session(pid=601, status=SessionStatus.ATTENTION, prompt_text="")
+            svc.notify_if_needed([s])
+        assert mock_notif.setInformativeText_.call_args[0][0] == "Waiting for input"
+
+    def test_message_does_not_leak_task_summary_or_last_output(self):
+        """Even if task_summary/last_output have content, they must not appear in the notification."""
+        svc = NotificationService()
+        svc.last_notification_time = 0.0
+        mock_cls, mock_notif = _mock_notification_class()
+        svc._center = _mock_center()
+        with (
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
+        ):
+            s = _make_session(
+                pid=602,
+                status=SessionStatus.ATTENTION,
+                prompt_text="",
+                last_output="leaked terminal buffer content",
+            )
+            svc.notify_if_needed([s])
+        message = mock_notif.setInformativeText_.call_args[0][0]
+        assert "leaked" not in message
+        assert "terminal buffer" not in message
+
+    def test_log_records_tool_name_not_command(self, caplog):
+        """Audit log must not contain user prompts / command bodies."""
+        svc = NotificationService()
+        svc.last_notification_time = 0.0
+        mock_cls, _ = _mock_notification_class()
+        svc._center = _mock_center()
+        with (
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
+            caplog.at_level("INFO", logger="claudewatch"),
+        ):
+            s = _make_session(
+                pid=603,
+                project="proj",
+                status=SessionStatus.ATTENTION,
+                prompt_text="Bash: cat /etc/passwd",
+            )
+            svc.notify_if_needed([s])
+        joined = " ".join(r.message for r in caplog.records)
+        assert "cat /etc/passwd" not in joined
+        assert "tool=Bash" in joined
+
     def test_notifications_disabled_skips(self):
         svc = NotificationService()
         mock_center = _mock_center()

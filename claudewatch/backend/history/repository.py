@@ -3,10 +3,12 @@
 import json
 import logging
 import os
+import threading
 from datetime import UTC, datetime
 from typing import TypedDict
 
 from claudewatch.backend.core.dto import HistoryEntryDTO
+from claudewatch.backend.core.helpers import atomic_json_write
 from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, HISTORY_PATH, proj_key_to_cwd
 from claudewatch.backend.core.session_log.jsonl import is_safe_jsonl_path, read_jsonl_tail
 
@@ -14,6 +16,9 @@ log = logging.getLogger("claudewatch")
 
 _PATH = HISTORY_PATH
 _MAX_ENTRIES = 50
+
+# Serializes read-modify-write of the history JSON file across threads.
+_LOCK = threading.Lock()
 
 
 class _HistoryRecord(TypedDict):
@@ -33,7 +38,6 @@ def _load() -> list[_HistoryRecord]:
                 return []
     except (OSError, json.JSONDecodeError):
         return []
-    # Prune to max size
     if len(data) > _MAX_ENTRIES:
         data = data[-_MAX_ENTRIES:]
         _save(data)
@@ -41,43 +45,40 @@ def _load() -> list[_HistoryRecord]:
 
 
 def _save(entries: list[_HistoryRecord]) -> None:
-    tmp = _PATH + ".tmp"
     try:
-        with open(tmp, "w") as f:
-            json.dump(entries, f, indent=2)
-        os.replace(tmp, _PATH)
+        atomic_json_write(_PATH, entries)
     except OSError:
         log.warning("Failed to save history to %s", _PATH)
 
 
 def record_session(session_id: str, project: str, cwd: str, model: str, host_app: str) -> None:
     """Record a session when it ends. Deduplicates by CWD (keeps latest)."""
-    entries = _load()
-    ts = datetime.now(tz=UTC).isoformat()
-    # Remove existing entry for same CWD (keep only latest)
-    entries = [e for e in entries if e["cwd"] != cwd]
-    entries.append(
-        _HistoryRecord(
-            session_id=session_id,
-            project=project,
-            cwd=cwd,
-            model=model,
-            host_app=host_app,
-            ended_at=ts,
+    with _LOCK:
+        entries = _load()
+        ts = datetime.now(tz=UTC).isoformat()
+        entries = [e for e in entries if e["cwd"] != cwd]
+        entries.append(
+            _HistoryRecord(
+                session_id=session_id,
+                project=project,
+                cwd=cwd,
+                model=model,
+                host_app=host_app,
+                ended_at=ts,
+            )
         )
-    )
-    # Cap at max
-    if len(entries) > _MAX_ENTRIES:
-        entries = entries[-_MAX_ENTRIES:]
-    _save(entries)
+        if len(entries) > _MAX_ENTRIES:
+            entries = entries[-_MAX_ENTRIES:]
+        _save(entries)
     log.info("history.recorded project=%s", project)
 
 
 def get_history() -> list[HistoryEntryDTO]:
     """Return session history, newest first. Seeds from JSONL on first call."""
-    entries = _load()
-    if not entries:
-        entries = _seed_from_jsonl()
+    with _LOCK:
+        entries = _load()
+        if not entries:
+            entries = _seed_from_jsonl()
     return [
         HistoryEntryDTO(
             session_id=e.get("session_id", ""),
@@ -105,12 +106,10 @@ def _seed_from_jsonl() -> list[_HistoryRecord]:
             jsonls = [f for f in os.listdir(proj_dir) if f.endswith(".jsonl")]
             if not jsonls:
                 continue
-            # Most recent JSONL
             jsonls.sort(key=lambda f: os.path.getmtime(os.path.join(proj_dir, f)), reverse=True)
             session_id = jsonls[0].removesuffix(".jsonl")
             cwd = proj_key_to_cwd(proj_key)
             project = os.path.basename(cwd)
-            # Get model from last few lines
             model = ""
             jsonl_path = os.path.join(proj_dir, jsonls[0])
             if not is_safe_jsonl_path(jsonl_path):
@@ -149,6 +148,7 @@ def _seed_from_jsonl() -> list[_HistoryRecord]:
 
 def remove_history_entry(cwd: str) -> None:
     """Remove a history entry by CWD."""
-    entries = _load()
-    entries = [e for e in entries if e["cwd"] != cwd]
-    _save(entries)
+    with _LOCK:
+        entries = _load()
+        entries = [e for e in entries if e["cwd"] != cwd]
+        _save(entries)

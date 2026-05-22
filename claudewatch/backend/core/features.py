@@ -18,6 +18,15 @@ log = logging.getLogger("claudewatch")
 _registry: dict[str, Feature] = {}
 
 
+class FeatureKey(StrEnum):
+    ACCESSIBILITY = "accessibility"
+    AUTO_UPDATES = "auto_updates"
+    BOOKMARKS = "bookmarks"
+    LAUNCH_AT_LOGIN = "launch_at_login"
+    NOTIFICATIONS = "notifications"
+    SECURITY = "security"
+
+
 class FacetType(StrEnum):
     BOOL = "bool"
     INT = "int"
@@ -38,7 +47,7 @@ class Facet:
 
 @dataclass(frozen=True)
 class Feature:
-    key: str
+    key: FeatureKey | str
     description: str
     default_enabled: bool = True
     facets: tuple[Facet, ...] = ()
@@ -46,7 +55,7 @@ class Feature:
 
 def register(feature: Feature) -> None:
     """Register a feature. Overwrites if key already exists."""
-    _registry[feature.key] = feature
+    _registry[str(feature.key)] = feature
 
 
 def get_all() -> list[Feature]:
@@ -54,8 +63,9 @@ def get_all() -> list[Feature]:
     return list(_registry.values())
 
 
-def is_enabled(key: str) -> bool:
+def is_enabled(key: FeatureKey | str) -> bool:
     """Check if a feature is enabled. Returns False for unregistered features."""
+    key = str(key)
     feature = _registry.get(key)
     if feature is None:
         log.warning("is_enabled called for unregistered feature: %s", key)
@@ -66,13 +76,14 @@ def is_enabled(key: str) -> bool:
     return feature.default_enabled
 
 
-def set_enabled(key: str, enabled: bool) -> None:
+def set_enabled(key: FeatureKey | str, enabled: bool) -> None:
     """Set whether a feature is enabled."""
-    set_setting(f"feature.{key}.enabled", enabled)
+    set_setting(f"feature.{str(key)}.enabled", enabled)
 
 
-def get_facet(key: str, facet_name: str) -> bool | int | str | None:
+def get_facet(key: FeatureKey | str, facet_name: str) -> bool | int | str | None:
     """Get a facet value. Returns None if feature or facet is unregistered."""
+    key = str(key)
     feature = _registry.get(key)
     if feature is None:
         log.warning("get_facet called for unregistered feature: %s", key)
@@ -86,6 +97,6 @@ def get_facet(key: str, facet_name: str) -> bool | int | str | None:
     return facet.default
 
 
-def set_facet(key: str, facet_name: str, value: bool | int | str) -> None:
+def set_facet(key: FeatureKey | str, facet_name: str, value: bool | int | str) -> None:
     """Set a facet value."""
-    set_setting(f"feature.{key}.{facet_name}", value)
+    set_setting(f"feature.{str(key)}.{facet_name}", value)

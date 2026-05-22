@@ -24,6 +24,9 @@ _MAX_SESSIONS = 50
 _TEXT_MAX_LEN = 80
 _WIN_SPLIT_FIELDS = 3
 _TERMINAL_CACHE_TTL = 3  # seconds between AppleScript refreshes
+_AI_TITLE_CACHE_TTL = 3  # seconds between per-CWD ai-title scans
+_JSONL_STREAMING_THRESHOLD = 5  # JSONL modified within this → actively streaming
+_JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
 
 
 class DetectionService(BaseService):
@@ -48,6 +51,9 @@ class DetectionService(BaseService):
         self._host_app_cache: dict[int, HostApp] = {}
         self._terminal_cache: dict[str, tuple[str, int]] | None = None
         self._terminal_cache_time: float = 0
+        # cwd → ({ai_title: jsonl_path}, timestamp). Lets each session in a shared
+        # CWD read its own JSONL instead of the most-recent one for the project.
+        self._ai_title_cache: dict[str, tuple[dict[str, str], float]] = {}
 
     # -- Process info helpers -----------------------------------------------
 
@@ -186,27 +192,52 @@ class DetectionService(BaseService):
         for s in ide_sessions:
             s.tab_index = tty_to_index.get(s.tty)
 
+    # -- Per-session JSONL matching ----------------------------------------
+
+    def _get_ai_title_map(self, cwd: str) -> dict[str, str]:
+        """Return {aiTitle: jsonl_path} for all JSONLs in a CWD.
+
+        Multiple Claude sessions can share a CWD; each writes its own JSONL.
+        Matching a session's window title against this map lets us read the
+        JSONL that actually belongs to that session — not just the most-recent
+        one for the project.
+
+        Cached per cwd with _AI_TITLE_CACHE_TTL.
+        """
+        now = time.time()
+        cached = self._ai_title_cache.get(cwd)
+        if cached is not None and now - cached[1] < _AI_TITLE_CACHE_TTL:
+            return cached[0]
+
+        mapping: dict[str, str] = {}
+        for path in self._session_log_service.list_in_cwd(cwd):
+            title = self._session_log_service.read_ai_title(path)
+            if not title:
+                continue
+            # If two JSONLs share an ai-title (rare, e.g. after a session
+            # restart), the more-recently-modified one wins because list_in_cwd
+            # returns mtime-desc and we keep the first writer.
+            mapping.setdefault(title, path)
+
+        self._ai_title_cache[cwd] = (mapping, now)
+        return mapping
+
     # -- JSONL status helpers -----------------------------------------------
 
-    def _read_jsonl_tail(self, jsonl_path: str | None) -> tuple[str, bool]:
-        """Read the JSONL tail and check freshness. Returns (tail_text, is_fresh).
+    def _read_jsonl_tail(self, jsonl_path: str | None) -> tuple[str, float]:
+        """Read the JSONL tail and return (tail_text, age_seconds).
 
-        Shared by idle and pending-tool checks to avoid duplicate file reads.
+        Age is -1 when the file can't be stat'd. Shared by idle and
+        pending-tool checks to avoid duplicate file reads.
         """
         if not jsonl_path:
-            return ("", False)
-
-        _active_threshold = 5
-        is_fresh = False
+            return ("", -1.0)
         try:
             age = time.time() - os.path.getmtime(jsonl_path)
-            if age < _active_threshold:
-                is_fresh = True
         except OSError:
-            pass
-
+            age = -1.0
         tail = self._session_log_service.read_tail(jsonl_path)
-        return (tail, is_fresh)
+        return (tail, age)
 
     def _check_jsonl_for_idle(self, tail: str) -> SessionStatus:
         """Determine idle/working status from a pre-read JSONL tail."""
@@ -310,6 +341,7 @@ class DetectionService(BaseService):
         log.debug("detect: found %d claude processes", len(pids))
         if not pids:
             self._host_app_cache.clear()
+            self._ai_title_cache.clear()
             return []
 
         all_ps = self._batch_ps_info(pids)
@@ -321,9 +353,18 @@ class DetectionService(BaseService):
         for stale in list(self._host_app_cache.keys()):
             if stale not in live_pids:
                 del self._host_app_cache[stale]
+        live_cwds = set(cwds.values())
+        for stale_cwd in list(self._ai_title_cache.keys()):
+            if stale_cwd not in live_cwds:
+                del self._ai_title_cache[stale_cwd]
 
-        # Cache JSONL path per CWD — avoids repeated directory scans
-        jsonl_path_cache: dict[str, str | None] = {}
+        # Per-CWD fallback (most-recent JSONL) when ai-title matching can't
+        # disambiguate a session. Built lazily.
+        cwd_fallback_jsonl: dict[str, str | None] = {}
+        # Per-session JSONL path — keyed by PID. With shared-CWD setups the
+        # most-recent file in the project dir often belongs to a sibling
+        # session, so we match on aiTitle from the window title instead.
+        session_jsonl: dict[int, str | None] = {}
 
         sessions = []
         for pid in pids:
@@ -370,8 +411,11 @@ class DetectionService(BaseService):
 
             status = _determine_status(window_title)
 
-            if cwd not in jsonl_path_cache:
-                jsonl_path_cache[cwd] = self._session_log_service.find_most_recent(cwd)
+            if cwd not in cwd_fallback_jsonl:
+                cwd_fallback_jsonl[cwd] = self._session_log_service.find_most_recent(cwd)
+            fallback = cwd_fallback_jsonl[cwd]
+            jpath = _match_jsonl_by_title(window_title, self._get_ai_title_map(cwd), fallback)
+            session_jsonl[pid] = jpath
 
             sessions.append(
                 ClaudeSession(
@@ -383,34 +427,44 @@ class DetectionService(BaseService):
                     window_title=window_title,
                     window_id=window_id,
                     status=status,
-                    session_id=self._get_session_id(cwd, jsonl_path_cache[cwd]),
+                    session_id=self._get_session_id(cwd, jpath),
                 )
             )
 
         self._get_ide_tab_indices(sessions, all_ps)
 
-        # JSONL-based status refinement.
-        # The window title is the real-time signal. If it shows a working indicator
-        # (braille spinner), Claude is actively streaming — trust it over JSONL.
-        # For IDE sessions (no title indicators), JSONL is the only signal.
-        cwd_status_cache: dict[str, tuple[PendingToolResult, SessionStatus]] = {}
+        # JSONL-based status refinement. Each session reads its own JSONL
+        # (matched by aiTitle); two sessions in the same CWD won't share state.
+        # The window title is the real-time signal — if it shows a working
+        # indicator (braille spinner) we trust it over JSONL. For IDE sessions
+        # (no title indicators) JSONL is the only signal.
+        path_status_cache: dict[str, tuple[PendingToolResult, SessionStatus]] = {}
         for s in sessions:
             if not s.cwd:
                 continue
-            if s.cwd not in cwd_status_cache:
-                jpath = jsonl_path_cache.get(s.cwd)
-                tail, is_fresh = self._read_jsonl_tail(jpath)
-                if is_fresh:
-                    # JSONL modified < 5s ago — Claude is actively working, skip checks
+            jpath = session_jsonl.get(s.pid)
+            cache_key = jpath or ""
+            if cache_key not in path_status_cache:
+                tail, age = self._read_jsonl_tail(jpath)
+                if 0 <= age < _JSONL_STREAMING_THRESHOLD:
+                    # JSONL modified < 5s ago — Claude is actively streaming
                     tool_result = PendingToolResult(has_pending=False, one_line="", context="")
                     jsonl_status = SessionStatus.WORKING
                 else:
                     tool_result = self._check_jsonl_for_pending_tool(tail)
-                    jsonl_status = self._check_jsonl_for_idle(tail) if not tool_result.has_pending else s.status
-                cwd_status_cache[s.cwd] = (tool_result, jsonl_status)
+                    if tool_result.has_pending:
+                        jsonl_status = s.status
+                    elif age >= _JSONL_IDLE_THRESHOLD:
+                        # Not modified in 60s+ — definitely idle. The last-message
+                        # heuristic is unreliable for abandoned sessions that ended on a user message.
+                        jsonl_status = SessionStatus.IDLE
+                    else:
+                        jsonl_status = self._check_jsonl_for_idle(tail)
+                path_status_cache[cache_key] = (tool_result, jsonl_status)
 
-            tool_result, jsonl_status = cwd_status_cache[s.cwd]
+            tool_result, jsonl_status = path_status_cache[cache_key]
             title_confirms_working = _has_working_indicator(s.window_title)
+            title_confirms_idle = IDLE_INDICATOR in s.window_title
 
             if tool_result.has_pending and not title_confirms_working:
                 # JSONL has unresolved tool_use, and window title doesn't show active work.
@@ -418,15 +472,12 @@ class DetectionService(BaseService):
                 s.status = SessionStatus.ATTENTION
                 s.prompt_text = tool_result.one_line
                 s.prompt_context = tool_result.context
-            elif not tool_result.has_pending and not title_confirms_working:
-                # No pending tools and not actively streaming — use JSONL status
+            elif not tool_result.has_pending and not title_confirms_working and not title_confirms_idle:
+                # Title has no indicator (IDE session or unknown host) — use JSONL status.
                 s.status = jsonl_status
-            # else: title confirms working — keep the WORKING status from window title
+            # else: title confirms IDLE or WORKING — trust it
 
         return sessions
-
-
-# ── Module-level pure functions ─────────────
 
 
 def _format_tool_use(tool: dict) -> ToolUseInfo:
@@ -448,6 +499,29 @@ def _format_tool_use(tool: dict) -> ToolUseInfo:
     if len(one_line) > _TEXT_MAX_LEN:
         one_line = one_line[:77] + "..."
     return ToolUseInfo(one_line=one_line, context="\n".join(context_parts))
+
+
+def _match_jsonl_by_title(
+    window_title: str,
+    ai_title_map: dict[str, str],
+    fallback: str | None,
+) -> str | None:
+    """Find the JSONL whose aiTitle appears as a substring of the window title.
+
+    Used to disambiguate multiple Claude sessions sharing a CWD. Longest match
+    wins so a substring title doesn't shadow a more specific one. Returns
+    `fallback` if nothing matches — which preserves prior behavior for
+    brand-new sessions (no ai-title yet) and IDE sessions (no terminal title).
+    """
+    if not window_title or not ai_title_map:
+        return fallback
+    best_title = ""
+    best_path = fallback
+    for title, path in ai_title_map.items():
+        if title and title in window_title and len(title) > len(best_title):
+            best_title = title
+            best_path = path
+    return best_path
 
 
 def _has_working_indicator(window_title: str) -> bool:

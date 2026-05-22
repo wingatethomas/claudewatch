@@ -90,27 +90,65 @@ class TestCheckJsonlForIdle:
 class TestReadJsonlTail:
     def test_returns_empty_when_no_path(self):
         svc = _make_detection_service()
-        tail, is_fresh = svc._read_jsonl_tail(None)
+        tail, age = svc._read_jsonl_tail(None)
         assert tail == ""
-        assert is_fresh is False
+        assert age == -1.0
 
-    def test_returns_fresh_when_recently_modified(self, tmp_path):
+    def test_returns_small_age_when_recently_modified(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
         _write_jsonl(jsonl, [{"type": "assistant", "message": {"content": []}}])
-        # File is fresh (just created)
         svc = _make_detection_service(read_tail=jsonl.read_text())
-        tail, is_fresh = svc._read_jsonl_tail(str(jsonl))
-        assert is_fresh is True
+        tail, age = svc._read_jsonl_tail(str(jsonl))
+        assert 0 <= age < 5
         assert tail != ""
 
-    def test_returns_not_fresh_when_old(self, tmp_path):
+    def test_returns_large_age_when_old(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
         _write_jsonl(jsonl, [{"type": "assistant", "message": {"content": []}}])
-        os.utime(jsonl, (time.time() - 10, time.time() - 10))
+        os.utime(jsonl, (time.time() - 3600, time.time() - 3600))
         svc = _make_detection_service(read_tail=jsonl.read_text())
-        tail, is_fresh = svc._read_jsonl_tail(str(jsonl))
-        assert is_fresh is False
+        tail, age = svc._read_jsonl_tail(str(jsonl))
+        assert age >= 3600
         assert tail != ""
+
+
+class TestMultipleSessionsPerCwd:
+    """When multiple sessions share a CWD, each should be classified by its own title."""
+
+    def test_idle_title_not_overridden_by_sibling_session_activity(self):
+        """Regression: sibling session's fresh JSONL should not flip an IDLE title to WORKING.
+
+        Scenario: 3 sessions in /myapp. One is active (fresh JSONL).
+        The two idle sessions have `✳` in their titles. They should stay IDLE
+        even though find_most_recent(cwd) returns the active session's fresh file.
+        """
+        # Verify _determine_status trusts ✳. The caller now only applies the
+        # shared-CWD jsonl_status when the title has no indicator.
+        assert _determine_status("myapp — ✳ Claude Code") == SessionStatus.IDLE
+
+
+class TestStaleSessionClassification:
+    """Stale JSONLs (>60s) must be classified IDLE regardless of last message type."""
+
+    def test_stale_file_with_last_user_message_is_idle(self, tmp_path):
+        """Regression: 3-day-old session ending on user message should be IDLE, not WORKING."""
+        jsonl = tmp_path / "session.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": "hi"}]}},
+                {"type": "user", "message": {"content": "follow-up question"}},
+            ],
+        )
+        three_days_ago = time.time() - 3 * 86400
+        os.utime(jsonl, (three_days_ago, three_days_ago))
+
+        svc = _make_detection_service(read_tail=jsonl.read_text())
+        tail, age = svc._read_jsonl_tail(str(jsonl))
+        # _check_jsonl_for_idle alone would say WORKING (last is user)
+        assert svc._check_jsonl_for_idle(tail) == SessionStatus.WORKING
+        # Caller must gate on age — old files are IDLE
+        assert age > 60
 
 
 class TestCheckJsonlForPendingTool:

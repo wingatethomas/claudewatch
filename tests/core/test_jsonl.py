@@ -106,9 +106,9 @@ class TestCheckJsonlForPendingTool:
         result = _make_service()._check_jsonl_for_pending_tool(jsonl.read_text())
         assert result.has_pending is True
 
-    def test_fresh_file_treated_as_working(self, tmp_path):
-        """Fresh JSONL (< 5s) means _read_jsonl_tail returns is_fresh=True.
-        The caller (detect loop) skips pending check when fresh."""
+    def test_fresh_file_has_small_age(self, tmp_path):
+        """Fresh JSONL (< 5s) means _read_jsonl_tail returns a small age.
+        The caller (detect loop) uses age to decide streaming vs idle."""
         jsonl = tmp_path / "session.jsonl"
         _write_jsonl(
             jsonl,
@@ -125,8 +125,8 @@ class TestCheckJsonlForPendingTool:
         )
 
         svc = _make_service(str(jsonl), jsonl.read_text())
-        _, is_fresh = svc._read_jsonl_tail(str(jsonl))
-        assert is_fresh is True
+        _, age = svc._read_jsonl_tail(str(jsonl))
+        assert 0 <= age < 5
 
     def test_nonexistent_project_dir(self):
         result = _make_service()._check_jsonl_for_pending_tool("")

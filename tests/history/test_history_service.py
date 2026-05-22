@@ -69,6 +69,46 @@ class TestHistoryService:
         mock_repo.remove_history_entry.assert_called_once_with("/tmp/cwd")
 
     @patch("claudewatch.backend.history.service.history_repo")
+    def test_get_all_caches_after_first_call(self, mock_repo):
+        mock_repo.get_history.return_value = []
+        self.svc.get_all()
+        self.svc.get_all()
+        self.svc.get_all()
+        assert mock_repo.get_history.call_count == 1
+
+    @patch("claudewatch.backend.history.service.history_repo")
+    def test_record_invalidates_cache(self, mock_repo):
+        mock_repo.get_history.return_value = []
+        self.svc.get_all()
+        self.svc.record("sid", "proj", "/tmp/c", "model", "Terminal")
+        self.svc.get_all()
+        assert mock_repo.get_history.call_count == 2
+
+    @patch("claudewatch.backend.history.service.history_repo")
+    def test_remove_invalidates_cache(self, mock_repo):
+        mock_repo.get_history.return_value = []
+        self.svc.get_all()
+        self.svc.remove("/tmp/c")
+        self.svc.get_all()
+        assert mock_repo.get_history.call_count == 2
+
+    @patch("claudewatch.backend.history.service.history_repo")
+    def test_warm_populates_cache(self, mock_repo):
+        mock_repo.get_history.return_value = []
+        self.svc.warm()
+        self.svc.get_all()
+        assert mock_repo.get_history.call_count == 1
+
+    @patch("claudewatch.backend.history.service.history_repo")
+    def test_get_all_returns_independent_list(self, mock_repo):
+        mock_repo.get_history.return_value = [
+            HistoryEntryDTO(session_id="s1", project="p", cwd="/tmp/a", model="m", host_app="Terminal", ended_at=""),
+        ]
+        result = self.svc.get_all()
+        result.clear()
+        assert len(self.svc.get_all()) == 1
+
+    @patch("claudewatch.backend.history.service.history_repo")
     def test_get_all_returns_frozen_dtos(self, mock_repo):
         mock_repo.get_history.return_value = [
             HistoryEntryDTO(

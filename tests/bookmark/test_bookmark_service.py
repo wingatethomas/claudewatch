@@ -66,11 +66,75 @@ class TestBookmarkService:
         assert result[0].timestamp == ""
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
-    def test_get_bookmarked_cwds_delegates_to_repo(self, mock_repo):
-        mock_repo.get_bookmarked_cwds.return_value = {"/tmp/a", "/tmp/b"}
-        result = self.svc.get_bookmarked_cwds()
-        assert result == {"/tmp/a", "/tmp/b"}
-        mock_repo.get_bookmarked_cwds.assert_called_once()
+    def test_get_bookmarked_cwds_derives_from_get_all(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = [
+            BookmarkDTO(session_id="s1", project="p", cwd="/tmp/a", note="", timestamp=""),
+            BookmarkDTO(session_id="s2", project="p", cwd="/tmp/b", note="", timestamp=""),
+        ]
+        assert self.svc.get_bookmarked_cwds() == {"/tmp/a", "/tmp/b"}
+
+
+class TestBookmarkServiceCache:
+    """Cache isolates the menu build (main thread) from JSON file reads."""
+
+    def setup_method(self) -> None:
+        self.svc = BookmarkService()
+
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
+    def test_get_all_caches_after_first_call(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = []
+        self.svc.get_all()
+        self.svc.get_all()
+        self.svc.get_all()
+        assert mock_repo.get_bookmarks.call_count == 1
+
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
+    def test_get_bookmarked_cwds_uses_cache(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = []
+        self.svc.get_all()
+        self.svc.get_bookmarked_cwds()
+        assert mock_repo.get_bookmarks.call_count == 1
+
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
+    def test_add_invalidates_cache(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = []
+        self.svc.get_all()
+        self.svc.add("s", "p", "/tmp/cwd", "note")
+        self.svc.get_all()
+        assert mock_repo.get_bookmarks.call_count == 2
+
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
+    def test_remove_invalidates_cache(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = []
+        self.svc.get_all()
+        self.svc.remove("/tmp/cwd")
+        self.svc.get_all()
+        assert mock_repo.get_bookmarks.call_count == 2
+
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
+    def test_clear_all_invalidates_cache(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = []
+        self.svc.get_all()
+        self.svc.clear_all()
+        self.svc.get_all()
+        assert mock_repo.get_bookmarks.call_count == 2
+
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
+    def test_warm_populates_cache(self, mock_repo):
+        mock_repo.get_bookmarks.return_value = []
+        self.svc.warm()
+        self.svc.get_all()
+        assert mock_repo.get_bookmarks.call_count == 1
+
+    @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
+    def test_get_all_returns_independent_list(self, mock_repo):
+        """Mutating the returned list must not poison the cache."""
+        mock_repo.get_bookmarks.return_value = [
+            BookmarkDTO(session_id="s1", project="p", cwd="/tmp/a", note="", timestamp=""),
+        ]
+        result = self.svc.get_all()
+        result.clear()
+        assert len(self.svc.get_all()) == 1
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_get_all_returns_frozen_dtos(self, mock_repo):
