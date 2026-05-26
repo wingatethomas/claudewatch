@@ -147,8 +147,15 @@ def build_diagnostic_text(log_path: str = LOG_PATH, *, tail_bytes: int = _DIAGNO
         with open(log_path, "rb") as f:
             if size > tail_bytes:
                 f.seek(size - tail_bytes)
-                f.readline()  # discard partial first line
-            log_tail = f.read().decode("utf-8", errors="replace")
+            raw = f.read()
+        if size > tail_bytes:
+            # When the seek lands mid-line, drop everything up to the first newline.
+            # Skip the discard if doing so would leave nothing — a single huge line
+            # is better than no log at all.
+            idx = raw.find(b"\n")
+            if 0 <= idx < len(raw) - 1:
+                raw = raw[idx + 1 :]
+        log_tail = raw.decode("utf-8", errors="replace")
         log_note = f"--- claudewatch.log (last {len(log_tail)} bytes of {size}) ---"
     except OSError:
         log_note = f"--- claudewatch.log unreadable at {log_path} ---"
