@@ -4,20 +4,40 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 from claudewatch.backend.core.dto import TokenUsageDTO
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
 
-# Model display names — keep factual. Use readable family + version so rows
-# show "opus 4.6" rather than the ambiguous "o4.6" which reads as a typo.
-MODEL_DISPLAY_NAMES: dict[str, str] = {
-    "claude-opus-4-6": "opus 4.6",
-    "claude-sonnet-4-6": "sonnet 4.6",
-    "claude-haiku-4-5": "haiku 4.5",
-    "claude-sonnet-4-5-20250514": "sonnet 4.5",
-    "claude-opus-4-20250512": "opus 4",
-}
+# Parses a raw Claude model id into family + major[.minor]. Trailing 8+ digit
+# release dates are ignored so 'claude-haiku-4-5-20251001' collapses to the
+# same label as 'claude-haiku-4-5'. The minor segment is capped at six digits
+# so it never swallows a date suffix that follows a model with no minor
+# component (e.g. 'claude-opus-4-20250512' → family 4, no minor, date dropped).
+_MODEL_RE = re.compile(r"^claude-(opus|sonnet|haiku)-(\d+)(?:-(\d{1,6}))?(?:-\d{8,})?$")
+
+
+def model_display_name(raw_id: str) -> str:
+    """Render a Claude model id as a short human label.
+
+    Examples:
+        'claude-opus-4-7'            -> 'opus 4.7'
+        'claude-haiku-4-5-20251001'  -> 'haiku 4.5'
+        'claude-opus-4-20250512'     -> 'opus 4'
+
+    Any id that doesn't match the expected pattern is returned unchanged —
+    callers display the raw value as a last-resort fallback rather than
+    inventing a label.
+    """
+    if not raw_id:
+        return raw_id
+    match = _MODEL_RE.match(raw_id)
+    if not match:
+        return raw_id
+    family, major, minor = match.group(1), match.group(2), match.group(3)
+    return f"{family} {major}.{minor}" if minor else f"{family} {major}"
+
 
 _MAX_TOKEN_CACHE = 200
 
@@ -79,10 +99,12 @@ class UsageService(BaseService):
         self._token_cache: dict[str, tuple[TokenUsageDTO, float]] = {}
 
     def get_model(self, cwd: str) -> str:
-        """Get the model name for the most recent session at a CWD.
+        """Get the raw model id for the most recent session at a CWD.
 
         Reads the last assistant message from the JSONL to find the model.
-        Returns a display name like 'opus 4.6' or empty string if unavailable.
+        Returns the raw id (e.g. 'claude-opus-4-6') so callers store a stable
+        identifier; display name mapping via model_display_name is done at
+        render time. Returns empty string if unavailable or synthetic.
         """
         path = self._session_log_service.find_most_recent(cwd)
         if not path:
@@ -99,12 +121,12 @@ class UsageService(BaseService):
                 msg = d.get("message", {})
                 if isinstance(msg, dict):
                     model = msg.get("model", "")
-                    if model:
+                    if model and model != "<synthetic>":
                         last_model = model
             except (json.JSONDecodeError, AttributeError):
                 continue
 
-        return MODEL_DISPLAY_NAMES.get(last_model, last_model)
+        return last_model
 
     def get_tokens(self, cwd: str) -> TokenUsageDTO:
         """Get token usage breakdown for the most recent session at a CWD.

@@ -20,6 +20,23 @@ _MAX_ENTRIES = 50
 # Serializes read-modify-write of the history JSON file across threads.
 _LOCK = threading.Lock()
 
+# Stale model values from earlier versions that stored display names directly,
+# or from JSONL placeholders. Mapped back to a raw model id (or "" when no
+# canonical id exists) so the display layer renders one consistent format.
+_STALE_MODEL_MAP: dict[str, str] = {
+    "o4.6": "claude-opus-4-6",
+    "opus 4.6": "claude-opus-4-6",
+    "s4.6": "claude-sonnet-4-6",
+    "sonnet 4.6": "claude-sonnet-4-6",
+    "h4.5": "claude-haiku-4-5",
+    "haiku 4.5": "claude-haiku-4-5",
+    "s4.5": "claude-sonnet-4-5-20250514",
+    "sonnet 4.5": "claude-sonnet-4-5-20250514",
+    "o4": "claude-opus-4-20250512",
+    "opus 4": "claude-opus-4-20250512",
+    "<synthetic>": "",
+}
+
 
 class _HistoryRecord(TypedDict):
     session_id: str
@@ -30,6 +47,11 @@ class _HistoryRecord(TypedDict):
     ended_at: str
 
 
+def _normalize_model(value: str) -> str:
+    """Translate stale display-name or placeholder values back to raw ids."""
+    return _STALE_MODEL_MAP.get(value, value)
+
+
 def _load() -> list[_HistoryRecord]:
     try:
         with open(_PATH) as f:
@@ -38,8 +60,17 @@ def _load() -> list[_HistoryRecord]:
                 return []
     except (OSError, json.JSONDecodeError):
         return []
+    mutated = False
     if len(data) > _MAX_ENTRIES:
         data = data[-_MAX_ENTRIES:]
+        mutated = True
+    for entry in data:
+        original = entry.get("model", "")
+        normalized = _normalize_model(original)
+        if normalized != original:
+            entry["model"] = normalized
+            mutated = True
+    if mutated:
         _save(data)
     return data
 
@@ -74,10 +105,15 @@ def record_session(session_id: str, project: str, cwd: str, model: str, host_app
 
 
 def get_history() -> list[HistoryEntryDTO]:
-    """Return session history, newest first. Seeds from JSONL on first call."""
+    """Return session history, newest first. Seeds from JSONL on first call.
+
+    Only seeds when the history file does not yet exist on disk. Once the file
+    exists, an empty list is treated as "user cleared their history" and is
+    left empty — otherwise deleted entries would reappear from ~/.claude/.
+    """
     with _LOCK:
         entries = _load()
-        if not entries:
+        if not entries and not os.path.exists(_PATH):
             entries = _seed_from_jsonl()
     return [
         HistoryEntryDTO(
@@ -119,7 +155,7 @@ def _seed_from_jsonl() -> list[_HistoryRecord]:
                 try:
                     d = json.loads(line)
                     m = d.get("message", {}).get("model", "")
-                    if m:
+                    if m and m != "<synthetic>":
                         model = m
                 except (json.JSONDecodeError, AttributeError):
                     pass
