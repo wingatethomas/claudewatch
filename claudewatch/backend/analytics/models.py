@@ -347,5 +347,3 @@ class BranchActivity:
     session_count: int
     event_count: int
     last_active: str
-
-
