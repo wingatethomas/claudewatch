@@ -73,9 +73,7 @@ class TestMaintenance:
         with store.session() as s:
             assert s.query(EventRow).count() == 1
 
-    def test_prunes_across_all_time_series_tables(
-        self, store: AnalyticsStore, maintenance: Maintenance
-    ) -> None:
+    def test_prunes_across_all_time_series_tables(self, store: AnalyticsStore, maintenance: Maintenance) -> None:
         now = time.time()
         old = now - 365 * 86400
         with store.session() as s:
@@ -106,9 +104,7 @@ class TestMaintenance:
         with store.session() as s:
             assert s.query(EventRow).count() == 1
 
-    def test_prunes_old_sessions_by_last_epoch(
-        self, store: AnalyticsStore, maintenance: Maintenance
-    ) -> None:
+    def test_prunes_old_sessions_by_last_epoch(self, store: AnalyticsStore, maintenance: Maintenance) -> None:
         now = time.time()
         _seed_session(store, session_id="old", last_epoch=now - 365 * 86400)
         _seed_session(store, session_id="recent", last_epoch=now - 1 * 86400)
@@ -118,9 +114,7 @@ class TestMaintenance:
             remaining = {row.session_id for row in s.query(SessionRow).all()}
         assert remaining == {"recent"}
 
-    def test_keeps_sessions_with_null_last_epoch(
-        self, store: AnalyticsStore, maintenance: Maintenance
-    ) -> None:
+    def test_keeps_sessions_with_null_last_epoch(self, store: AnalyticsStore, maintenance: Maintenance) -> None:
         _seed_session(store, session_id="never_active", last_epoch=None)
         maintenance.prune_older_than(time.time() - 180 * 86400)
         with store.session() as s:
@@ -137,9 +131,7 @@ class TestMaintenance:
             remaining = {row.agent_id for row in s.query(AgentRow).all()}
         assert remaining == {"a-alive"}
 
-    def test_returns_empty_dict_when_nothing_to_prune(
-        self, store: AnalyticsStore, maintenance: Maintenance
-    ) -> None:
+    def test_returns_empty_dict_when_nothing_to_prune(self, store: AnalyticsStore, maintenance: Maintenance) -> None:
         deleted = maintenance.prune_older_than(time.time() - 180 * 86400)
         assert deleted == {}
 
