@@ -23,9 +23,16 @@ class TestModelDisplayNames:
     """MODEL_DISPLAY_NAMES mapping tests."""
 
     def test_known_models_have_display_names(self):
-        assert MODEL_DISPLAY_NAMES["claude-opus-4-6"] == "o4.6"
-        assert MODEL_DISPLAY_NAMES["claude-sonnet-4-6"] == "s4.6"
-        assert MODEL_DISPLAY_NAMES["claude-haiku-4-5"] == "h4.5"
+        assert MODEL_DISPLAY_NAMES["claude-opus-4-6"] == "opus 4.6"
+        assert MODEL_DISPLAY_NAMES["claude-sonnet-4-6"] == "sonnet 4.6"
+        assert MODEL_DISPLAY_NAMES["claude-haiku-4-5"] == "haiku 4.5"
+
+    def test_display_names_are_human_readable(self):
+        # Each display name should start with a real word, not a single letter.
+        # This guards against regressing to cryptic forms like "o4.6".
+        for display in MODEL_DISPLAY_NAMES.values():
+            family = display.split()[0]
+            assert len(family) > 1, f"display name {display!r} starts with a single letter"
 
 
 class TestUsageServiceGetModel:
@@ -42,7 +49,7 @@ class TestUsageServiceGetModel:
     def test_returns_display_name_for_known_model(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
-        assert svc.get_model("/Users/dev/myapp") == "o4.6"
+        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
 
     def test_returns_raw_model_for_unknown(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "claude-future-99"}}) + "\n"
@@ -57,12 +64,12 @@ class TestUsageServiceGetModel:
             + "\n"
         )
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
-        assert svc.get_model("/Users/dev/myapp") == "o4.6"
+        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
 
     def test_handles_invalid_json_lines(self):
         tail = "not json\n" + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
-        assert svc.get_model("/Users/dev/myapp") == "o4.6"
+        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
 
     def test_handles_non_dict_message(self):
         tail = json.dumps({"type": "assistant", "message": "string"}) + "\n"

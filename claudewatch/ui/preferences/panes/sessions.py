@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 
 import objc
@@ -168,14 +169,74 @@ def rebuild_rows(delegate: object) -> None:
         empty_label.setFrame_(NSMakeRect(0, total_h // 2, w, 18))
         inner.addSubview_(empty_label)
     else:
+        project_labels = disambiguate_projects(entries)
         y = total_h
         for entry in entries:
             y -= _ROW_H
-            _add_row(inner, delegate, entry, 0, y, w, _ROW_H, pinned_cwds, usage_svc, summary_svc)
+            display_project = project_labels.get(entry.get("cwd", ""), entry.get("project", "unknown"))
+            _add_row(
+                inner,
+                delegate,
+                entry,
+                0,
+                y,
+                w,
+                _ROW_H,
+                pinned_cwds,
+                usage_svc,
+                summary_svc,
+                display_project,
+            )
 
     scroll.setDocumentView_(inner)
     inner.scrollPoint_((0, total_h))  # scroll to top (newest first)
     delegate._history_inner = inner
+
+
+def disambiguate_projects(entries: list[dict]) -> dict[str, str]:
+    """Build a cwd -> display-name map that disambiguates duplicate basenames.
+
+    When two history entries share the same ``project`` basename (e.g. multiple
+    repos with an ``api`` subdirectory), prepend the parent directory so each
+    row carries enough context to be identifiable. Unique basenames are kept
+    as-is.
+    """
+    by_name: dict[str, list[str]] = {}
+    for entry in entries:
+        name = entry.get("project", "")
+        cwd = entry.get("cwd", "")
+        if not cwd:
+            continue
+        by_name.setdefault(name, []).append(cwd)
+
+    labels: dict[str, str] = {}
+    for name, cwds in by_name.items():
+        if len(cwds) <= 1:
+            for cwd in cwds:
+                labels[cwd] = name or "unknown"
+            continue
+        for cwd in cwds:
+            parent = os.path.basename(os.path.dirname(cwd))
+            labels[cwd] = f"{parent}/{name}" if parent else (name or "unknown")
+    return labels
+
+
+def _resolve_model_label(model_raw: str, cwd: str, usage_svc: object) -> str:
+    """Map a raw model id to its display name, falling back to live JSONL lookup.
+
+    History rows occasionally have an empty ``model`` field — sessions seeded
+    before any assistant message was written, or older entries missing the
+    field. When that happens, ask the usage service for the latest model
+    recorded on disk so the row still shows something useful.
+    """
+    if model_raw:
+        return MODEL_DISPLAY_NAMES.get(model_raw, model_raw)
+    if not cwd:
+        return ""
+    try:
+        return usage_svc.get_model(cwd)  # type: ignore[attr-defined]
+    except (OSError, AttributeError):
+        return ""
 
 
 def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
@@ -189,32 +250,34 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     pinned_cwds: set[str],
     usage_svc: object,
     summary_svc: object,
+    display_project: str = "",
 ) -> None:
     """Build a single history row using the SessionRow composite."""
 
-    project = entry.get("project", "unknown")
+    raw_project = entry.get("project", "unknown")
+    project = display_project or raw_project
     cwd = entry.get("cwd", "")
     session_id = entry.get("session_id", "")
     model_raw = entry.get("model", "")
-    model = MODEL_DISPLAY_NAMES.get(model_raw, model_raw)
+    model = _resolve_model_label(model_raw, cwd, usage_svc)
     ended_at = entry.get("ended_at", "")
     is_pinned = cwd in pinned_cwds
 
-    # Build context menu
-    row_menu = _build_row_menu(delegate, entry, is_pinned, cwd, session_id, project, summary_svc)
+    # Build context menu — use raw project as the stable identity for action payloads.
+    row_menu = _build_row_menu(delegate, entry, is_pinned, cwd, session_id, raw_project, summary_svc)
 
     # Gather display data
     token_data = usage_svc.get_tokens(cwd)
     token_compact = format_tokens_compact(token_data)
     cached_title = summary_svc.get_cached(cwd) if cwd else ""
 
-    # Bookmark callback wiring
+    # Bookmark callback wiring — payload carries the raw project as identity.
     if is_pinned:
         bookmark_action = objc.selector(delegate.unbookmarkSession_, signature=b"v@:@")
         bookmark_rep = cwd
     else:
         bookmark_action = objc.selector(delegate.bookmarkSession_, signature=b"v@:@")
-        bookmark_rep = f"{session_id}|{project}|{cwd}"
+        bookmark_rep = f"{session_id}|{raw_project}|{cwd}"
 
     row = build_session_row(
         project=project,
