@@ -78,3 +78,5 @@ jobs:
         run: |
           uv export --no-hashes --no-emit-project | grep -vi 'pyobjc' > requirements.txt
           uvx pip-audit -r requirements.txt --no-deps
+      - name: Static security analysis (bandit)
+        run: uvx bandit -r claudewatch/ --severity-level medium --confidence-level medium

@@ -100,7 +100,7 @@ def handle_open_claude_usage(delegate: object, sender: object) -> None:  # noqa:
     cwd = ""
     home = os.path.expanduser("~")
     # Prefer real project dirs over worktrees/temp/home dirs
-    skip_patterns = (".claude/worktrees", "/tmp/", "/var/folders/")  # noqa: S108
+    skip_patterns = (".claude/worktrees", "/tmp/", "/var/folders/")  # noqa: S108  # nosec B108 - matching paths, not creating tempfiles
     for entry in history:
         if not entry.cwd or not os.path.isdir(entry.cwd):
             continue

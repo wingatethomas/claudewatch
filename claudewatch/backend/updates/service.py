@@ -277,7 +277,7 @@ rm -rf "{tmp_dir}"
         script_path = os.path.join(tmp_dir, "swap.sh")
         with open(script_path, "w") as f:
             f.write(script)
-        os.chmod(script_path, 0o755)  # noqa: S103
+        os.chmod(script_path, 0o755)  # noqa: S103  # nosec B103 - intentional exec bit on our own swap script
 
         # Launch the swap script detached from our process
         subprocess.Popen(  # noqa: S603
