@@ -222,6 +222,12 @@ class PrefsDelegate(NSObject):
         handle_view_audit_log(self, sender)
 
     @objc_callback
+    def copyDiagnostic_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.ui.preferences.handlers.actions import handle_copy_diagnostic
+
+        handle_copy_diagnostic(self, sender)
+
+    @objc_callback
     def openRepo_(self, sender: objc.objc_object) -> None:  # noqa: N802
         import webbrowser
 
