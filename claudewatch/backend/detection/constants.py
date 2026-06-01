@@ -1,16 +1,5 @@
 from claudewatch.backend.core.models import HostApp
 
-# Permission prompt markers in the terminal buffer
-PROMPT_KEYWORDS = [
-    "do you want to proceed",
-    "yes, allow",
-    "esc to cancel",
-    "allow once",
-    "allow always",
-    "yes, proceed",
-    "approve this action",
-]
-
 # Claude Code sets ✳ in the title when idle (not actively streaming)
 IDLE_INDICATOR = "✳"
 
