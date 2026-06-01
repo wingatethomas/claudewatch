@@ -225,14 +225,18 @@ class UpdateService(BaseService):
             log.warning("update: download failed: %s", e)
             return False
 
-        # Verify checksum if available
+        # Checksum verification is mandatory. If the release doesn't expose a
+        # readable checksums.txt, refuse to install — an attacker who can block
+        # just the checksum fetch shouldn't be able to skip verification.
         expected = _fetch_expected_checksum(tag)
-        if expected:
-            actual = _sha256_file(zip_path)
-            if actual != expected:
-                log.warning("update: checksum mismatch — expected %s, got %s", expected[:12], actual[:12])
-                return False
-            log.info("update: checksum verified")
+        if not expected:
+            log.warning("update: no checksum available for %s — refusing to install", tag)
+            return False
+        actual = _sha256_file(zip_path)
+        if actual != expected:
+            log.warning("update: checksum mismatch — expected %s, got %s", expected[:12], actual[:12])
+            return False
+        log.info("update: checksum verified")
 
         # Unzip
         extract_dir = os.path.join(tmp_dir, "extracted")
