@@ -14,6 +14,14 @@ class SessionLogService(BaseService):
         """
         return jsonl.find_most_recent_jsonl(cwd)
 
+    def list_in_cwd(self, cwd: str) -> list[str]:
+        """List all JSONL paths in a CWD's project dir, mtime descending."""
+        return jsonl.list_jsonls_in_cwd(cwd)
+
+    def read_ai_title(self, path: str) -> str:
+        """Return the latest aiTitle recorded in a JSONL, or "" if none."""
+        return jsonl.read_ai_title(path)
+
     def is_safe_path(self, path: str) -> bool:
         """Check that a JSONL path resolves to within CLAUDE_PROJECTS_DIR."""
         return jsonl.is_safe_jsonl_path(path)

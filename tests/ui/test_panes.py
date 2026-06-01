@@ -181,3 +181,124 @@ class TestSessionsPane:
         pane = SessionsPane(_make_delegate(), 490, 620)
         view = pane.build()
         assert isinstance(view, NSView)
+
+    @patch("claudewatch.ui.preferences.panes.sessions.get_usage_service")
+    @patch("claudewatch.ui.preferences.panes.sessions.get_summary_service")
+    @patch("claudewatch.ui.preferences.panes.sessions.get_bookmark_service")
+    @patch("claudewatch.ui.preferences.panes.sessions.get_history_service")
+    def test_renders_with_duplicate_project_names(
+        self,
+        mock_history: MagicMock,
+        mock_bookmark: MagicMock,
+        mock_summary: MagicMock,
+        mock_usage: MagicMock,
+    ) -> None:
+        from claudewatch.backend.core.dto import HistoryEntryDTO, TokenUsageDTO
+        from claudewatch.ui.preferences.panes.sessions import SessionsPane
+
+        mock_history.return_value.get_all.return_value = [
+            HistoryEntryDTO(
+                session_id="s1",
+                project="api",
+                cwd="/Users/dev/backend/api",
+                model="claude-opus-4-6",
+                host_app="Terminal",
+                ended_at="2026-05-20T12:00:00",
+            ),
+            HistoryEntryDTO(
+                session_id="s2",
+                project="api",
+                cwd="/Users/dev/frontend/api",
+                model="",
+                host_app="Terminal",
+                ended_at="2026-05-20T13:00:00",
+            ),
+        ]
+        mock_bookmark.return_value.get_bookmarked_cwds.return_value = set()
+        mock_summary.return_value.get_cached.return_value = ""
+        mock_summary.return_value.get_cached_summary.return_value = ""
+        mock_usage.return_value.get_tokens.return_value = TokenUsageDTO(0, 0, 0, 0)
+        mock_usage.return_value.get_model.return_value = "sonnet 4.6"
+
+        pane = SessionsPane(_make_delegate(), 490, 620)
+        view = pane.build()
+        assert isinstance(view, NSView)
+
+
+class TestDisambiguateProjects:
+    def test_unique_names_kept_as_is(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import disambiguate_projects
+
+        entries = [
+            {"project": "myapp", "cwd": "/Users/dev/myapp"},
+            {"project": "tools", "cwd": "/Users/dev/tools"},
+        ]
+        labels = disambiguate_projects(entries)
+        assert labels["/Users/dev/myapp"] == "myapp"
+        assert labels["/Users/dev/tools"] == "tools"
+
+    def test_duplicate_names_prepend_parent(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import disambiguate_projects
+
+        entries = [
+            {"project": "api", "cwd": "/Users/dev/backend/api"},
+            {"project": "api", "cwd": "/Users/dev/frontend/api"},
+            {"project": "webtools", "cwd": "/Users/dev/webtools"},
+        ]
+        labels = disambiguate_projects(entries)
+        assert labels["/Users/dev/backend/api"] == "backend/api"
+        assert labels["/Users/dev/frontend/api"] == "frontend/api"
+        assert labels["/Users/dev/webtools"] == "webtools"
+
+    def test_missing_cwd_is_skipped(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import disambiguate_projects
+
+        entries = [
+            {"project": "api", "cwd": ""},
+            {"project": "api", "cwd": "/Users/dev/api"},
+        ]
+        labels = disambiguate_projects(entries)
+        assert labels == {"/Users/dev/api": "api"}
+
+    def test_empty_input(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import disambiguate_projects
+
+        assert disambiguate_projects([]) == {}
+
+
+class TestResolveModelLabel:
+    def test_known_model_id_maps_to_display_name(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
+
+        svc = MagicMock()
+        assert _resolve_model_label("claude-opus-4-6", "/tmp/proj", svc) == "opus 4.6"
+        svc.get_model.assert_not_called()
+
+    def test_unknown_model_id_falls_through(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
+
+        svc = MagicMock()
+        assert _resolve_model_label("claude-future-99", "/tmp/proj", svc) == "claude-future-99"
+        svc.get_model.assert_not_called()
+
+    def test_empty_model_falls_back_to_usage_service(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
+
+        svc = MagicMock()
+        svc.get_model.return_value = "sonnet 4.6"
+        assert _resolve_model_label("", "/tmp/proj", svc) == "sonnet 4.6"
+        svc.get_model.assert_called_once_with("/tmp/proj")
+
+    def test_empty_model_and_no_cwd_returns_empty(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
+
+        svc = MagicMock()
+        assert _resolve_model_label("", "", svc) == ""
+        svc.get_model.assert_not_called()
+
+    def test_usage_service_failure_returns_empty(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
+
+        svc = MagicMock()
+        svc.get_model.side_effect = OSError("disk error")
+        assert _resolve_model_label("", "/tmp/proj", svc) == ""

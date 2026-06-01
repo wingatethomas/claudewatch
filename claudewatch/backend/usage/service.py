@@ -9,13 +9,14 @@ from claudewatch.backend.core.dto import TokenUsageDTO
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
 
-# Model display names — keep factual
+# Model display names — keep factual. Use readable family + version so rows
+# show "opus 4.6" rather than the ambiguous "o4.6" which reads as a typo.
 MODEL_DISPLAY_NAMES: dict[str, str] = {
-    "claude-opus-4-6": "o4.6",
-    "claude-sonnet-4-6": "s4.6",
-    "claude-haiku-4-5": "h4.5",
-    "claude-sonnet-4-5-20250514": "s4.5",
-    "claude-opus-4-20250512": "o4",
+    "claude-opus-4-6": "opus 4.6",
+    "claude-sonnet-4-6": "sonnet 4.6",
+    "claude-haiku-4-5": "haiku 4.5",
+    "claude-sonnet-4-5-20250514": "sonnet 4.5",
+    "claude-opus-4-20250512": "opus 4",
 }
 
 _MAX_TOKEN_CACHE = 200
