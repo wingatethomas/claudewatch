@@ -87,6 +87,17 @@ class TestReadJsonlTail:
     def test_returns_empty_for_missing_file(self):
         assert read_jsonl_tail("/nonexistent/path.jsonl") == ""
 
+    def test_refuses_symlink_at_final_component(self, tmp_path):
+        """O_NOFOLLOW: a symlink at the final path component must not be followed."""
+        target = tmp_path / "real.jsonl"
+        target.write_text('{"a": 1}\n')
+        link = tmp_path / "linked.jsonl"
+        link.symlink_to(target)
+        # Direct read of the real file works.
+        assert '{"a": 1}' in read_jsonl_tail(str(target))
+        # Read through the symlink is refused (returns "").
+        assert read_jsonl_tail(str(link)) == ""
+
 
 class TestReadJsonlFull:
     """Tests for read_jsonl_full."""
@@ -99,6 +110,15 @@ class TestReadJsonlFull:
 
     def test_returns_empty_for_missing_file(self):
         assert read_jsonl_full("/nonexistent/path.jsonl") == []
+
+    def test_refuses_symlink_at_final_component(self, tmp_path):
+        """O_NOFOLLOW: symlink at the final path component must not be followed."""
+        target = tmp_path / "real.jsonl"
+        target.write_text('{"x": 1}\n')
+        link = tmp_path / "linked.jsonl"
+        link.symlink_to(target)
+        assert read_jsonl_full(str(target)) == ['{"x": 1}\n']
+        assert read_jsonl_full(str(link)) == []
 
 
 class TestGetSessionIdFromPath:
