@@ -6,8 +6,9 @@ import logging
 import time
 from typing import Protocol
 
-from claudewatch.backend.analytics.models import AgentInfo, AnalyticsStore
+from claudewatch.backend.analytics.models import AnalyticsStore
 from claudewatch.backend.analytics.repository import AgentScanner, Ingest, Maintenance, Queries
+from claudewatch.backend.core.dto import AgentInfoDTO
 from claudewatch.backend.core.paths import cwd_to_proj_key
 from claudewatch.backend.core.service import BaseService
 
@@ -70,7 +71,7 @@ class AnalyticsService(BaseService):
 
     # --- Agent details (main thread, for menu submenu) ---
 
-    def agents_for_session(self, session_id: str) -> list[AgentInfo]:
+    def agents_for_session(self, session_id: str) -> list[AgentInfoDTO]:
         return self._scanner.agents_for_session(session_id)
 
     # --- Queries ---

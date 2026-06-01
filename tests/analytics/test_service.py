@@ -5,8 +5,8 @@ import os
 
 import pytest
 
-from claudewatch.backend.analytics.models import AgentInfo
 from claudewatch.backend.analytics.service import AnalyticsService
+from claudewatch.backend.core.dto import AgentInfoDTO
 
 
 def _write_jsonl(path: str, entries: list[dict]) -> None:
@@ -86,7 +86,7 @@ class TestAnalyticsService:
         service.full_scan()
         agents = service.agents_for_session("sess-1")
         assert len(agents) == 1
-        assert isinstance(agents[0], AgentInfo)
+        assert isinstance(agents[0], AgentInfoDTO)
 
     def test_enrich_sessions(self, service: AnalyticsService, projects_dir: str) -> None:
         agent_dir = os.path.join(projects_dir, "-Users-dev-app", "sess-1", "agent-x")
