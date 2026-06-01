@@ -13,14 +13,14 @@ class TestRecordSession:
     def test_records_new_session(self, tmp_path):
         fake_path = str(tmp_path / "history.json")
         with patch.object(history, "_PATH", fake_path):
-            history.record_session("sess-1", "myproject", "/tmp/myproject", "o4.6", "Terminal")
+            history.record_session("sess-1", "myproject", "/tmp/myproject", "claude-opus-4-6", "Terminal")
             entries = history._load()
 
         assert len(entries) == 1
         assert entries[0]["session_id"] == "sess-1"
         assert entries[0]["project"] == "myproject"
         assert entries[0]["cwd"] == "/tmp/myproject"
-        assert entries[0]["model"] == "o4.6"
+        assert entries[0]["model"] == "claude-opus-4-6"
         assert entries[0]["host_app"] == "Terminal"
         assert "ended_at" in entries[0]
 
@@ -247,3 +247,142 @@ class TestLoadEdgeCases:
             result = history._load()
 
         assert len(result) == 50
+
+
+class TestModelNormalization:
+    """_load migrates stale display-name model values back to raw ids."""
+
+    def test_old_short_display_name_normalized(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with open(fake_path, "w") as f:
+            json.dump([{"cwd": "/a", "session_id": "s1", "model": "o4.6"}], f)
+
+        with patch.object(history, "_PATH", fake_path):
+            result = history._load()
+
+        assert result[0]["model"] == "claude-opus-4-6"
+
+    def test_new_long_display_name_normalized(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with open(fake_path, "w") as f:
+            json.dump([{"cwd": "/a", "session_id": "s1", "model": "opus 4.6"}], f)
+
+        with patch.object(history, "_PATH", fake_path):
+            result = history._load()
+
+        assert result[0]["model"] == "claude-opus-4-6"
+
+    def test_synthetic_placeholder_cleared(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with open(fake_path, "w") as f:
+            json.dump([{"cwd": "/a", "session_id": "s1", "model": "<synthetic>"}], f)
+
+        with patch.object(history, "_PATH", fake_path):
+            result = history._load()
+
+        assert result[0]["model"] == ""
+
+    def test_raw_id_untouched(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with open(fake_path, "w") as f:
+            json.dump([{"cwd": "/a", "session_id": "s1", "model": "claude-opus-4-7"}], f)
+
+        with patch.object(history, "_PATH", fake_path):
+            result = history._load()
+
+        assert result[0]["model"] == "claude-opus-4-7"
+
+    def test_normalization_persisted(self, tmp_path):
+        # Stale values should be rewritten back to disk so future reads are clean.
+        fake_path = str(tmp_path / "history.json")
+        with open(fake_path, "w") as f:
+            json.dump([{"cwd": "/a", "session_id": "s1", "model": "o4.6"}], f)
+
+        with patch.object(history, "_PATH", fake_path):
+            history._load()
+
+        with open(fake_path) as f:
+            on_disk = json.load(f)
+        assert on_disk[0]["model"] == "claude-opus-4-6"
+
+
+class TestNoReseedOnEmpty:
+    """get_history must NOT reseed if the file exists but the list is empty."""
+
+    def test_no_reseed_when_file_exists_empty(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with open(fake_path, "w") as f:
+            json.dump([], f)  # user cleared their history
+
+        proj_base = tmp_path / "projects"
+        proj_dir = proj_base / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "session.jsonl").write_text("{}\n")
+
+        with (
+            patch.object(history, "_PATH", fake_path),
+            patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
+        ):
+            result = history.get_history()
+
+        assert result == []
+
+    def test_seeds_when_file_missing(self, tmp_path):
+        # Inverse: first-ever launch should still seed from JSONL.
+        fake_path = str(tmp_path / "history.json")
+        proj_base = tmp_path / "projects"
+        proj_dir = proj_base / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        with open(proj_dir / "session.jsonl", "w") as f:
+            f.write(json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n")
+
+        with (
+            patch.object(history, "_PATH", fake_path),
+            patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
+        ):
+            result = history.get_history()
+
+        assert len(result) >= 1
+
+
+class TestSeedFiltersSynthetic:
+    """_seed_from_jsonl must not store '<synthetic>' as a model value."""
+
+    def test_synthetic_in_tail_treated_as_empty(self, tmp_path):
+        proj_base = tmp_path / "projects"
+        proj_dir = proj_base / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        jsonl = proj_dir / "session.jsonl"
+        with open(jsonl, "w") as f:
+            f.write(json.dumps({"type": "assistant", "message": {"model": "<synthetic>"}}) + "\n")
+
+        fake_path = str(tmp_path / "history.json")
+        with (
+            patch.object(history, "_PATH", fake_path),
+            patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
+        ):
+            result = history._seed_from_jsonl()
+
+        assert result[0]["model"] == ""
+
+    def test_real_model_preferred_over_synthetic(self, tmp_path):
+        proj_base = tmp_path / "projects"
+        proj_dir = proj_base / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        jsonl = proj_dir / "session.jsonl"
+        with open(jsonl, "w") as f:
+            f.write(json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n")
+            f.write(json.dumps({"type": "assistant", "message": {"model": "<synthetic>"}}) + "\n")
+
+        fake_path = str(tmp_path / "history.json")
+        with (
+            patch.object(history, "_PATH", fake_path),
+            patch("claudewatch.backend.history.repository.CLAUDE_PROJECTS_DIR", str(proj_base)),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(proj_base)),
+        ):
+            result = history._seed_from_jsonl()
+
+        assert result[0]["model"] == "claude-opus-4-6"

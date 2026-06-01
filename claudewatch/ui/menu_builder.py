@@ -17,7 +17,7 @@ from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.models import ClaudeSession, SessionStatus
 from claudewatch.backend.core.paths import is_homebrew_install
-from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_breakdown
+from claudewatch.backend.usage.service import format_tokens_breakdown, model_display_name
 from claudewatch.ui.icons import (
     get_app_icon,
     get_status_colors,
@@ -235,7 +235,7 @@ class MenuBuilder:
             recent_menu_item.setImage_(sf_icon("clock.arrow.circlepath"))
             recent_submenu = NSMenu.alloc().init()
             for entry in recent_entries:
-                model = MODEL_DISPLAY_NAMES.get(entry.model, entry.model)
+                model = model_display_name(entry.model)
 
                 detail_parts = [p for p in [entry.ended_at[:10] if entry.ended_at else "", model] if p]
                 label = entry.project

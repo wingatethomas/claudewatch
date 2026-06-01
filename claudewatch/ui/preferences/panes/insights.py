@@ -9,7 +9,7 @@ from AppKit import NSScrollView, NSView
 from Foundation import NSMakeRect
 
 from claudewatch.backend.analytics.dependencies import get_analytics_service
-from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES
+from claudewatch.backend.usage.service import model_display_name
 from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.cards import card
 from claudewatch.ui.components.widgets.labels import label, secondary_label
@@ -130,7 +130,7 @@ class InsightsPane(BasePane):
             my = models_h - _card_pad
             for model_entry in models:
                 my -= _row_h
-                display = MODEL_DISPLAY_NAMES.get(model_entry.name, model_entry.name)
+                display = model_display_name(model_entry.name)
                 model_label = label(display, size=Font.SECONDARY)
                 model_label.setFrame_(NSMakeRect(_card_pad, my, 200, 18))
                 models_content.addSubview_(model_label)
