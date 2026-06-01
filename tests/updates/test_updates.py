@@ -158,3 +158,34 @@ class TestUpdateService:
             result = self.svc.download_and_apply("v1.0.0")
 
         assert result is False
+
+    def test_download_refuses_install_without_checksum(self, tmp_path):
+        """If checksums.txt can't be fetched, the install must abort."""
+        download_result = MagicMock(returncode=0, stderr="")
+        with (
+            patch(f"{MODULE}._find_app_bundle", return_value="/Applications/ClaudeWatch.app"),
+            patch(f"{MODULE}.tempfile.mkdtemp", return_value=str(tmp_path)),
+            patch(f"{MODULE}.subprocess.run", return_value=download_result) as mock_run,
+            patch(f"{MODULE}._fetch_expected_checksum", return_value=None),
+            patch(f"{MODULE}._sha256_file") as mock_sha,
+        ):
+            # Pre-populate the would-be zip so the function gets past the download step.
+            (tmp_path / "update.zip").write_bytes(b"fake-zip")
+            result = self.svc.download_and_apply("v1.0.0")
+        assert result is False
+        mock_sha.assert_not_called()  # never compute a hash we can't verify against
+        assert mock_run.called
+
+    def test_download_refuses_install_on_checksum_mismatch(self, tmp_path):
+        """A real checksum that doesn't match the zip's hash must abort the install."""
+        download_result = MagicMock(returncode=0, stderr="")
+        with (
+            patch(f"{MODULE}._find_app_bundle", return_value="/Applications/ClaudeWatch.app"),
+            patch(f"{MODULE}.tempfile.mkdtemp", return_value=str(tmp_path)),
+            patch(f"{MODULE}.subprocess.run", return_value=download_result),
+            patch(f"{MODULE}._fetch_expected_checksum", return_value="a" * 64),
+            patch(f"{MODULE}._sha256_file", return_value="b" * 64),
+        ):
+            (tmp_path / "update.zip").write_bytes(b"fake-zip")
+            result = self.svc.download_and_apply("v1.0.0")
+        assert result is False
