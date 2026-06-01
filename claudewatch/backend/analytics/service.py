@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Protocol
 
 from claudewatch.backend.analytics.models import AgentInfo, AnalyticsStore
-from claudewatch.backend.analytics.repository import AgentScanner, Ingest, Queries
+from claudewatch.backend.analytics.repository import AgentScanner, Ingest, Maintenance, Queries
 from claudewatch.backend.core.paths import cwd_to_proj_key
 from claudewatch.backend.core.service import BaseService
 
 log = logging.getLogger("claudewatch")
+
+_DEFAULT_RETENTION_DAYS = 180
 
 
 class _Enrichable(Protocol):
@@ -27,7 +30,16 @@ class AnalyticsService(BaseService):
         self._ingest = Ingest(self._store.session)
         self._scanner = AgentScanner(self._store.session, projects_dir)
         self._queries = Queries(self._store.session)
+        self._maintenance = Maintenance(self._store.session)
         self._projects_dir = projects_dir
+
+    def prune_old_data(self, days: int = _DEFAULT_RETENTION_DAYS) -> dict[str, int]:
+        """Delete analytics rows older than ``days``. Returns ``{table: rows_deleted}``."""
+        cutoff = time.time() - days * 86400
+        deleted = self._maintenance.prune_older_than(cutoff)
+        if deleted:
+            log.info("analytics.pruned days=%d %s", days, deleted)
+        return deleted
 
     # --- ETL (background thread) ---
 

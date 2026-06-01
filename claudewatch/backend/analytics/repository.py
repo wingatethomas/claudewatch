@@ -678,6 +678,51 @@ class AgentScanner:
         return "stale"
 
 
+class Maintenance:
+    """Retention sweep for analytics tables."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def prune_older_than(self, cutoff_epoch: float) -> dict[str, int]:
+        """Delete time-series rows whose ts_epoch / last_epoch is older than ``cutoff_epoch``.
+
+        Sessions are pruned by ``last_epoch`` (last activity). Agents whose session no
+        longer exists become orphans and are pruned too. Returns ``{table: rows_deleted}``.
+        """
+        deleted: dict[str, int] = {}
+        with self._session_factory() as s:
+            for row_cls, label in (
+                (EventRow, "events"),
+                (ToolRow, "tools"),
+                (FileRow, "files"),
+                (TokenRow, "tokens"),
+                (PullRequestRow, "pull_requests"),
+            ):
+                count = s.query(row_cls).filter(row_cls.ts_epoch < cutoff_epoch).delete()
+                if count:
+                    deleted[label] = count
+
+            session_count = (
+                s.query(SessionRow)
+                .filter(SessionRow.last_epoch.is_not(None), SessionRow.last_epoch < cutoff_epoch)
+                .delete()
+            )
+            if session_count:
+                deleted["sessions"] = session_count
+
+            agent_count = (
+                s.query(AgentRow)
+                .filter(~AgentRow.session_id.in_(select(SessionRow.session_id)))
+                .delete(synchronize_session=False)
+            )
+            if agent_count:
+                deleted["agents"] = agent_count
+
+            s.commit()
+        return deleted
+
+
 class Queries:
     """All read-only analytics queries via SQLAlchemy ORM."""
 

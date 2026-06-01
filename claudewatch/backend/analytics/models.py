@@ -225,6 +225,16 @@ class AnalyticsStore:
             if row is None:
                 s.add(SchemaVersionRow(version=_SCHEMA_VERSION))
                 s.commit()
+                return
+            if row.version != _SCHEMA_VERSION:
+                # No automatic migration plumbing yet — log loudly so the
+                # mismatch is visible in the audit log when it eventually happens.
+                log.warning(
+                    "analytics: schema version mismatch — db=%d, code=%d. "
+                    "Queries depending on newer columns may fail; delete the DB to recreate.",
+                    row.version,
+                    _SCHEMA_VERSION,
+                )
 
     @property
     def engine(self) -> Engine:
