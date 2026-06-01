@@ -14,7 +14,7 @@ import uuid
 import kuzu
 
 from claudewatch.backend.core.paths import is_safe_projects_path
-from claudewatch.backend.core.session_log.schema import BLOCK_TOOL_USE
+from claudewatch.backend.core.session_log.schema import BlockType, EntryType
 from claudewatch.backend.graph.models import (
     ActionStep,
     BehaviorResult,
@@ -270,7 +270,7 @@ class SessionETL:
 
         ts = entry.get("timestamp", "")
 
-        if entry_type == "assistant":
+        if entry_type == EntryType.ASSISTANT:
             model = message.get("model", "")
             if model and model != "<synthetic>":
                 self._update_session_model(session_id, model)
@@ -285,7 +285,7 @@ class SessionETL:
                 for block in content:
                     if not isinstance(block, dict):
                         continue
-                    if block.get("type") == BLOCK_TOOL_USE:
+                    if block.get("type") == BlockType.TOOL_USE:
                         action_id = self._process_tool(
                             block,
                             session_id,
@@ -296,7 +296,7 @@ class SessionETL:
                             self._create_next(prev_action_id, action_id)
                         if action_id:
                             prev_action_id = action_id
-                    elif block.get("type") == "text":
+                    elif block.get("type") == BlockType.TEXT:
                         self._extract_prs(block.get("text", ""), session_id, ts)
 
         # Check for agent spawns in the entry

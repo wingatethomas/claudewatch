@@ -17,12 +17,7 @@ import threading
 import time
 
 from claudewatch.backend.core.service import BaseService
-from claudewatch.backend.core.session_log.schema import (
-    FIELD_AI_TITLE,
-    SUBTYPE_AWAY_SUMMARY,
-    TYPE_AI_TITLE,
-    TYPE_SYSTEM,
-)
+from claudewatch.backend.core.session_log.schema import FIELD_AI_TITLE, EntryType, Subtype
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.summary.repository import SummaryRepository
 
@@ -52,7 +47,7 @@ def _find_last_recap(lines: list[str]) -> str | None:
             d = json.loads(line)
         except (json.JSONDecodeError, ValueError):
             continue
-        if d.get("type") == TYPE_SYSTEM and d.get("subtype") == SUBTYPE_AWAY_SUMMARY:
+        if d.get("type") == EntryType.SYSTEM and d.get("subtype") == Subtype.AWAY_SUMMARY:
             content = d.get("content", "")
             if isinstance(content, str) and content.strip():
                 recap = content.strip()
@@ -67,7 +62,7 @@ def _find_last_ai_title(lines: list[str]) -> str | None:
             d = json.loads(line)
         except (json.JSONDecodeError, ValueError):
             continue
-        if d.get("type") == TYPE_AI_TITLE:
+        if d.get("type") == EntryType.AI_TITLE:
             value = d.get(FIELD_AI_TITLE, "")
             if isinstance(value, str) and value.strip():
                 title = value.strip()

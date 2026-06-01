@@ -5,22 +5,37 @@ PR #201 added ``ai-title`` entries. Centralizing the strings that identify each
 entry shape (the discriminator values, not generic structural keys like ``type``)
 reduces the blast radius of the next format change to this single file.
 
-If Claude Code renames any of these tokens, update the value here and every
-consumer keeps parsing.
+These are ``StrEnum`` so members compare equal to raw JSON strings —
+``EntryType.USER == "user"`` is ``True`` and ``d["type"] == EntryType.USER``
+works without ``.value``. If Claude Code renames any of these tokens, update
+the value here and every consumer keeps parsing.
 """
 
-# Top-level JSONL entry-type values
-TYPE_USER = "user"
-TYPE_ASSISTANT = "assistant"
-TYPE_SYSTEM = "system"
-TYPE_AI_TITLE = "ai-title"
+from enum import StrEnum
 
-# `system` subtype values
-SUBTYPE_AWAY_SUMMARY = "away_summary"
 
-# Field name for the `ai-title` entry's title payload
+class EntryType(StrEnum):
+    """Top-level ``type`` values on a JSONL line."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+    AI_TITLE = "ai-title"
+    PROGRESS = "progress"
+
+
+class Subtype(StrEnum):
+    """``system`` entry subtypes."""
+
+    AWAY_SUMMARY = "away_summary"
+
+
+class BlockType(StrEnum):
+    """Content-block ``type`` values inside an assistant message."""
+
+    TOOL_USE = "tool_use"
+    TEXT = "text"
+
+
+# Single-value field name — no enum needed.
 FIELD_AI_TITLE = "aiTitle"
-
-# Content-block ``type`` values inside an assistant message
-BLOCK_TOOL_USE = "tool_use"
-BLOCK_TEXT = "text"

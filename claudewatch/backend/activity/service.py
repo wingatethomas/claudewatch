@@ -7,14 +7,7 @@ import os
 
 from claudewatch.backend.core.dto import ActivityEventDTO
 from claudewatch.backend.core.service import BaseService
-from claudewatch.backend.core.session_log.schema import (
-    BLOCK_TEXT,
-    BLOCK_TOOL_USE,
-    SUBTYPE_AWAY_SUMMARY,
-    TYPE_ASSISTANT,
-    TYPE_SYSTEM,
-    TYPE_USER,
-)
+from claudewatch.backend.core.session_log.schema import BlockType, EntryType, Subtype
 from claudewatch.backend.core.session_log.service import SessionLogService
 
 
@@ -49,7 +42,7 @@ class ActivityService(BaseService):
             ts = d.get("timestamp", "")
 
             # Recaps live on the entry itself (d.content), not in message
-            if dtype == TYPE_SYSTEM and d.get("subtype") == SUBTYPE_AWAY_SUMMARY:
+            if dtype == EntryType.SYSTEM and d.get("subtype") == Subtype.AWAY_SUMMARY:
                 content = d.get("content", "")
                 if isinstance(content, str) and content.strip():
                     entries.append(
@@ -66,7 +59,7 @@ class ActivityService(BaseService):
             if not isinstance(msg, dict):
                 continue
 
-            if dtype == TYPE_USER:
+            if dtype == EntryType.USER:
                 content = msg.get("content", "")
                 if isinstance(content, str) and content.strip():
                     entries.append(
@@ -78,8 +71,8 @@ class ActivityService(BaseService):
                         )
                     )
 
-            elif dtype in (TYPE_ASSISTANT, "progress"):
-                if dtype == "progress":
+            elif dtype in (EntryType.ASSISTANT, EntryType.PROGRESS):
+                if dtype == EntryType.PROGRESS:
                     msg = d.get("data", {}).get("message", {})
                     if not isinstance(msg, dict):
                         continue
@@ -89,10 +82,10 @@ class ActivityService(BaseService):
                 for block in content:
                     if not isinstance(block, dict):
                         continue
-                    bt = block.get("type", "")
-                    if bt == BLOCK_TOOL_USE:
+                    block_type = block.get("type", "")
+                    if block_type == BlockType.TOOL_USE:
                         entries.append(_parse_tool_use_dto(block, ts))
-                    elif bt == BLOCK_TEXT:
+                    elif block_type == BlockType.TEXT:
                         text = block.get("text", "").strip()
                         if text:
                             entries.append(

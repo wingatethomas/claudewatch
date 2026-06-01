@@ -39,7 +39,7 @@ from claudewatch.backend.analytics.models import (
 )
 from claudewatch.backend.core.dto import AgentInfoDTO
 from claudewatch.backend.core.paths import is_safe_projects_path
-from claudewatch.backend.core.session_log.schema import BLOCK_TOOL_USE
+from claudewatch.backend.core.session_log.schema import BlockType, EntryType
 
 log = logging.getLogger("claudewatch")
 
@@ -212,7 +212,7 @@ class Ingest:
         s.add(evt)
         s.flush()
 
-        if entry_type == "assistant":
+        if entry_type == EntryType.ASSISTANT:
             self._extract_tools(s, message, evt.id, session_id, proj_key, ts, ts_epoch)
             self._extract_tokens(s, message, evt.id, session_id, proj_key, ts, ts_epoch)
 
@@ -232,7 +232,7 @@ class Ingest:
         if not isinstance(content, list):
             return
         for block in content:
-            if not isinstance(block, dict) or block.get("type") != BLOCK_TOOL_USE:
+            if not isinstance(block, dict) or block.get("type") != BlockType.TOOL_USE:
                 continue
             tool_name = block.get("name", "")
             if not tool_name:
@@ -344,7 +344,7 @@ class Ingest:
             self._find_prs(s, content, session_id, proj_key, ts, ts_epoch)
         elif isinstance(content, list):
             for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
+                if isinstance(block, dict) and block.get("type") == BlockType.TEXT:
                     text = block.get("text", "")
                     if text:
                         self._find_prs(s, text, session_id, proj_key, ts, ts_epoch)
@@ -390,8 +390,8 @@ class Ingest:
                 func.max(EventRow.timestamp).label("last_ts"),
                 func.min(EventRow.ts_epoch).label("first_epoch"),
                 func.max(EventRow.ts_epoch).label("last_epoch"),
-                func.sum(func.iif(EventRow.entry_type == "user", 1, 0)).label("user_msgs"),
-                func.sum(func.iif(EventRow.entry_type == "assistant", 1, 0)).label("asst_msgs"),
+                func.sum(func.iif(EventRow.entry_type == EntryType.USER, 1, 0)).label("user_msgs"),
+                func.sum(func.iif(EventRow.entry_type == EntryType.ASSISTANT, 1, 0)).label("asst_msgs"),
             ).where(EventRow.session_id == session_id)
         ).first()
         if not row or row.first_ts is None:
