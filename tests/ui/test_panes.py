@@ -218,7 +218,7 @@ class TestSessionsPane:
         mock_summary.return_value.get_cached.return_value = ""
         mock_summary.return_value.get_cached_summary.return_value = ""
         mock_usage.return_value.get_tokens.return_value = TokenUsageDTO(0, 0, 0, 0)
-        mock_usage.return_value.get_model.return_value = "sonnet 4.6"
+        mock_usage.return_value.get_model.return_value = "claude-sonnet-4-6"
 
         pane = SessionsPane(_make_delegate(), 490, 620)
         view = pane.build()
@@ -285,9 +285,16 @@ class TestResolveModelLabel:
         from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
 
         svc = MagicMock()
-        svc.get_model.return_value = "sonnet 4.6"
+        svc.get_model.return_value = "claude-sonnet-4-6"
         assert _resolve_model_label("", "/tmp/proj", svc) == "sonnet 4.6"
         svc.get_model.assert_called_once_with("/tmp/proj")
+
+    def test_fallback_unknown_raw_id_passes_through(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
+
+        svc = MagicMock()
+        svc.get_model.return_value = "claude-future-99"
+        assert _resolve_model_label("", "/tmp/proj", svc) == "claude-future-99"
 
     def test_empty_model_and_no_cwd_returns_empty(self) -> None:
         from claudewatch.ui.preferences.panes.sessions import _resolve_model_label

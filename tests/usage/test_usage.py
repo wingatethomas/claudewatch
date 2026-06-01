@@ -3,7 +3,7 @@
 import json
 from unittest.mock import MagicMock
 
-from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, UsageService
+from claudewatch.backend.usage.service import UsageService, model_display_name
 
 
 def _make_service(
@@ -19,24 +19,44 @@ def _make_service(
     return UsageService(mock_log)
 
 
-class TestModelDisplayNames:
-    """MODEL_DISPLAY_NAMES mapping tests."""
+class TestModelDisplayName:
+    """model_display_name derives a human label from a raw model id."""
 
-    def test_known_models_have_display_names(self):
-        assert MODEL_DISPLAY_NAMES["claude-opus-4-6"] == "opus 4.6"
-        assert MODEL_DISPLAY_NAMES["claude-sonnet-4-6"] == "sonnet 4.6"
-        assert MODEL_DISPLAY_NAMES["claude-haiku-4-5"] == "haiku 4.5"
+    def test_opus_with_minor(self):
+        assert model_display_name("claude-opus-4-7") == "opus 4.7"
+        assert model_display_name("claude-opus-4-6") == "opus 4.6"
 
-    def test_display_names_are_human_readable(self):
-        # Each display name should start with a real word, not a single letter.
-        # This guards against regressing to cryptic forms like "o4.6".
-        for display in MODEL_DISPLAY_NAMES.values():
-            family = display.split()[0]
-            assert len(family) > 1, f"display name {display!r} starts with a single letter"
+    def test_sonnet_with_minor(self):
+        assert model_display_name("claude-sonnet-4-6") == "sonnet 4.6"
+
+    def test_haiku_with_minor(self):
+        assert model_display_name("claude-haiku-4-5") == "haiku 4.5"
+
+    def test_date_suffix_stripped(self):
+        # 8+ digit release date trailing the version is dropped.
+        assert model_display_name("claude-haiku-4-5-20251001") == "haiku 4.5"
+        assert model_display_name("claude-sonnet-4-5-20250514") == "sonnet 4.5"
+
+    def test_no_minor_with_date(self):
+        # Family + major + date with no minor: keep just family + major.
+        assert model_display_name("claude-opus-4-20250512") == "opus 4"
+
+    def test_unrecognized_id_passes_through(self):
+        # Unknown patterns are returned unchanged so the user still sees something.
+        assert model_display_name("claude-future-99") == "claude-future-99"
+        assert model_display_name("gpt-4") == "gpt-4"
+
+    def test_empty_input(self):
+        assert model_display_name("") == ""
+
+    def test_future_minor_versions_handled(self):
+        # New models should derive without code changes.
+        assert model_display_name("claude-opus-5-0") == "opus 5.0"
+        assert model_display_name("claude-sonnet-5-2") == "sonnet 5.2"
 
 
 class TestUsageServiceGetModel:
-    """Tests for UsageService.get_model."""
+    """Tests for UsageService.get_model — returns raw model ids."""
 
     def test_returns_empty_when_no_jsonl_found(self):
         svc = _make_service(find_most_recent=None)
@@ -46,10 +66,10 @@ class TestUsageServiceGetModel:
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail="")
         assert svc.get_model("/Users/dev/myapp") == ""
 
-    def test_returns_display_name_for_known_model(self):
+    def test_returns_raw_id_for_known_model(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
-        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
+        assert svc.get_model("/Users/dev/myapp") == "claude-opus-4-6"
 
     def test_returns_raw_model_for_unknown(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "claude-future-99"}}) + "\n"
@@ -64,12 +84,29 @@ class TestUsageServiceGetModel:
             + "\n"
         )
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
-        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
+        assert svc.get_model("/Users/dev/myapp") == "claude-opus-4-6"
+
+    def test_skips_synthetic_placeholder(self):
+        # Claude Code sometimes emits "<synthetic>" as a model value on internal
+        # entries — we must not let that leak into history/display.
+        tail = (
+            json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}})
+            + "\n"
+            + json.dumps({"type": "assistant", "message": {"model": "<synthetic>"}})
+            + "\n"
+        )
+        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        assert svc.get_model("/Users/dev/myapp") == "claude-opus-4-6"
+
+    def test_returns_empty_when_only_synthetic(self):
+        tail = json.dumps({"type": "assistant", "message": {"model": "<synthetic>"}}) + "\n"
+        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        assert svc.get_model("/Users/dev/myapp") == ""
 
     def test_handles_invalid_json_lines(self):
         tail = "not json\n" + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
         svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
-        assert svc.get_model("/Users/dev/myapp") == "opus 4.6"
+        assert svc.get_model("/Users/dev/myapp") == "claude-opus-4-6"
 
     def test_handles_non_dict_message(self):
         tail = json.dumps({"type": "assistant", "message": "string"}) + "\n"

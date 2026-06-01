@@ -26,7 +26,7 @@ from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.usage.dependencies import get_usage_service
-from claudewatch.backend.usage.service import MODEL_DISPLAY_NAMES, format_tokens_compact
+from claudewatch.backend.usage.service import format_tokens_compact, model_display_name
 from claudewatch.ui.components.composites.session_row import build_session_row
 from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.labels import secondary_label
@@ -230,13 +230,14 @@ def _resolve_model_label(model_raw: str, cwd: str, usage_svc: object) -> str:
     recorded on disk so the row still shows something useful.
     """
     if model_raw:
-        return MODEL_DISPLAY_NAMES.get(model_raw, model_raw)
+        return model_display_name(model_raw)
     if not cwd:
         return ""
     try:
-        return usage_svc.get_model(cwd)  # type: ignore[attr-defined]
+        fallback = usage_svc.get_model(cwd)  # type: ignore[attr-defined]
     except (OSError, AttributeError):
         return ""
+    return model_display_name(fallback)
 
 
 def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
