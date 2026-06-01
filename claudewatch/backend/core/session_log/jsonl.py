@@ -49,13 +49,25 @@ def is_safe_jsonl_path(path: str) -> bool:
     return real_path.startswith(real_proj_dir + os.sep)
 
 
+def _open_nofollow(path: str, mode: str) -> object:
+    """Open ``path`` with O_NOFOLLOW so a symlink at the final component is rejected.
+
+    is_safe_jsonl_path() filters at discovery time, but a symlink swap between
+    that check and this open would defeat it (TOCTOU). O_NOFOLLOW collapses the
+    final-component variant of that race: the open syscall itself fails with
+    ELOOP if the path is a symlink, regardless of where it points.
+    """
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    return os.fdopen(fd, mode)
+
+
 def read_jsonl_tail(path: str, tail_bytes: int = 10240) -> str:
     """Read the last N bytes of a JSONL file as UTF-8 text.
 
     Returns empty string on error.
     """
     try:
-        with open(path, "rb") as f:
+        with _open_nofollow(path, "rb") as f:
             f.seek(0, 2)
             size = f.tell()
             f.seek(max(0, size - tail_bytes))
@@ -70,7 +82,7 @@ def read_jsonl_full(path: str) -> list[str]:
     Returns empty list on error.
     """
     try:
-        with open(path) as f:
+        with _open_nofollow(path, "r") as f:
             return f.readlines()
     except OSError:
         return []
