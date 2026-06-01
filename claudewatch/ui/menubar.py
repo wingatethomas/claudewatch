@@ -142,6 +142,8 @@ class ClaudeWatchApp:
         # Pre-populate caches off the main thread so menu builds do no JSON I/O.
         _safe_bg(self._bookmark_service.warm)
         _safe_bg(self._history_service.warm)
+        # Prune old analytics rows once per launch — keeps the SQLite DB bounded.
+        _safe_bg(self._analytics_service.prune_old_data)
 
     def run(self) -> None:
         """Start the app: create status bar item, timer, and run the event loop."""

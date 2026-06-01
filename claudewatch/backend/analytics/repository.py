@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from claudewatch.backend.analytics.models import (
     ACCESS_TYPE,
     FILE_TOOLS,
-    AgentInfo,
     AgentRow,
     BranchActivity,
     CheckpointRow,
@@ -38,7 +37,9 @@ from claudewatch.backend.analytics.models import (
     ToolSequence,
     ToolUsage,
 )
+from claudewatch.backend.core.dto import AgentInfoDTO
 from claudewatch.backend.core.paths import is_safe_projects_path
+from claudewatch.backend.core.session_log.schema import BlockType, EntryType
 
 log = logging.getLogger("claudewatch")
 
@@ -211,7 +212,7 @@ class Ingest:
         s.add(evt)
         s.flush()
 
-        if entry_type == "assistant":
+        if entry_type == EntryType.ASSISTANT:
             self._extract_tools(s, message, evt.id, session_id, proj_key, ts, ts_epoch)
             self._extract_tokens(s, message, evt.id, session_id, proj_key, ts, ts_epoch)
 
@@ -231,7 +232,7 @@ class Ingest:
         if not isinstance(content, list):
             return
         for block in content:
-            if not isinstance(block, dict) or block.get("type") != "tool_use":
+            if not isinstance(block, dict) or block.get("type") != BlockType.TOOL_USE:
                 continue
             tool_name = block.get("name", "")
             if not tool_name:
@@ -343,7 +344,7 @@ class Ingest:
             self._find_prs(s, content, session_id, proj_key, ts, ts_epoch)
         elif isinstance(content, list):
             for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
+                if isinstance(block, dict) and block.get("type") == BlockType.TEXT:
                     text = block.get("text", "")
                     if text:
                         self._find_prs(s, text, session_id, proj_key, ts, ts_epoch)
@@ -389,8 +390,8 @@ class Ingest:
                 func.max(EventRow.timestamp).label("last_ts"),
                 func.min(EventRow.ts_epoch).label("first_epoch"),
                 func.max(EventRow.ts_epoch).label("last_epoch"),
-                func.sum(func.iif(EventRow.entry_type == "user", 1, 0)).label("user_msgs"),
-                func.sum(func.iif(EventRow.entry_type == "assistant", 1, 0)).label("asst_msgs"),
+                func.sum(func.iif(EventRow.entry_type == EntryType.USER, 1, 0)).label("user_msgs"),
+                func.sum(func.iif(EventRow.entry_type == EntryType.ASSISTANT, 1, 0)).label("asst_msgs"),
             ).where(EventRow.session_id == session_id)
         ).first()
         if not row or row.first_ts is None:
@@ -596,7 +597,7 @@ class AgentScanner:
                 or 0
             )
 
-    def agents_for_session(self, session_id: str) -> list[AgentInfo]:
+    def agents_for_session(self, session_id: str) -> list[AgentInfoDTO]:
         """Query agent info from DB for a given session."""
         with self._session_factory() as s:
             rows = (
@@ -605,7 +606,7 @@ class AgentScanner:
                 .all()
             )
             return [
-                AgentInfo(
+                AgentInfoDTO(
                     agent_id=r.agent_id,
                     session_id=r.session_id,
                     parent_agent_id=r.parent_agent_id or "",
@@ -676,6 +677,51 @@ class AgentScanner:
         except OSError:
             pass
         return "stale"
+
+
+class Maintenance:
+    """Retention sweep for analytics tables."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def prune_older_than(self, cutoff_epoch: float) -> dict[str, int]:
+        """Delete time-series rows whose ts_epoch / last_epoch is older than ``cutoff_epoch``.
+
+        Sessions are pruned by ``last_epoch`` (last activity). Agents whose session no
+        longer exists become orphans and are pruned too. Returns ``{table: rows_deleted}``.
+        """
+        deleted: dict[str, int] = {}
+        with self._session_factory() as s:
+            for row_cls, label in (
+                (EventRow, "events"),
+                (ToolRow, "tools"),
+                (FileRow, "files"),
+                (TokenRow, "tokens"),
+                (PullRequestRow, "pull_requests"),
+            ):
+                count = s.query(row_cls).filter(row_cls.ts_epoch < cutoff_epoch).delete()
+                if count:
+                    deleted[label] = count
+
+            session_count = (
+                s.query(SessionRow)
+                .filter(SessionRow.last_epoch.is_not(None), SessionRow.last_epoch < cutoff_epoch)
+                .delete()
+            )
+            if session_count:
+                deleted["sessions"] = session_count
+
+            agent_count = (
+                s.query(AgentRow)
+                .filter(~AgentRow.session_id.in_(select(SessionRow.session_id)))
+                .delete(synchronize_session=False)
+            )
+            if agent_count:
+                deleted["agents"] = agent_count
+
+            s.commit()
+        return deleted
 
 
 class Queries:

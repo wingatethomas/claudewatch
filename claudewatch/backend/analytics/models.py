@@ -225,6 +225,16 @@ class AnalyticsStore:
             if row is None:
                 s.add(SchemaVersionRow(version=_SCHEMA_VERSION))
                 s.commit()
+                return
+            if row.version != _SCHEMA_VERSION:
+                # No automatic migration plumbing yet — log loudly so the
+                # mismatch is visible in the audit log when it eventually happens.
+                log.warning(
+                    "analytics: schema version mismatch — db=%d, code=%d. "
+                    "Queries depending on newer columns may fail; delete the DB to recreate.",
+                    row.version,
+                    _SCHEMA_VERSION,
+                )
 
     @property
     def engine(self) -> Engine:
@@ -347,17 +357,3 @@ class BranchActivity:
     session_count: int
     event_count: int
     last_active: str
-
-
-@dataclass(frozen=True)
-class AgentInfo:
-    agent_id: str
-    session_id: str
-    parent_agent_id: str
-    agent_type: str
-    description: str
-    status: AgentStatus | str
-    started_at: str
-    ended_at: str
-    entry_count: int
-    proj_key: str

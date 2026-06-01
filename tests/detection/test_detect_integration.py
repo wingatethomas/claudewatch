@@ -336,7 +336,7 @@ class TestDetectSharedCwdAttention:
         _write_jsonl(
             os.path.join(proj_dir, "active.jsonl"),
             [
-                {"type": "ai-title", "aiTitle": "Refactor billing module"},
+                {"type": "ai-title", "aiTitle": "Wire up search filter"},
                 {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}},
             ],
         )
@@ -344,11 +344,11 @@ class TestDetectSharedCwdAttention:
         _write_jsonl(
             os.path.join(proj_dir, "pending.jsonl"),
             [
-                {"type": "ai-title", "aiTitle": "Review backend API PR 593"},
+                {"type": "ai-title", "aiTitle": "Investigate stale cache"},
                 {
                     "type": "assistant",
                     "message": {
-                        "content": [{"type": "tool_use", "name": "Write", "input": {"file_path": "/x/ONBOARDING.md"}}]
+                        "content": [{"type": "tool_use", "name": "Write", "input": {"file_path": "/x/README.md"}}]
                     },
                 },
             ],
@@ -358,7 +358,7 @@ class TestDetectSharedCwdAttention:
         _write_jsonl(
             os.path.join(proj_dir, "old.jsonl"),
             [
-                {"type": "ai-title", "aiTitle": "Diagnose API 422"},
+                {"type": "ai-title", "aiTitle": "Tidy log formatting"},
                 {"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}},
             ],
             age_seconds=300,
@@ -374,9 +374,9 @@ class TestDetectSharedCwdAttention:
             },
             pid_cwds={100: cwd, 200: cwd, 300: cwd},
             terminal_titles={
-                "/dev/ttys001": ("myapp — ⠂ Refactor billing module — node ◂ claude", 1),
-                "/dev/ttys002": ("myapp — ✳ Review backend API PR 593 — node ◂ claude", 2),
-                "/dev/ttys003": ("myapp — ✳ Diagnose API 422 — node ◂ claude", 3),
+                "/dev/ttys001": ("myapp — ⠂ Wire up search filter — node ◂ claude", 1),
+                "/dev/ttys002": ("myapp — ✳ Investigate stale cache — node ◂ claude", 2),
+                "/dev/ttys003": ("myapp — ✳ Tidy log formatting — node ◂ claude", 3),
             },
         )
         try:

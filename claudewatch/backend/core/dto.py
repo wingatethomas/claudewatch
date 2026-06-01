@@ -78,3 +78,19 @@ class ChangelogEntryDTO(BaseDTO):
 
     tag: str
     body: str
+
+
+@dataclass(frozen=True)
+class AgentInfoDTO(BaseDTO):
+    """Subagent record returned by AnalyticsService."""
+
+    agent_id: str
+    session_id: str
+    parent_agent_id: str
+    agent_type: str
+    description: str
+    status: str
+    started_at: str
+    ended_at: str
+    entry_count: int
+    proj_key: str
