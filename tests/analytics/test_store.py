@@ -65,6 +65,28 @@ class TestAnalyticsStore:
             assert row.version == 1
         store.close()
 
+    def test_schema_version_mismatch_logs_warning(self, db_path: str, caplog) -> None:
+        store = AnalyticsStore(db_path)
+        with store.session() as s:
+            s.query(SchemaVersionRow).delete()
+            s.add(SchemaVersionRow(version=42))
+            s.commit()
+        store.close()
+        with caplog.at_level("WARNING", logger="claudewatch"):
+            store2 = AnalyticsStore(db_path)
+        store2.close()
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any("schema version mismatch" in r.message for r in warnings)
+        assert any("db=42" in r.message for r in warnings)
+
+    def test_schema_version_match_no_warning(self, db_path: str, caplog) -> None:
+        AnalyticsStore(db_path).close()
+        with caplog.at_level("WARNING", logger="claudewatch"):
+            store2 = AnalyticsStore(db_path)
+        store2.close()
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert not any("schema version mismatch" in r.message for r in warnings)
+
     def test_engine_property(self, db_path: str) -> None:
         store = AnalyticsStore(db_path)
         assert isinstance(store.engine, Engine)

@@ -5,8 +5,9 @@ import os
 
 import pytest
 
-from claudewatch.backend.analytics.models import AgentInfo, AnalyticsStore
+from claudewatch.backend.analytics.models import AnalyticsStore
 from claudewatch.backend.analytics.repository import AgentScanner
+from claudewatch.backend.core.dto import AgentInfoDTO
 
 
 @pytest.fixture
@@ -138,7 +139,7 @@ class TestAgentScanner:
         scanner = AgentScanner(store.session, projects_dir)
         scanner.scan_all()
         agents = scanner.agents_for_session("sess-1")
-        assert isinstance(agents[0], AgentInfo)
+        assert isinstance(agents[0], AgentInfoDTO)
         assert agents[0].description == "hi"
 
     def test_empty_projects_dir(self, store: AnalyticsStore, tmp_path: str) -> None:

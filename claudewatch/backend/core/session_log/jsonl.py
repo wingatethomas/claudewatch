@@ -4,6 +4,7 @@ import json
 import os
 
 from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, cwd_to_proj_key
+from claudewatch.backend.core.session_log.schema import FIELD_AI_TITLE, EntryType
 
 
 def list_jsonls_in_cwd(cwd: str) -> list[str]:
@@ -89,15 +90,16 @@ def read_ai_title(path: str, tail_bytes: int = 10240) -> str:
     tail = read_jsonl_tail(path, tail_bytes=tail_bytes)
     if not tail:
         return ""
+    needle = f'"{EntryType.AI_TITLE}"'
     for line in reversed(tail.splitlines()):
-        if '"ai-title"' not in line:
+        if needle not in line:
             continue
         try:
             d = json.loads(line)
         except (json.JSONDecodeError, ValueError):
             continue
-        if d.get("type") == "ai-title":
-            title = d.get("aiTitle", "")
+        if d.get("type") == EntryType.AI_TITLE:
+            title = d.get(FIELD_AI_TITLE, "")
             if isinstance(title, str) and title:
                 return title
     return ""

@@ -49,7 +49,16 @@ class AboutPane(BasePane):
         audit_log_button.setAction_(objc.selector(self.delegate.viewAuditLog_, signature=b"v@:@"))
         view.addSubview_(audit_log_button)
 
-        github_button = NSButton.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING + 108, y, 80, 24))
+        diagnostic_button = NSButton.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING + 108, y, 130, 24))
+        diagnostic_button.setTitle_("Copy Diagnostic")
+        diagnostic_button.setBezelStyle_(1)
+        diagnostic_button.setFont_(NSFont.systemFontOfSize_(11.0))
+        diagnostic_button.setTarget_(self.delegate)
+        diagnostic_button.setAction_(objc.selector(self.delegate.copyDiagnostic_, signature=b"v@:@"))
+        diagnostic_button.setToolTip_("Copy version + log tail (privacy-safe) for pasting into a GitHub issue.")
+        view.addSubview_(diagnostic_button)
+
+        github_button = NSButton.alloc().initWithFrame_(NSMakeRect(CONTENT_PADDING + 246, y, 80, 24))
         github_button.setTitle_("GitHub")
         github_button.setBezelStyle_(1)
         github_button.setFont_(NSFont.systemFontOfSize_(11.0))

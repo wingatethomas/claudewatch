@@ -144,14 +144,22 @@ class TestFeatureKeyEnum:
 
     def test_every_enum_value_has_a_registered_feature(self):
         """Importing dependency modules registers all features — no dead enum entries."""
+        import importlib
+
+        from claudewatch.backend.bookmark import dependencies as _bookmark_deps
+        from claudewatch.backend.core import login_item as _login_item
+        from claudewatch.backend.notifications import dependencies as _notif_deps
+        from claudewatch.backend.security import dependencies as _security_deps
+        from claudewatch.backend.summary import dependencies as _summary_deps
+        from claudewatch.backend.updates import dependencies as _updates_deps
+
+        # These modules register at import time. If another test already imported
+        # them, Python's module cache means a plain re-import won't re-trigger
+        # register() — so use reload to actually re-run the side effects after
+        # the clear().
         features._registry.clear()
-        # Importing these modules triggers features.register() as a side effect.
-        from claudewatch.backend.bookmark import dependencies as _bookmark_deps  # noqa: F401
-        from claudewatch.backend.core import login_item as _login_item  # noqa: F401
-        from claudewatch.backend.notifications import dependencies as _notif_deps  # noqa: F401
-        from claudewatch.backend.security import dependencies as _security_deps  # noqa: F401
-        from claudewatch.backend.summary import dependencies as _summary_deps  # noqa: F401
-        from claudewatch.backend.updates import dependencies as _updates_deps  # noqa: F401
+        for mod in (_bookmark_deps, _login_item, _notif_deps, _security_deps, _summary_deps, _updates_deps):
+            importlib.reload(mod)
 
         registered = set(features._registry.keys())
         enum_values = {str(k) for k in FeatureKey}
