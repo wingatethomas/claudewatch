@@ -15,12 +15,15 @@ def atomic_json_write(path: str, data: object, *, indent: int | None = 2) -> Non
     """Write JSON to ``path`` atomically: serialize to ``path + ".tmp"``, then rename.
 
     A crash mid-write leaves ``path`` either unchanged or fully replaced — never
-    a half-written file. Raises ``OSError`` on filesystem failure; callers wrap
-    with their domain-specific log message.
+    a half-written file. The result is chmod 0o600 so other local users can't
+    read the file even if it lands somewhere with looser directory permissions
+    (CI runners, shared caches). Raises ``OSError`` on filesystem failure;
+    callers wrap with their domain-specific log message.
     """
     tmp = f"{path}.tmp"
     with open(tmp, "w") as f:
         json.dump(data, f, indent=indent)
+    os.chmod(tmp, 0o600)
     os.replace(tmp, path)
 
 

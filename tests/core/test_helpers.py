@@ -189,3 +189,10 @@ class TestAtomicJsonWrite:
             atomic_json_write(path, {"bad": object()})
         with open(path) as f:
             assert json.load(f) == {"original": True}
+
+    def test_file_mode_is_user_only(self, tmp_path) -> None:
+        """Written file must be 0o600 so other local users can't read it."""
+        path = str(tmp_path / "out.json")
+        atomic_json_write(path, {"secret": "value"})
+        mode = os.stat(path).st_mode & 0o777
+        assert mode == 0o600, f"expected 0o600, got {oct(mode)}"
