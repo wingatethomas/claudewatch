@@ -81,25 +81,35 @@ class SummaryRepository:
         return f"{cwd}::{session_id}" if session_id else cwd
 
     def get_entry(self, cwd: str, session_id: str = "") -> SummaryEntry | None:
-        """Return the cached entry if JSONL hasn't changed significantly since generation."""
+        """Return the cached entry unless the session's own JSONL grew significantly.
+
+        Staleness is judged against the session's own file, not the CWD's
+        most-recent one — a sibling session writing must not invalidate this
+        entry. Plain mtime updates don't invalidate either (active sessions
+        write constantly); only >10KB growth or a missing file does.
+        """
         key = self.cache_key(cwd, session_id)
         with self._store_lock:
             self.load_store()
             entry = self._store.get(key)
         if not entry:
             return None
-        current_mtime = self.get_jsonl_mtime(cwd)
-        if not current_mtime or current_mtime > entry.mtime:
+        if not self.get_jsonl_mtime(cwd, session_id):
             return None
-        current_size = self.get_jsonl_size(cwd)
-        if current_size and entry.jsonl_size and current_size - entry.jsonl_size > _STALENESS_SIZE_THRESHOLD:
-            return None
+        current_size = self.get_jsonl_size(cwd, session_id)
+        if current_size and entry.jsonl_size:
+            if current_size - entry.jsonl_size > _STALENESS_SIZE_THRESHOLD:
+                return None
+            # JSONLs only append — a recorded size larger than the file means
+            # the entry was generated from a different (sibling) file.
+            if entry.jsonl_size > current_size:
+                return None
         return entry
 
     def cache(self, cwd: str, summary: str, session_id: str = "") -> None:
         """Persist a summary string as the title."""
         key = self.cache_key(cwd, session_id)
-        mtime = self.get_jsonl_mtime(cwd) or time.time()
+        mtime = self.get_jsonl_mtime(cwd, session_id) or time.time()
         with self._store_lock:
             self.load_store()
             existing = self._store.get(key)
@@ -112,8 +122,8 @@ class SummaryRepository:
     def cache_full(self, cwd: str, title: str, summary: str, session_id: str = "") -> None:
         """Persist both title and bulleted summary."""
         key = self.cache_key(cwd, session_id)
-        mtime = self.get_jsonl_mtime(cwd) or time.time()
-        size = self.get_jsonl_size(cwd)
+        mtime = self.get_jsonl_mtime(cwd, session_id) or time.time()
+        size = self.get_jsonl_size(cwd, session_id)
         with self._store_lock:
             self.load_store()
             self._store[key] = SummaryEntry(title=title, summary=summary, mtime=mtime, jsonl_size=size)
@@ -135,9 +145,9 @@ class SummaryRepository:
 
     # -- JSONL metadata -----------------------------------------------------
 
-    def get_jsonl_mtime(self, cwd: str) -> float:
-        """Get the modification time of the most recent JSONL for a CWD."""
-        path = self._session_log_service.find_most_recent(cwd)
+    def get_jsonl_mtime(self, cwd: str, session_id: str = "") -> float:
+        """Modification time of the session's JSONL (most recent when no session_id)."""
+        path = self._session_log_service.resolve_jsonl(cwd, session_id)
         if path:
             try:
                 return os.path.getmtime(path)
@@ -145,9 +155,9 @@ class SummaryRepository:
                 pass
         return 0.0
 
-    def get_jsonl_size(self, cwd: str) -> int:
-        """Get the file size of the most recent JSONL for a CWD."""
-        path = self._session_log_service.find_most_recent(cwd)
+    def get_jsonl_size(self, cwd: str, session_id: str = "") -> int:
+        """File size of the session's JSONL (most recent when no session_id)."""
+        path = self._session_log_service.resolve_jsonl(cwd, session_id)
         if path:
             try:
                 return os.path.getsize(path)

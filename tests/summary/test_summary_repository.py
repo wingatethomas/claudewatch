@@ -95,7 +95,8 @@ class TestCache:
 
         proj_dir = tmp_path / "projects" / "-test"
         proj_dir.mkdir(parents=True)
-        (proj_dir / "s.jsonl").write_text("{}\n")
+        (proj_dir / "session-1.jsonl").write_text("{}\n")
+        (proj_dir / "session-2.jsonl").write_text("{}\n")
 
         repo = _make_repo(tmp_path)
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
@@ -107,6 +108,53 @@ class TestCache:
         assert a.title == "summary A"
         assert b is not None
         assert b.title == "summary B"
+
+    def test_sibling_activity_does_not_invalidate_entry(self, tmp_path):
+        """A sibling session's fresh JSONL must not stale this session's entry."""
+        from unittest.mock import patch
+
+        proj_dir = tmp_path / "projects" / "-test"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "mine.jsonl").write_text("{}\n")
+
+        repo = _make_repo(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            repo.cache_full("/test", "title", "recap", "mine")
+            (proj_dir / "sibling.jsonl").write_text("{}\n" * 5000)
+            entry = repo.get_entry("/test", "mine")
+        assert entry is not None
+        assert entry.summary == "recap"
+
+    def test_entry_recorded_from_larger_file_invalidates(self, tmp_path):
+        """An entry whose recorded size exceeds the file was cached from a
+        sibling's JSONL (files only append) — it must not be served."""
+        from unittest.mock import patch
+
+        proj_dir = tmp_path / "projects" / "-test"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "mine.jsonl").write_text("{}\n")
+
+        repo = _make_repo(tmp_path)
+        repo._store_loaded = True
+        repo._store = {
+            "/test::mine": SummaryEntry(title="wrong", summary="sibling recap", mtime=time.time(), jsonl_size=2824980)
+        }
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            assert repo.get_entry("/test", "mine") is None
+
+    def test_own_file_growth_invalidates_entry(self, tmp_path):
+        from unittest.mock import patch
+
+        proj_dir = tmp_path / "projects" / "-test"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "mine.jsonl").write_text("{}\n")
+
+        repo = _make_repo(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            repo.cache_full("/test", "title", "recap", "mine")
+            (proj_dir / "mine.jsonl").write_text("x" * 20480)  # grew past the 10KB threshold
+            entry = repo.get_entry("/test", "mine")
+        assert entry is None
 
 
 class TestClearAll:

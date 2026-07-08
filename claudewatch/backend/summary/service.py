@@ -151,12 +151,8 @@ class SummaryService(BaseService):
         except OSError:
             return None
 
-    def _extract_recap(self, cwd: str) -> str | None:
-        """Return the most recent away_summary from the JSONL session log."""
-        path = self._session_log_service.find_most_recent(cwd)
-        if not path:
-            return None
-
+    def _extract_recap(self, path: str) -> str | None:
+        """Return the most recent away_summary from a JSONL session log."""
         # Tail scan first; full scan as fallback because recaps sit where the
         # pause happened and can scroll past the 200KB tail window for active sessions.
         tail = self._session_log_service.read_tail(path, tail_bytes=_TAIL_BYTES)
@@ -171,11 +167,8 @@ class SummaryService(BaseService):
             return None
         return _find_last_recap(lines)
 
-    def _extract_ai_title(self, cwd: str) -> str | None:
-        """Extract Claude Code's native ai-title entry from the JSONL session log."""
-        path = self._session_log_service.find_most_recent(cwd)
-        if not path:
-            return None
+    def _extract_ai_title(self, path: str) -> str | None:
+        """Extract Claude Code's native ai-title entry from a JSONL session log."""
         try:
             with open(path) as f:
                 lines = f.readlines()
@@ -184,26 +177,38 @@ class SummaryService(BaseService):
         return _find_last_ai_title(lines)
 
     def generate_and_cache(self, cwd: str, session_id: str = "") -> str:
-        """Extract recap+title from JSONL and persist. Returns the title (or empty)."""
+        """Extract recap+title from the session's own JSONL and persist.
+
+        Returns the title (or empty). Reading the session's own file matters:
+        with shared-CWD setups the most-recent JSONL usually belongs to a
+        sibling session, and its recap would be cached for everyone.
+        """
         key = self._cache_key(cwd, session_id)
         cached = self.get_cached(cwd, session_id)
         if cached is not None:
             return cached
 
+        path = self._session_log_service.resolve_jsonl(cwd, session_id)
+        if not path:
+            return ""
+
         # Skip if we already checked and found no recap, and the JSONL hasn't changed.
-        current_mtime = self._repo.get_jsonl_mtime(cwd)
+        try:
+            current_mtime = os.path.getmtime(path)
+        except OSError:
+            current_mtime = 0.0
         with self._no_recap_lock:
             last_check = self._no_recap_mtimes.get(key)
             if last_check is not None and current_mtime and last_check == current_mtime:
                 return ""
 
-        recap = self._extract_recap(cwd)
+        recap = self._extract_recap(path)
         if recap is None:
             with self._no_recap_lock:
                 self._no_recap_mtimes[key] = current_mtime
             return ""
 
-        title = _truncate_title(self._extract_ai_title(cwd) or recap)
+        title = _truncate_title(self._extract_ai_title(path) or recap)
         self.cache_full(cwd, title, recap, session_id)
         log.debug("summarize: cached recap for %s", os.path.basename(cwd))
         return title

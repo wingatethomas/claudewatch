@@ -54,8 +54,9 @@ def build_session_submenu(
     if summary:
         add_summary_lines(summary_sub, summary, d)
     else:
-        if generating:
-            summary_sub.addItem_(make_menu_item("Generating…", None, d))
+        # An empty NSMenu never opens on hover — always give the submenu a row.
+        placeholder = "Generating…" if generating else "No recap yet"
+        summary_sub.addItem_(make_menu_item(placeholder, None, d))
         if act.track_summary:
             act.track_summary()
     summary_item.setSubmenu_(summary_sub)

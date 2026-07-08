@@ -18,6 +18,19 @@ class SessionLogService(BaseService):
         """List all JSONL paths in a CWD's project dir, mtime descending."""
         return jsonl.list_jsonls_in_cwd(cwd)
 
+    def resolve_jsonl(self, cwd: str, session_id: str = "") -> str | None:
+        """Path of a specific session's JSONL, or the most recent for the CWD.
+
+        With a session_id, returns that session's own file (None if gone) —
+        never a sibling's. Without one, falls back to the most recent.
+        """
+        if not session_id:
+            return jsonl.find_most_recent_jsonl(cwd)
+        for path in jsonl.list_jsonls_in_cwd(cwd):
+            if jsonl.get_session_id_from_path(path) == session_id:
+                return path
+        return None
+
     def read_ai_title(self, path: str) -> str:
         """Return the latest aiTitle recorded in a JSONL's tail, or "" if none."""
         return jsonl.read_ai_title(path)
