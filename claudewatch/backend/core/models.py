@@ -70,6 +70,8 @@ class ClaudeSession:
     session_id: str = ""  # Claude Code session UUID from JSONL filename
     agent_count: int = 0  # populated by analytics.enrich_sessions()
     ai_title: str = ""  # Claude-generated session title from the matched JSONL
+    worktree_repo: str = ""  # main repo name when cwd is a linked git worktree
+    worktree_branch: str = ""  # branch checked out in that worktree
 
     @property
     def task_summary(self) -> str:
@@ -90,15 +92,23 @@ class ClaudeSession:
         return self.status == SessionStatus.ATTENTION
 
     @property
+    def display_project(self) -> str:
+        """Project name for labels — 'repo [branch]' when cwd is a linked worktree."""
+        if self.worktree_repo:
+            branch = f" [{self.worktree_branch}]" if self.worktree_branch else ""
+            return f"{self.worktree_repo}{branch}"
+        return self.project
+
+    @property
     def menu_label(self) -> str:
         _max_label = 50
         ind = STATUS_INDICATOR[self.status]
         task = self.task_summary
         tab = f" (tab {self.tab_index + 1})" if self.tab_index is not None else ""
         if task and task != "Claude Code":
-            label = f"{ind} {self.project}{tab} — {task}"
+            label = f"{ind} {self.display_project}{tab} — {task}"
         else:
-            label = f"{ind} {self.project}{tab}"
+            label = f"{ind} {self.display_project}{tab}"
         if len(label) > _max_label:
             return label[: _max_label - 1] + "…"
         return label

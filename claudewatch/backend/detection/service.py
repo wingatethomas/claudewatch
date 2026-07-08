@@ -15,6 +15,7 @@ from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.schema import BlockType, EntryType
 from claudewatch.backend.core.session_log.service import SessionLogService
+from claudewatch.backend.core.worktree import WorktreeInfo, resolve_worktree
 from claudewatch.backend.detection.constants import HOST_PROCESS_NAMES, IDLE_INDICATOR
 from claudewatch.backend.detection.models import PendingToolResult, TerminalMatch, ToolUseInfo
 
@@ -26,6 +27,7 @@ _TEXT_MAX_LEN = 80
 _WIN_SPLIT_FIELDS = 3
 _TERMINAL_CACHE_TTL = 3  # seconds between AppleScript refreshes
 _AI_TITLE_CACHE_TTL = 3  # seconds between per-CWD ai-title scans
+_WORKTREE_CACHE_TTL = 30  # seconds between per-CWD worktree re-resolution
 _JSONL_STREAMING_THRESHOLD = 5  # JSONL modified within this → actively streaming
 _JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
 
@@ -59,6 +61,9 @@ class DetectionService(BaseService):
         # of the tail window; this remembers it so the full-file scan runs at
         # most once per path. Tail scans still pick up newer titles.
         self._ai_title_by_path: dict[str, str] = {}
+        # cwd → (WorktreeInfo | None, timestamp). Branch switches are rare, so
+        # a longer TTL than the title caches.
+        self._worktree_cache: dict[str, tuple[WorktreeInfo | None, float]] = {}
 
     # -- Process info helpers -----------------------------------------------
 
@@ -229,6 +234,15 @@ class DetectionService(BaseService):
         self._ai_title_cache[cwd] = (mapping, now)
         return mapping
 
+    def _get_worktree(self, cwd: str) -> WorktreeInfo | None:
+        now = time.time()
+        cached = self._worktree_cache.get(cwd)
+        if cached is not None and now - cached[1] < _WORKTREE_CACHE_TTL:
+            return cached[0]
+        info = resolve_worktree(cwd)
+        self._worktree_cache[cwd] = (info, now)
+        return info
+
     def _read_ai_title(self, path: str) -> str:
         """Read a JSONL's aiTitle: cheap tail scan first, full scan once as fallback."""
         title = self._session_log_service.read_ai_title(path)
@@ -384,6 +398,9 @@ class DetectionService(BaseService):
         for stale_cwd in list(self._ai_title_cache.keys()):
             if stale_cwd not in live_cwds:
                 del self._ai_title_cache[stale_cwd]
+        for stale_cwd in list(self._worktree_cache.keys()):
+            if stale_cwd not in live_cwds:
+                del self._worktree_cache[stale_cwd]
 
         # Per-CWD fallback (most-recent JSONL) when ai-title matching can't
         # disambiguate a session. Built lazily.
@@ -443,6 +460,7 @@ class DetectionService(BaseService):
             fallback = cwd_fallback_jsonl[cwd]
             jpath = _match_jsonl_by_title(window_title, self._get_ai_title_map(cwd), fallback)
             session_jsonl[pid] = jpath
+            worktree = self._get_worktree(cwd)
 
             sessions.append(
                 ClaudeSession(
@@ -456,6 +474,8 @@ class DetectionService(BaseService):
                     status=status,
                     session_id=self._get_session_id(cwd, jpath),
                     ai_title=self._ai_title_by_path.get(jpath, "") if jpath else "",
+                    worktree_repo=worktree.repo if worktree else "",
+                    worktree_branch=worktree.branch if worktree else "",
                 )
             )
 

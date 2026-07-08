@@ -57,6 +57,30 @@ class TestClaudeSession:
         )
         assert s.task_summary == "Refactor detection service"
 
+    def test_menu_label_shows_worktree_repo_and_branch(self):
+        s = ClaudeSession(
+            pid=1,
+            tty="ttys001",
+            project="wt1",
+            cwd="/tmp/worktrees/wt1",
+            host_app=HostApp.TERMINAL,
+            worktree_repo="myrepo",
+            worktree_branch="feature-x",
+        )
+        assert s.display_project == "myrepo [feature-x]"
+        assert "myrepo [feature-x]" in s.menu_label
+        assert "wt1" not in s.menu_label
+
+    def test_display_project_falls_back_to_project(self):
+        s = ClaudeSession(
+            pid=1,
+            tty="ttys001",
+            project="myapp",
+            cwd="/tmp/myapp",
+            host_app=HostApp.TERMINAL,
+        )
+        assert s.display_project == "myapp"
+
     def test_task_summary_no_task(self):
         s = ClaudeSession(
             pid=1,

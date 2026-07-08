@@ -140,6 +140,42 @@ class TestDetectEmpty:
                 p.stop()
 
 
+class TestDetectWorktreeSession:
+    def test_worktree_cwd_gets_repo_and_branch(self, tmp_path):
+        """A session running in a linked git worktree carries repo + branch."""
+        repo = tmp_path / "myrepo"
+        wt_admin = repo / ".git" / "worktrees" / "wt1"
+        wt_admin.mkdir(parents=True)
+        (wt_admin / "HEAD").write_text("ref: refs/heads/feature-x\n")
+        worktree = tmp_path / "wt1"
+        worktree.mkdir()
+        (worktree / ".git").write_text(f"gitdir: {wt_admin}\n")
+
+        cwd = str(worktree)
+        proj_dir = _cwd_to_proj_dir(str(tmp_path / "projects"), cwd)
+        _write_jsonl(
+            os.path.join(proj_dir, "s1.jsonl"),
+            [{"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}],
+            age_seconds=120,
+        )
+        svc = _build_service(
+            str(tmp_path / "projects"),
+            [100],
+            pid_info={100: ProcessInfo(tty="ttys001", ppid=1, comm="claude")},
+            pid_cwds={100: cwd},
+            terminal_titles={"/dev/ttys001": ("wt1 — ✳ claude", 1)},
+        )
+        try:
+            sessions = svc.detect()
+            assert len(sessions) == 1
+            assert sessions[0].worktree_repo == "myrepo"
+            assert sessions[0].worktree_branch == "feature-x"
+            assert "myrepo [feature-x]" in sessions[0].menu_label
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+
 class TestDetectSingleSession:
     def test_idle_title_stale_jsonl(self, tmp_path):
         """Single session with ✳ title and 3-day-old JSONL → IDLE."""
