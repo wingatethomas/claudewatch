@@ -19,8 +19,8 @@ class TestBookmarkService:
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_remove_delegates_to_repo(self, mock_repo):
-        self.svc.remove("/tmp/cwd")
-        mock_repo.remove_bookmark.assert_called_once_with("/tmp/cwd")
+        self.svc.remove("sid-1", "/tmp/cwd")
+        mock_repo.remove_bookmark.assert_called_once_with("sid-1", "/tmp/cwd")
 
     @patch("claudewatch.backend.bookmark.service.bookmarks_repo")
     def test_get_all_returns_bookmark_dtos(self, mock_repo):

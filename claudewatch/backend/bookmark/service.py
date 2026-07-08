@@ -25,10 +25,24 @@ class BookmarkService(BaseService):
         bookmarks_repo.add_bookmark(session_id, project, cwd, note)
         self._invalidate()
 
-    def remove(self, cwd: str) -> None:
-        """Remove a bookmark by CWD."""
-        bookmarks_repo.remove_bookmark(cwd)
+    def remove(self, session_id: str, cwd: str = "") -> None:
+        """Remove a bookmark by session id (CWD fallback for legacy entries)."""
+        bookmarks_repo.remove_bookmark(session_id, cwd)
         self._invalidate()
+
+    def is_bookmarked(self, session_id: str, cwd: str) -> bool:
+        """True if this session is bookmarked.
+
+        Bookmarks with a session id match on it; legacy entries without one
+        match by CWD.
+        """
+        for b in self.get_all():
+            if b.session_id:
+                if session_id and b.session_id == session_id:
+                    return True
+            elif b.cwd == cwd:
+                return True
+        return False
 
     def get_all(self) -> list[BookmarkDTO]:
         """Return all bookmarked sessions as DTOs."""
