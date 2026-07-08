@@ -67,12 +67,18 @@ def _save(pins: list[_BookmarkRecord]) -> None:
 
 
 def add_bookmark(session_id: str, project: str, cwd: str, note: str) -> None:
-    """Bookmark a session with a note. Updates if already bookmarked."""
+    """Bookmark a session with a note. Updates if already bookmarked.
+
+    Keyed by session_id: multiple sessions sharing a CWD each get their own
+    bookmark. Entries without a session_id (legacy) match by CWD.
+    """
     with _LOCK:
         bookmarks = _load()
         ts = datetime.now(tz=UTC).isoformat()
         for entry in bookmarks:
-            if entry["cwd"] == cwd:
+            same_session = bool(session_id) and entry.get("session_id") == session_id
+            legacy_same_cwd = not session_id and not entry.get("session_id") and entry["cwd"] == cwd
+            if same_session or legacy_same_cwd:
                 entry["session_id"] = session_id
                 entry["note"] = note
                 entry["timestamp"] = ts
@@ -121,12 +127,15 @@ def clear_all_bookmarks() -> None:
     log.info("bookmark.cleared_all")
 
 
-def remove_bookmark(cwd: str) -> None:
-    """Remove a bookmark by CWD."""
+def remove_bookmark(session_id: str, cwd: str = "") -> None:
+    """Remove a bookmark by session id (CWD match for legacy entries without one)."""
     with _LOCK:
         bookmarks = _load()
         before = len(bookmarks)
-        bookmarks = [p for p in bookmarks if p["cwd"] != cwd]
+        if session_id:
+            bookmarks = [p for p in bookmarks if p.get("session_id") != session_id]
+        else:
+            bookmarks = [p for p in bookmarks if p.get("session_id") or p["cwd"] != cwd]
         if len(bookmarks) < before:
-            log.info("bookmark.removed cwd=%s", cwd)
+            log.info("bookmark.removed session=%s cwd=%s", session_id, cwd)
         _save(bookmarks)

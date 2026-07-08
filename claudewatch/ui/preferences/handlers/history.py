@@ -75,9 +75,10 @@ def handle_bookmark(delegate: object, sender: object) -> None:
 
 
 def handle_unbookmark(delegate: object, sender: object) -> None:
-    """Remove a session from bookmarks."""
-    cwd = get_represented_object(sender)
-    get_bookmark_service().remove(cwd)
+    """Remove a session from bookmarks. Payload is 'session_id|cwd' (or bare cwd)."""
+    data = get_represented_object(sender)
+    sid, cwd = data.split("|", 1) if "|" in data else ("", data)
+    get_bookmark_service().remove(sid, cwd)
     from claudewatch.ui.preferences.panes.sessions import rebuild_rows
 
     rebuild_rows(delegate)

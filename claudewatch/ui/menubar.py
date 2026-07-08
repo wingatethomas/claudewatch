@@ -437,7 +437,7 @@ class ClaudeWatchApp:
         sid = session.session_id
         tty = session.tty
         wid = session.window_id
-        pinned = cwd in self._bookmark_service.get_bookmarked_cwds()
+        pinned = self._bookmark_service.is_bookmarked(session.session_id, cwd)
 
         def handler(_: NSMenuItem) -> None:
             exited = False
@@ -470,7 +470,7 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_unbookmark_handler(self, cwd: str) -> MenuCallback:
+    def _make_unbookmark_handler(self, session_id: str, cwd: str = "") -> MenuCallback:
         def handler(_: NSMenuItem) -> None:
             self._modal_active = True
             try:
@@ -483,7 +483,7 @@ class ClaudeWatchApp:
                 alert.addButtonWithTitle_("Unpin")
                 alert.addButtonWithTitle_("Cancel")
                 if alert.runModal() == NSAlertFirstButtonReturn:
-                    self._bookmark_service.remove(cwd)
+                    self._bookmark_service.remove(session_id, cwd)
             finally:
                 self._modal_active = False
                 self._last_menu_key = ""

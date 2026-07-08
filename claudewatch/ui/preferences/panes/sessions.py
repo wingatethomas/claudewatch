@@ -130,13 +130,13 @@ def rebuild_rows(delegate: object) -> None:
 
     w = scroll.frame().size.width
     entries = [e.to_dict() for e in get_history_service().get_all()]
-    pinned_cwds = get_bookmark_service().get_bookmarked_cwds()
+    bookmark_svc = get_bookmark_service()
     summary_svc = get_summary_service()
     usage_svc = get_usage_service()
 
     # Filter: bookmarked only
     if delegate._history_bookmarked_only:
-        entries = [e for e in entries if e.get("cwd", "") in pinned_cwds]
+        entries = [e for e in entries if bookmark_svc.is_bookmarked(e.get("session_id", ""), e.get("cwd", ""))]
 
     # Search filter
     search = delegate._history_search
@@ -182,7 +182,7 @@ def rebuild_rows(delegate: object) -> None:
                 y,
                 w,
                 _ROW_H,
-                pinned_cwds,
+                bookmark_svc,
                 usage_svc,
                 summary_svc,
                 display_project,
@@ -248,7 +248,7 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     y: float,
     w: float,
     h: float,
-    pinned_cwds: set[str],
+    bookmark_svc: object,
     usage_svc: object,
     summary_svc: object,
     display_project: str = "",
@@ -262,7 +262,7 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     model_raw = entry.get("model", "")
     model = _resolve_model_label(model_raw, cwd, usage_svc)
     ended_at = entry.get("ended_at", "")
-    is_pinned = cwd in pinned_cwds
+    is_pinned = bookmark_svc.is_bookmarked(session_id, cwd)  # type: ignore[attr-defined]
 
     # Build context menu — use raw project as the stable identity for action payloads.
     row_menu = _build_row_menu(delegate, entry, is_pinned, cwd, session_id, raw_project, summary_svc)
@@ -275,7 +275,7 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     # Bookmark callback wiring — payload carries the raw project as identity.
     if is_pinned:
         bookmark_action = objc.selector(delegate.unbookmarkSession_, signature=b"v@:@")
-        bookmark_rep = cwd
+        bookmark_rep = f"{session_id}|{cwd}"
     else:
         bookmark_action = objc.selector(delegate.bookmarkSession_, signature=b"v@:@")
         bookmark_rep = f"{session_id}|{raw_project}|{cwd}"
@@ -349,7 +349,7 @@ def _build_row_menu(  # noqa: PLR0913, ARG001
     menu.addItem_(NSMenuItem.separatorItem())
 
     if is_pinned:
-        _add_action("Remove Bookmark", delegate.unbookmarkSession_, cwd)
+        _add_action("Remove Bookmark", delegate.unbookmarkSession_, f"{session_id}|{cwd}")
     else:
         _add_action("Bookmark", delegate.bookmarkSession_, f"{session_id}|{project}|{cwd}")
 
