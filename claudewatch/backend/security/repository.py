@@ -60,15 +60,27 @@ class SecurityRepository:
     # -- Baseline persistence --
 
     def load_baseline(self) -> ConfigSnapshot | None:
-        """Load the last-known config snapshot from NSUserDefaults."""
+        """Load the last-known config snapshot from NSUserDefaults.
+
+        Stored as a JSON string: NSUserDefaults returns plist dicts as
+        NSDictionary proxies that fail isinstance(dict) and compare unreliably
+        against pure-Python snapshots. Legacy dict-typed values load as None,
+        which re-baselines once on upgrade.
+        """
         raw = get_setting(_BASELINE_KEY)
-        if not isinstance(raw, dict):
+        if not isinstance(raw, str):
             return None
-        return ConfigSnapshot.from_dict(raw)
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        return ConfigSnapshot.from_dict(data)
 
     def save_baseline(self, snapshot: ConfigSnapshot) -> None:
         """Persist a config snapshot as the new baseline."""
-        set_setting(_BASELINE_KEY, snapshot.to_dict())
+        set_setting(_BASELINE_KEY, json.dumps(snapshot.to_dict()))
 
     # -- Permission management --
 
