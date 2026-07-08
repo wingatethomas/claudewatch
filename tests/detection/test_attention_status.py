@@ -310,7 +310,7 @@ class TestMatchJsonlByTitle:
     def test_substring_match_returns_path(self):
         mapping = {"Wire up search filter": "/proj/a.jsonl"}
         title = "myapp — ✳ Wire up search filter — node ◂ claude — 177×47"
-        assert _match_jsonl_by_title(title, mapping, "/fallback.jsonl") == "/proj/a.jsonl"
+        assert _match_jsonl_by_title(title, mapping, "/fallback.jsonl") == ("/proj/a.jsonl", True)
 
     def test_longest_match_wins(self):
         mapping = {
@@ -318,25 +318,25 @@ class TestMatchJsonlByTitle:
             "Review PR #593 backend": "/proj/long.jsonl",
         }
         title = "myapp — ✳ Review PR #593 backend — node ◂ claude — 80×24"
-        assert _match_jsonl_by_title(title, mapping, "/fallback.jsonl") == "/proj/long.jsonl"
+        assert _match_jsonl_by_title(title, mapping, "/fallback.jsonl") == ("/proj/long.jsonl", True)
 
     def test_no_match_returns_fallback(self):
         mapping = {"Some other title": "/proj/other.jsonl"}
         title = "myapp — ✳ Brand new session — claude"
-        assert _match_jsonl_by_title(title, mapping, "/fallback.jsonl") == "/fallback.jsonl"
+        assert _match_jsonl_by_title(title, mapping, "/fallback.jsonl") == ("/fallback.jsonl", False)
 
     def test_empty_map_returns_fallback(self):
-        assert _match_jsonl_by_title("any title", {}, "/fallback.jsonl") == "/fallback.jsonl"
+        assert _match_jsonl_by_title("any title", {}, "/fallback.jsonl") == ("/fallback.jsonl", False)
 
     def test_empty_title_returns_fallback(self):
         mapping = {"Some title": "/proj/a.jsonl"}
-        assert _match_jsonl_by_title("", mapping, "/fallback.jsonl") == "/fallback.jsonl"
+        assert _match_jsonl_by_title("", mapping, "/fallback.jsonl") == ("/fallback.jsonl", False)
 
     def test_empty_title_value_skipped(self):
         # An empty aiTitle would substring-match every title — must be ignored.
         mapping = {"": "/proj/empty.jsonl", "Real title": "/proj/real.jsonl"}
         title = "myapp — ✳ Real title — claude"
-        assert _match_jsonl_by_title(title, mapping, "/fallback.jsonl") == "/proj/real.jsonl"
+        assert _match_jsonl_by_title(title, mapping, "/fallback.jsonl") == ("/proj/real.jsonl", True)
 
     def test_returns_fallback_when_fallback_is_none(self):
-        assert _match_jsonl_by_title("x", {}, None) is None
+        assert _match_jsonl_by_title("x", {}, None) == (None, False)

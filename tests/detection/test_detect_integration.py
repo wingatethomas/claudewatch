@@ -533,6 +533,49 @@ class TestDetectSharedCwdAttention:
         assert svc._read_ai_title("/p/s.jsonl") == "Newer title"
         assert svc._session_log_service.read_ai_title_full.call_count == 1
 
+    def test_fresh_session_does_not_inherit_siblings_identity(self, tmp_path):
+        """A new session whose fallback JSONL is title-matched to a sibling must
+        not mirror that sibling's title, session id, or attention status."""
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        # Session A: active, has an unresolved tool_use, aiTitle known.
+        _write_jsonl(
+            os.path.join(proj_dir, "active.jsonl"),
+            [
+                {"type": "ai-title", "aiTitle": "Fix claudewatch bugs"},
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}]},
+                },
+            ],
+            age_seconds=30,
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [100, 200],
+            pid_info={
+                100: ProcessInfo(tty="ttys001", ppid=1, comm="claude"),
+                200: ProcessInfo(tty="ttys002", ppid=1, comm="claude"),
+            },
+            pid_cwds={100: cwd, 200: cwd},
+            terminal_titles={
+                "/dev/ttys001": ("myapp — ✳ Fix claudewatch bugs — node ◂ claude", 1),
+                "/dev/ttys002": ("myapp — ✳ Claude Code", 2),  # brand new, no aiTitle yet
+            },
+        )
+        try:
+            sessions = svc.detect()
+            by_pid = {s.pid: s for s in sessions}
+            assert by_pid[100].status == SessionStatus.ATTENTION
+            assert by_pid[100].ai_title == "Fix claudewatch bugs"
+            # The fresh session stays plain: no borrowed identity, no false attention.
+            assert by_pid[200].status == SessionStatus.IDLE
+            assert by_pid[200].ai_title == ""
+            assert by_pid[200].session_id == ""
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
     def test_brand_new_session_no_ai_title_falls_back(self, tmp_path):
         """Session with no aiTitle in window title falls back to most-recent JSONL."""
         cwd = "/Users/dev/myapp"

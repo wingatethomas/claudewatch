@@ -409,6 +409,8 @@ class DetectionService(BaseService):
         # most-recent file in the project dir often belongs to a sibling
         # session, so we match on aiTitle from the window title instead.
         session_jsonl: dict[int, str | None] = {}
+        # pid → whether its JSONL was matched via aiTitle (vs the most-recent fallback)
+        matched_by_title: dict[int, bool] = {}
 
         sessions = []
         for pid in pids:
@@ -458,8 +460,9 @@ class DetectionService(BaseService):
             if cwd not in cwd_fallback_jsonl:
                 cwd_fallback_jsonl[cwd] = self._session_log_service.find_most_recent(cwd)
             fallback = cwd_fallback_jsonl[cwd]
-            jpath = _match_jsonl_by_title(window_title, self._get_ai_title_map(cwd), fallback)
+            jpath, title_matched = _match_jsonl_by_title(window_title, self._get_ai_title_map(cwd), fallback)
             session_jsonl[pid] = jpath
+            matched_by_title[pid] = title_matched
             worktree = self._get_worktree(cwd)
 
             sessions.append(
@@ -478,6 +481,18 @@ class DetectionService(BaseService):
                     worktree_branch=worktree.branch if worktree else "",
                 )
             )
+
+        # A fallback JSONL that another session already claimed via title match
+        # belongs to that session. Dressing an unmatched session in it would
+        # mirror the sibling's title, status, and summary — show it plainly
+        # (no session id, title-only status) until its own aiTitle appears.
+        claimed_paths = {session_jsonl[s.pid] for s in sessions if matched_by_title.get(s.pid) and session_jsonl[s.pid]}
+        for s in sessions:
+            jpath = session_jsonl.get(s.pid)
+            if jpath and not matched_by_title.get(s.pid) and jpath in claimed_paths:
+                session_jsonl[s.pid] = None
+                s.session_id = ""
+                s.ai_title = ""
 
         self._get_ide_tab_indices(sessions, all_ps)
 
@@ -563,23 +578,24 @@ def _match_jsonl_by_title(
     window_title: str,
     ai_title_map: dict[str, str],
     fallback: str | None,
-) -> str | None:
+) -> tuple[str | None, bool]:
     """Find the JSONL whose aiTitle appears as a substring of the window title.
 
     Used to disambiguate multiple Claude sessions sharing a CWD. Longest match
     wins so a substring title doesn't shadow a more specific one. Returns
-    `fallback` if nothing matches — which preserves prior behavior for
-    brand-new sessions (no ai-title yet) and IDE sessions (no terminal title).
+    (path, matched_by_title); the path is `fallback` when nothing matches —
+    which preserves prior behavior for brand-new sessions (no ai-title yet)
+    and IDE sessions (no terminal title).
     """
     if not window_title or not ai_title_map:
-        return fallback
+        return (fallback, False)
     best_title = ""
     best_path = fallback
     for title, path in ai_title_map.items():
         if title and title in window_title and len(title) > len(best_title):
             best_title = title
             best_path = path
-    return best_path
+    return (best_path, bool(best_title))
 
 
 def _has_working_indicator(window_title: str) -> bool:
