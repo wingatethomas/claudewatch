@@ -10,12 +10,13 @@ from claudewatch.backend.core.dto import TokenUsageDTO
 from claudewatch.backend.core.service import BaseService
 from claudewatch.backend.core.session_log.service import SessionLogService
 
-# Parses a raw Claude model id into family + major[.minor]. Trailing 8+ digit
-# release dates are ignored so 'claude-haiku-4-5-20251001' collapses to the
-# same label as 'claude-haiku-4-5'. The minor segment is capped at six digits
-# so it never swallows a date suffix that follows a model with no minor
+# Parses a raw Claude model id into family + major[.minor]. The family is any
+# alphabetic word so new model lines derive without code changes. Trailing 8+
+# digit release dates are ignored so 'claude-haiku-4-5-20251001' collapses to
+# the same label as 'claude-haiku-4-5'. The minor segment is capped at six
+# digits so it never swallows a date suffix that follows a model with no minor
 # component (e.g. 'claude-opus-4-20250512' → family 4, no minor, date dropped).
-_MODEL_RE = re.compile(r"^claude-(opus|sonnet|haiku)-(\d+)(?:-(\d{1,6}))?(?:-\d{8,})?$")
+_MODEL_RE = re.compile(r"^claude-([a-z]+)-(\d+)(?:-(\d{1,6}))?(?:-\d{8,})?$")
 
 
 def model_display_name(raw_id: str) -> str:
@@ -25,6 +26,7 @@ def model_display_name(raw_id: str) -> str:
         'claude-opus-4-7'            -> 'opus 4.7'
         'claude-haiku-4-5-20251001'  -> 'haiku 4.5'
         'claude-opus-4-20250512'     -> 'opus 4'
+        'claude-fable-5'             -> 'fable 5'
 
     Any id that doesn't match the expected pattern is returned unchanged —
     callers display the raw value as a last-resort fallback rather than
