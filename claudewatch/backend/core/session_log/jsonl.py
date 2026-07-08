@@ -94,7 +94,7 @@ def get_session_id_from_path(path: str) -> str:
 
 
 def read_ai_title(path: str, tail_bytes: int = 10240) -> str:
-    """Return the latest aiTitle recorded in the JSONL, or "" if none.
+    """Return the latest aiTitle recorded in the JSONL tail, or "" if none.
 
     Claude Code writes `{"type":"ai-title","aiTitle":"..."}` periodically.
     We scan the tail in reverse so we pick up the most recent title.
@@ -102,8 +102,28 @@ def read_ai_title(path: str, tail_bytes: int = 10240) -> str:
     tail = read_jsonl_tail(path, tail_bytes=tail_bytes)
     if not tail:
         return ""
+    return _latest_ai_title(tail.splitlines())
+
+
+def read_ai_title_full(path: str) -> str:
+    """Scan the entire JSONL for the latest aiTitle, or "" if none.
+
+    Fallback for long sessions whose ai-title entries have scrolled out of
+    the tail window. Streams the file keeping only candidate lines, so large
+    logs aren't materialized in memory. Callers should cache the result.
+    """
     needle = f'"{EntryType.AI_TITLE}"'
-    for line in reversed(tail.splitlines()):
+    try:
+        with _open_nofollow(path, "r") as f:
+            candidates = [line for line in f if needle in line]
+    except OSError:
+        return ""
+    return _latest_ai_title(candidates)
+
+
+def _latest_ai_title(lines: list[str]) -> str:
+    needle = f'"{EntryType.AI_TITLE}"'
+    for line in reversed(lines):
         if needle not in line:
             continue
         try:

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from claudewatch.backend.core.helpers import (
+    _warned_applescript_errors,
     atomic_json_write,
     escape_applescript,
     is_accessibility_trusted,
@@ -89,7 +90,8 @@ class TestRunApplescriptErrorLogging:
         assert result == ""
         assert any("-60005" in r.message and r.levelno == logging.WARNING for r in caplog.records)
 
-    def test_logs_debug_for_other_errors(self, caplog: object) -> None:
+    def test_logs_warning_for_other_errors(self, caplog: object) -> None:
+        _warned_applescript_errors.clear()
         with (
             patch("claudewatch.backend.core.helpers.NSAppleScript") as mock_cls,
             caplog.at_level(logging.DEBUG, logger="claudewatch"),  # type: ignore[union-attr]
@@ -102,8 +104,7 @@ class TestRunApplescriptErrorLogging:
             mock_cls.alloc.return_value.initWithSource_.return_value = mock_script
 
             run_applescript("bad script")
-        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-        assert not warning_records
+        assert any("Some other error" in r.message and r.levelno == logging.WARNING for r in caplog.records)
 
 
 class TestIsAccessibilityTrusted:
