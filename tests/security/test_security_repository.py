@@ -2,7 +2,7 @@
 
 import json
 import os
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -92,6 +92,54 @@ class TestCaptureSnapshot:
         repo = SecurityRepository(str(tmp_path))
         snap = repo.capture_snapshot()
         assert snap.settings == {}
+
+
+class TestBaselinePersistence:
+    def _patched_store(self):
+        store: dict[str, object] = {}
+        get_patch = patch(
+            "claudewatch.backend.security.repository.get_setting",
+            side_effect=store.get,
+        )
+        set_patch = patch(
+            "claudewatch.backend.security.repository.set_setting",
+            side_effect=store.__setitem__,
+        )
+        return store, get_patch, set_patch
+
+    def test_save_load_roundtrip(self, claude_dir: str) -> None:
+        repo = SecurityRepository(claude_dir)
+        snap = repo.capture_snapshot()
+        store, get_patch, set_patch = self._patched_store()
+        with get_patch, set_patch:
+            repo.save_baseline(snap)
+            restored = repo.load_baseline()
+
+        # Stored as a JSON string — plist dicts come back from NSUserDefaults
+        # as NSDictionary proxies that fail isinstance(dict).
+        assert isinstance(store["security.last_config_snapshot"], str)
+        assert restored is not None
+        assert restored.to_dict() == snap.to_dict()
+
+    def test_load_returns_none_for_legacy_dict_value(self) -> None:
+        repo = SecurityRepository("/nonexistent")
+        store, get_patch, set_patch = self._patched_store()
+        store["security.last_config_snapshot"] = {"settings": {}}
+        with get_patch, set_patch:
+            assert repo.load_baseline() is None
+
+    def test_load_returns_none_when_unset(self) -> None:
+        repo = SecurityRepository("/nonexistent")
+        _, get_patch, set_patch = self._patched_store()
+        with get_patch, set_patch:
+            assert repo.load_baseline() is None
+
+    def test_load_returns_none_for_corrupt_json(self) -> None:
+        repo = SecurityRepository("/nonexistent")
+        store, get_patch, set_patch = self._patched_store()
+        store["security.last_config_snapshot"] = "not json {{{"
+        with get_patch, set_patch:
+            assert repo.load_baseline() is None
 
 
 class TestConfigSnapshotSerialization:
