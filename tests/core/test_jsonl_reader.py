@@ -8,6 +8,7 @@ from claudewatch.backend.core.session_log.jsonl import (
     get_session_id_from_path,
     list_jsonls_in_cwd,
     read_ai_title,
+    read_ai_title_full,
     read_jsonl_full,
     read_jsonl_tail,
 )
@@ -197,3 +198,30 @@ class TestReadAiTitle:
         f = tmp_path / "s.jsonl"
         f.write_text('not-json-at-all\n{"type": "ai-title", "aiTitle": "Valid title"}\n')
         assert read_ai_title(str(f)) == "Valid title"
+
+
+class TestReadAiTitleFull:
+    """Tests for read_ai_title_full."""
+
+    def _long_session(self, tmp_path, title_line: str):
+        filler = '{"type": "assistant", "message": {"content": [{"type": "text", "text": "%s"}]}}\n' % ("x" * 200)
+        f = tmp_path / "s.jsonl"
+        f.write_text(title_line + filler * 100)
+        return f
+
+    def test_finds_title_outside_tail_window(self, tmp_path):
+        f = self._long_session(tmp_path, '{"type": "ai-title", "aiTitle": "Old long session"}\n')
+        assert read_ai_title(str(f)) == ""
+        assert read_ai_title_full(str(f)) == "Old long session"
+
+    def test_returns_latest_when_multiple(self, tmp_path):
+        f = tmp_path / "s.jsonl"
+        f.write_text('{"type": "ai-title", "aiTitle": "First"}\n{"type": "ai-title", "aiTitle": "Second"}\n')
+        assert read_ai_title_full(str(f)) == "Second"
+
+    def test_returns_empty_when_no_title(self, tmp_path):
+        f = self._long_session(tmp_path, "")
+        assert read_ai_title_full(str(f)) == ""
+
+    def test_returns_empty_for_missing_file(self):
+        assert read_ai_title_full("/nonexistent/x.jsonl") == ""

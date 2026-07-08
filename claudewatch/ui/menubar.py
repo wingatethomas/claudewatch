@@ -391,7 +391,7 @@ class ClaudeWatchApp:
                 modal_dismissed = threading.Event()
 
                 def _fill_summary() -> None:
-                    summary = self._summary_service.generate_and_cache(cwd)
+                    summary = self._summary_service.generate_and_cache(cwd, sid)
                     if summary and not modal_dismissed.is_set():
                         text_field.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setStringValue:",
@@ -413,7 +413,7 @@ class ClaudeWatchApp:
                     note = str(text_field.stringValue()).strip()
                     self._bookmark_service.add(sid, project, cwd, note)
                     if note:
-                        self._summary_service.cache(cwd, note)
+                        self._summary_service.cache(cwd, note, sid)
 
                     quit_alert = NSAlert.alloc().init()
                     quit_alert.setMessageText_("Quit this session?")
@@ -434,9 +434,10 @@ class ClaudeWatchApp:
         pid = session.pid
         project = session.project
         cwd = session.cwd
+        sid = session.session_id
         tty = session.tty
         wid = session.window_id
-        pinned = cwd in self._bookmark_service.get_bookmarked_cwds()
+        pinned = self._bookmark_service.is_bookmarked(session.session_id, cwd)
 
         def handler(_: NSMenuItem) -> None:
             exited = False
@@ -463,13 +464,13 @@ class ClaudeWatchApp:
                 finally:
                     self._modal_active = False
             if exited:
-                threading.Thread(target=self._summary_service.generate_and_cache, args=(cwd,), daemon=True).start()
+                threading.Thread(target=self._summary_service.generate_and_cache, args=(cwd, sid), daemon=True).start()
             self._last_menu_key = ""
             self.update_display()
 
         return handler
 
-    def _make_unbookmark_handler(self, cwd: str) -> MenuCallback:
+    def _make_unbookmark_handler(self, session_id: str, cwd: str = "") -> MenuCallback:
         def handler(_: NSMenuItem) -> None:
             self._modal_active = True
             try:
@@ -482,7 +483,7 @@ class ClaudeWatchApp:
                 alert.addButtonWithTitle_("Unpin")
                 alert.addButtonWithTitle_("Cancel")
                 if alert.runModal() == NSAlertFirstButtonReturn:
-                    self._bookmark_service.remove(cwd)
+                    self._bookmark_service.remove(session_id, cwd)
             finally:
                 self._modal_active = False
                 self._last_menu_key = ""

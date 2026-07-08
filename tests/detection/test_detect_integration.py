@@ -18,7 +18,7 @@ import time
 from unittest.mock import MagicMock, patch
 
 from claudewatch.backend.core.models import SessionStatus
-from claudewatch.backend.core.process.models import ProcessInfo
+from claudewatch.backend.core.process.models import ProcessEntry, ProcessInfo
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.detection.service import DetectionService
 
@@ -88,6 +88,34 @@ class TestDetectEmpty:
         svc = _build_service(str(tmp_path), [])
         try:
             assert svc.detect() == []
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+    def test_finds_native_installer_process_missed_by_pgrep(self, tmp_path):
+        """Native-installer claude (kernel name = version string) is invisible
+        to pgrep -x; the libproc path scan must still find it."""
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        _write_jsonl(
+            os.path.join(proj_dir, "s1.jsonl"),
+            [{"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}],
+            age_seconds=120,
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [],  # pgrep finds nothing
+            pid_info={100: ProcessInfo(tty="ttys001", ppid=1, comm="claude")},
+            pid_cwds={100: cwd},
+            terminal_titles={"/dev/ttys001": ("myapp — ✳ claude", 1)},
+        )
+        svc._process_service.list_all.return_value = [
+            ProcessEntry(pid=100, tty="ttys001", ppid=1, comm="/Users/dev/.local/share/claude/versions/2.1.170"),
+            ProcessEntry(pid=200, tty="??", ppid=1, comm="/Applications/Claude.app/Contents/MacOS/Claude"),
+        ]
+        try:
+            sessions = svc.detect()
+            assert [s.pid for s in sessions] == [100]
         finally:
             for p in svc._test_patchers:
                 p.stop()
@@ -389,6 +417,85 @@ class TestDetectSharedCwdAttention:
         finally:
             for p in svc._test_patchers:
                 p.stop()
+
+    def test_long_session_title_outside_tail_still_gets_attention(self, tmp_path):
+        """ai-title entry pushed out of the 10KB tail — full-scan fallback still matches.
+
+        Long sessions write their ai-title early; once the log grows past the
+        tail window, tail-only matching degrades to the shared most-recent
+        fallback and the session reads a sibling's JSONL.
+        """
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+
+        # Session A: actively streaming, fresh JSONL — the most-recent one.
+        _write_jsonl(
+            os.path.join(proj_dir, "active.jsonl"),
+            [
+                {"type": "ai-title", "aiTitle": "Wire up search filter"},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}},
+            ],
+        )
+        # Session B: long session — ai-title at the top, >10KB of filler after it,
+        # ending with an unresolved tool_use.
+        filler = [
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "x" * 200}]}} for _ in range(100)
+        ]
+        _write_jsonl(
+            os.path.join(proj_dir, "long.jsonl"),
+            [
+                {"type": "ai-title", "aiTitle": "Investigate stale cache"},
+                *filler,
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [{"type": "tool_use", "name": "Write", "input": {"file_path": "/x/README.md"}}]
+                    },
+                },
+            ],
+            age_seconds=30,
+        )
+
+        svc = _build_service(
+            str(tmp_path),
+            [100, 200],
+            pid_info={
+                100: ProcessInfo(tty="ttys001", ppid=1, comm="claude"),
+                200: ProcessInfo(tty="ttys002", ppid=1, comm="claude"),
+            },
+            pid_cwds={100: cwd, 200: cwd},
+            terminal_titles={
+                "/dev/ttys001": ("myapp — ⠂ Wire up search filter — node ◂ claude", 1),
+                "/dev/ttys002": ("myapp — ✳ Investigate stale cache — node ◂ claude", 2),
+            },
+        )
+        try:
+            sessions = svc.detect()
+            by_pid = {s.pid: s for s in sessions}
+            assert by_pid[100].status == SessionStatus.WORKING
+            assert by_pid[200].status == SessionStatus.ATTENTION
+            assert "Write" in by_pid[200].prompt_text
+            assert by_pid[100].ai_title == "Wire up search filter"
+            assert by_pid[200].ai_title == "Investigate stale cache"
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+    def test_full_scan_runs_once_per_path(self):
+        """Tail miss triggers one full scan; the result is remembered afterwards."""
+        svc = DetectionService(MagicMock(), MagicMock())
+        svc._session_log_service.read_ai_title.return_value = ""
+        svc._session_log_service.read_ai_title_full.return_value = "Remembered title"
+
+        assert svc._read_ai_title("/p/s.jsonl") == "Remembered title"
+        assert svc._read_ai_title("/p/s.jsonl") == "Remembered title"
+        assert svc._session_log_service.read_ai_title_full.call_count == 1
+
+        # A newer title arriving in the tail supersedes the remembered one.
+        svc._session_log_service.read_ai_title.return_value = "Newer title"
+        assert svc._read_ai_title("/p/s.jsonl") == "Newer title"
+        assert svc._read_ai_title("/p/s.jsonl") == "Newer title"
+        assert svc._session_log_service.read_ai_title_full.call_count == 1
 
     def test_brand_new_session_no_ai_title_falls_back(self, tmp_path):
         """Session with no aiTitle in window title falls back to most-recent JSONL."""

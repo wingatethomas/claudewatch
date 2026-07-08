@@ -117,8 +117,7 @@ class TestExtractRecap:
             ],
         )
         svc = _make_service(tmp_path)
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = svc._extract_recap("/Users/dev/myapp")
+        result = svc._extract_recap(str(proj_dir / "session.jsonl"))
         assert result == "Fixed auth middleware and added tests."
 
     def test_returns_none_when_no_recap(self, tmp_path):
@@ -129,14 +128,12 @@ class TestExtractRecap:
             [{"type": "user", "message": {"content": "hello"}, "timestamp": ""}],
         )
         svc = _make_service(tmp_path)
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = svc._extract_recap("/Users/dev/myapp")
+        result = svc._extract_recap(str(proj_dir / "session.jsonl"))
         assert result is None
 
-    def test_returns_none_for_missing_project(self, tmp_path):
+    def test_returns_none_for_missing_file(self, tmp_path):
         svc = _make_service(tmp_path)
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "nope")):
-            result = svc._extract_recap("/Users/dev/myapp")
+        result = svc._extract_recap(str(tmp_path / "nope.jsonl"))
         assert result is None
 
     def test_full_scan_finds_recap_past_tail(self, tmp_path):
@@ -156,8 +153,7 @@ class TestExtractRecap:
         _write_jsonl(proj_dir / "session.jsonl", entries)
 
         svc = _make_service(tmp_path)
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = svc._extract_recap("/Users/dev/myapp")
+        result = svc._extract_recap(str(proj_dir / "session.jsonl"))
         assert result == "Early recap deep in the file."
 
 
@@ -175,8 +171,7 @@ class TestExtractAiTitle:
             ],
         )
         svc = _make_service(tmp_path)
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = svc._extract_ai_title("/Users/dev/myapp")
+        result = svc._extract_ai_title(str(proj_dir / "session.jsonl"))
         assert result == "Refactor auth module"
 
     def test_returns_none_when_absent(self, tmp_path):
@@ -187,8 +182,7 @@ class TestExtractAiTitle:
             [{"type": "user", "message": {"content": "hi"}, "timestamp": ""}],
         )
         svc = _make_service(tmp_path)
-        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
-            result = svc._extract_ai_title("/Users/dev/myapp")
+        result = svc._extract_ai_title(str(proj_dir / "session.jsonl"))
         assert result is None
 
 
@@ -216,6 +210,59 @@ class TestGenerateAndCache:
             assert result
             cached = svc.get_cached_summary("/Users/dev/myapp")
             assert cached == "Fixed auth middleware and added integration tests."
+
+    def test_shared_cwd_sessions_get_their_own_recaps(self, tmp_path):
+        """Each session reads its own JSONL — never a sibling's recap."""
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "sess-a.jsonl",
+            [
+                {
+                    "type": "system",
+                    "subtype": "away_summary",
+                    "content": "Recap for session A.",
+                    "timestamp": "2026-01-01T00:05:00Z",
+                },
+            ],
+        )
+        _write_jsonl(
+            proj_dir / "sess-b.jsonl",
+            [
+                {
+                    "type": "system",
+                    "subtype": "away_summary",
+                    "content": "Recap for session B.",
+                    "timestamp": "2026-01-01T00:06:00Z",
+                },
+            ],
+        )
+        svc = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            svc.generate_and_cache("/Users/dev/myapp", "sess-a")
+            svc.generate_and_cache("/Users/dev/myapp", "sess-b")
+            assert svc.get_cached_summary("/Users/dev/myapp", "sess-a") == "Recap for session A."
+            assert svc.get_cached_summary("/Users/dev/myapp", "sess-b") == "Recap for session B."
+
+    def test_missing_session_file_yields_no_summary(self, tmp_path):
+        """A session_id whose JSONL is gone must not fall back to a sibling's file."""
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "other.jsonl",
+            [
+                {
+                    "type": "system",
+                    "subtype": "away_summary",
+                    "content": "Sibling recap.",
+                    "timestamp": "2026-01-01T00:05:00Z",
+                },
+            ],
+        )
+        svc = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            assert svc.generate_and_cache("/Users/dev/myapp", "gone") == ""
+            assert svc.get_cached_summary("/Users/dev/myapp", "gone") is None
 
     def test_uses_ai_title_when_available(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
@@ -336,17 +383,30 @@ class TestCacheSummary:
             result = svc.get_cached("/test")
         assert result == "test summary"
 
-    def test_stale_cache_returns_none(self, tmp_path):
+    def test_grown_jsonl_invalidates_cache(self, tmp_path):
+        svc = _make_service(tmp_path)
+        proj_dir = tmp_path / "projects" / "-test"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "s.jsonl").write_text("x" * 20480)
+
+        svc._repo._store_loaded = True
+        svc._repo._store = {"/test": SummaryEntry(title="", summary="old", mtime=1.0, jsonl_size=10)}
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = svc.get_cached("/test")
+        assert result is None
+
+    def test_newer_mtime_alone_does_not_invalidate_cache(self, tmp_path):
+        """Active sessions touch their JSONL constantly; only real growth invalidates."""
         svc = _make_service(tmp_path)
         proj_dir = tmp_path / "projects" / "-test"
         proj_dir.mkdir(parents=True)
         (proj_dir / "s.jsonl").write_text("{}\n")
 
         svc._repo._store_loaded = True
-        svc._repo._store = {"/test": SummaryEntry(title="", summary="old", mtime=1.0)}
+        svc._repo._store = {"/test": SummaryEntry(title="", summary="old", mtime=1.0, jsonl_size=3)}
         with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
             result = svc.get_cached("/test")
-        assert result is None
+        assert result == "old"
 
 
 class TestGetStatus:

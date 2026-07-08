@@ -274,11 +274,11 @@ class TestResolveModelLabel:
         assert _resolve_model_label("claude-opus-4-6", "/tmp/proj", svc) == "opus 4.6"
         svc.get_model.assert_not_called()
 
-    def test_unknown_model_id_falls_through(self) -> None:
+    def test_new_family_id_derives_label(self) -> None:
         from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
 
         svc = MagicMock()
-        assert _resolve_model_label("claude-future-99", "/tmp/proj", svc) == "claude-future-99"
+        assert _resolve_model_label("claude-future-99", "/tmp/proj", svc) == "future 99"
         svc.get_model.assert_not_called()
 
     def test_empty_model_falls_back_to_usage_service(self) -> None:
@@ -289,12 +289,12 @@ class TestResolveModelLabel:
         assert _resolve_model_label("", "/tmp/proj", svc) == "sonnet 4.6"
         svc.get_model.assert_called_once_with("/tmp/proj")
 
-    def test_fallback_unknown_raw_id_passes_through(self) -> None:
+    def test_fallback_service_id_derives_label(self) -> None:
         from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
 
         svc = MagicMock()
         svc.get_model.return_value = "claude-future-99"
-        assert _resolve_model_label("", "/tmp/proj", svc) == "claude-future-99"
+        assert _resolve_model_label("", "/tmp/proj", svc) == "future 99"
 
     def test_empty_model_and_no_cwd_returns_empty(self) -> None:
         from claudewatch.ui.preferences.panes.sessions import _resolve_model_label

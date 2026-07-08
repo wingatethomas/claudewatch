@@ -113,8 +113,9 @@ class MenuBuilder:
             )
             self._menu.addItem_(NSMenuItem.separatorItem())
 
-        pinned_cwds = self._app._bookmark_service.get_bookmarked_cwds()
+        bookmark_service = self._app._bookmark_service
         active_cwds = {s.cwd for s in sessions}
+        active_sids = {s.session_id for s in sessions if s.session_id}
 
         if not sessions:
             if self._app._has_polled:
@@ -144,7 +145,7 @@ class MenuBuilder:
                 )
                 self._menu.addItem_(header)
                 for s in attention:
-                    is_pinned = s.cwd in pinned_cwds
+                    is_pinned = bookmark_service.is_bookmarked(s.session_id, s.cwd)
                     self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
             if attention and (working or idle):
@@ -157,7 +158,7 @@ class MenuBuilder:
                 )
                 self._menu.addItem_(header)
                 for s in working:
-                    is_pinned = s.cwd in pinned_cwds
+                    is_pinned = bookmark_service.is_bookmarked(s.session_id, s.cwd)
                     self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
             if working and idle:
@@ -170,12 +171,16 @@ class MenuBuilder:
                 )
                 self._menu.addItem_(header)
                 for s in idle:
-                    is_pinned = s.cwd in pinned_cwds
+                    is_pinned = bookmark_service.is_bookmarked(s.session_id, s.cwd)
                     self._add_session_items(s, suffixes[s.pid], pinned=is_pinned)
 
         # Bookmarked sessions that are NOT currently active (respects feature toggle)
         pins = self._app._bookmark_service.get_all() if features.is_enabled(FeatureKey.BOOKMARKS) else []
-        inactive_pins = [p for p in pins if p.cwd not in active_cwds]
+        inactive_pins = [
+            p
+            for p in pins
+            if (p.session_id and p.session_id not in active_sids) or (not p.session_id and p.cwd not in active_cwds)
+        ]
         if inactive_pins:
             self._menu.addItem_(NSMenuItem.separatorItem())
             bm_menu_item = make_menu_item(f"Bookmarks ({len(inactive_pins)})", None, d)
@@ -192,7 +197,7 @@ class MenuBuilder:
                 actions = SessionActions(
                     activity=self._app._make_history_activity_handler(pin.project, pin.cwd),
                     resume=self._app._make_resume_handler(pin.session_id, pin.cwd),
-                    unbookmark=self._app._make_unbookmark_handler(pin.cwd),
+                    unbookmark=self._app._make_unbookmark_handler(pin.session_id, pin.cwd),
                     track_summary=lambda cwd=pin.cwd, sid=pin.session_id: self._app._summary_service.track_session(
                         cwd, session_id=sid or ""
                     ),
@@ -219,7 +224,8 @@ class MenuBuilder:
         for entry in history:
             if len(recent_entries) >= _recent_limit:
                 break
-            if entry.cwd in active_cwds or entry.cwd in pinned_cwds:
+            is_active = entry.session_id in active_sids if entry.session_id else entry.cwd in active_cwds
+            if is_active or bookmark_service.is_bookmarked(entry.session_id, entry.cwd):
                 continue
             try:
                 ended_dt = datetime.fromisoformat(entry.ended_at)
@@ -328,7 +334,7 @@ class MenuBuilder:
         actions = SessionActions(
             activity=self._app._make_activity_handler(s),
             bookmark=self._app._make_bookmark_handler(s) if not pinned and s.session_id else None,
-            unbookmark=self._app._make_unbookmark_handler(s.cwd) if pinned else None,
+            unbookmark=self._app._make_unbookmark_handler(s.session_id, s.cwd) if pinned else None,
             quit=self._app._make_quit_handler(s),
             track_summary=lambda cwd=s.cwd, sid=s.session_id, urgent=is_active: (
                 self._app._summary_service.track_session(cwd, urgent=urgent, session_id=sid)

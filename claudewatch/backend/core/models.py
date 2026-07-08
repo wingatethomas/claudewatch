@@ -69,20 +69,20 @@ class ClaudeSession:
     tab_index: int | None = None  # terminal tab index within IDE (0-based)
     session_id: str = ""  # Claude Code session UUID from JSONL filename
     agent_count: int = 0  # populated by analytics.enrich_sessions()
+    ai_title: str = ""  # Claude-generated session title from the matched JSONL
 
     @property
     def task_summary(self) -> str:
-        """Extract the Claude task/status from the window title.
-        Titles look like: 'project — ✳ Some Task — claude TMPDIR=...'"""
+        """The session's task: its aiTitle when known, else parsed from the window title.
+        Titles look like: 'project — ✳ Some Task — node ◂ claude — 120×40'"""
+        if self.ai_title:
+            return self.ai_title
         # Match all braille spinner frames (U+2800..U+28FF) plus ✳ and ●
         for sep_re in (r"— ✳ ", r"— [⠀-⣿] ", r"— ● "):
             m = re.search(sep_re, self.window_title)
             if m:
                 after = self.window_title[m.end() :]
-                for end in (" — claude", " — caffeinate", " — npm"):
-                    if end in after:
-                        after = after.split(end, 1)[0]
-                return after.strip()
+                return after.split(" — ", 1)[0].strip()
         return ""
 
     @property

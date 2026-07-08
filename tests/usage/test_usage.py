@@ -41,10 +41,14 @@ class TestModelDisplayName:
         # Family + major + date with no minor: keep just family + major.
         assert model_display_name("claude-opus-4-20250512") == "opus 4"
 
+    def test_new_family_derives_without_code_changes(self):
+        assert model_display_name("claude-fable-5") == "fable 5"
+        assert model_display_name("claude-future-99") == "future 99"
+
     def test_unrecognized_id_passes_through(self):
-        # Unknown patterns are returned unchanged so the user still sees something.
-        assert model_display_name("claude-future-99") == "claude-future-99"
+        # Non-Claude / unparseable ids are returned unchanged.
         assert model_display_name("gpt-4") == "gpt-4"
+        assert model_display_name("claude-fable-5[1m]") == "claude-fable-5[1m]"
 
     def test_empty_input(self):
         assert model_display_name("") == ""

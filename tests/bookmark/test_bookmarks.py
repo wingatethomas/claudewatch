@@ -81,7 +81,7 @@ class TestBookmarkRemove:
         with patch.object(bookmarks, "_PATH", fake_path):
             bookmarks.add_bookmark("id-1", "proj-a", "/a", "note a")
             bookmarks.add_bookmark("id-2", "proj-b", "/b", "note b")
-            bookmarks.remove_bookmark("/a")
+            bookmarks.remove_bookmark("id-1")
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 1
@@ -91,7 +91,7 @@ class TestBookmarkRemove:
         fake_path = str(tmp_path / "sessions.json")
         with patch.object(bookmarks, "_PATH", fake_path):
             bookmarks.add_bookmark("id-1", "proj-a", "/a", "note a")
-            bookmarks.remove_bookmark("/nonexistent")
+            bookmarks.remove_bookmark("id-nonexistent")
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 1
@@ -100,10 +100,45 @@ class TestBookmarkRemove:
         fake_path = str(tmp_path / "sessions.json")
         with patch.object(bookmarks, "_PATH", fake_path):
             bookmarks.add_bookmark("id-1", "proj-a", "/a", "note a")
-            bookmarks.remove_bookmark("/a")
+            bookmarks.remove_bookmark("id-1")
             result = bookmarks.get_bookmarks()
 
         assert len(result) == 0
+
+    def test_remove_legacy_entry_by_cwd(self, tmp_path):
+        fake_path = str(tmp_path / "sessions.json")
+        with patch.object(bookmarks, "_PATH", fake_path):
+            bookmarks.add_bookmark("", "proj-a", "/a", "legacy")
+            bookmarks.add_bookmark("id-2", "proj-a", "/a", "keyed")
+            bookmarks.remove_bookmark("", "/a")
+            result = bookmarks.get_bookmarks()
+
+        assert len(result) == 1
+        assert result[0].session_id == "id-2"
+
+
+class TestSharedCwdBookmarks:
+    """Sessions sharing a CWD each keep their own bookmark."""
+
+    def test_two_sessions_same_cwd_both_kept(self, tmp_path):
+        fake_path = str(tmp_path / "sessions.json")
+        with patch.object(bookmarks, "_PATH", fake_path):
+            bookmarks.add_bookmark("id-1", "proj", "/shared", "first")
+            bookmarks.add_bookmark("id-2", "proj", "/shared", "second")
+            result = bookmarks.get_bookmarks()
+
+        assert len(result) == 2
+        assert {b.session_id for b in result} == {"id-1", "id-2"}
+
+    def test_rebookmark_same_session_updates_note(self, tmp_path):
+        fake_path = str(tmp_path / "sessions.json")
+        with patch.object(bookmarks, "_PATH", fake_path):
+            bookmarks.add_bookmark("id-1", "proj", "/shared", "old note")
+            bookmarks.add_bookmark("id-1", "proj", "/shared", "new note")
+            result = bookmarks.get_bookmarks()
+
+        assert len(result) == 1
+        assert result[0].note == "new note"
 
 
 class TestBookmarkTTLPruning:
