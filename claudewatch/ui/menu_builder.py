@@ -353,7 +353,7 @@ class MenuBuilder:
         item.setSubmenu_(sub)
         self._menu.addItem_(item)
         # Detail line: model + summary (or status as fallback)
-        model = self._app._usage_service.get_model(s.cwd)
+        model = model_display_name(self._app._usage_service.get_model(s.cwd))
         cached = self._get_summary(s.cwd, s.session_id)
         _max_detail_total = 55
         oneliner = cached.replace("\n", " ").strip() if cached else s.detail_line
