@@ -10,6 +10,10 @@ log = logging.getLogger("claudewatch")
 
 _APPLESCRIPT_TIMEOUT = 10.0
 
+# Errors already logged at warning level — repeats drop to debug so a
+# persistent failure doesn't flood the log on every poll.
+_warned_applescript_errors: set[str] = set()
+
 
 def atomic_json_write(path: str, data: object, *, indent: int | None = 2) -> None:
     """Write JSON to ``path`` atomically: serialize to ``path + ".tmp"``, then rename.
@@ -48,6 +52,9 @@ def run_applescript(source: str, *, timeout: float = _APPLESCRIPT_TIMEOUT) -> st
             msg = error.get("NSAppleScriptErrorMessage", error)
             if "-60005" in str(msg):
                 log.warning("AppleScript error (Accessibility permissions required): %s", msg)
+            elif str(msg) not in _warned_applescript_errors:
+                _warned_applescript_errors.add(str(msg))
+                log.warning("AppleScript error: %s", msg)
             else:
                 log.debug("AppleScript error: %s", msg)
         result_holder.append(result.stringValue() or "" if result else "")

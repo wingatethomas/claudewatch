@@ -55,6 +55,10 @@ class DetectionService(BaseService):
         # cwd → ({ai_title: jsonl_path}, timestamp). Lets each session in a shared
         # CWD read its own JSONL instead of the most-recent one for the project.
         self._ai_title_cache: dict[str, tuple[dict[str, str], float]] = {}
+        # path → last known aiTitle. Long sessions push their ai-title entry out
+        # of the tail window; this remembers it so the full-file scan runs at
+        # most once per path. Tail scans still pick up newer titles.
+        self._ai_title_by_path: dict[str, str] = {}
 
     # -- Process info helpers -----------------------------------------------
 
@@ -83,10 +87,12 @@ class DetectionService(BaseService):
             tell application "Terminal"
                 set output to ""
                 repeat with w in windows
-                    set wid to id of w
-                    repeat with t in tabs of w
-                        set output to output & (tty of t) & "|" & wid & "|" & (name of w) & linefeed
-                    end repeat
+                    try
+                        set wid to id of w
+                        repeat with t in tabs of w
+                            set output to output & (tty of t) & "|" & wid & "|" & (name of w) & linefeed
+                        end repeat
+                    end try
                 end repeat
                 return output
             end tell
@@ -212,7 +218,7 @@ class DetectionService(BaseService):
 
         mapping: dict[str, str] = {}
         for path in self._session_log_service.list_in_cwd(cwd):
-            title = self._session_log_service.read_ai_title(path)
+            title = self._read_ai_title(path)
             if not title:
                 continue
             # If two JSONLs share an ai-title (rare, e.g. after a session
@@ -222,6 +228,18 @@ class DetectionService(BaseService):
 
         self._ai_title_cache[cwd] = (mapping, now)
         return mapping
+
+    def _read_ai_title(self, path: str) -> str:
+        """Read a JSONL's aiTitle: cheap tail scan first, full scan once as fallback."""
+        title = self._session_log_service.read_ai_title(path)
+        if title:
+            self._ai_title_by_path[path] = title
+            return title
+        if path in self._ai_title_by_path:
+            return self._ai_title_by_path[path]
+        title = self._session_log_service.read_ai_title_full(path)
+        self._ai_title_by_path[path] = title
+        return title
 
     # -- JSONL status helpers -----------------------------------------------
 
@@ -337,6 +355,14 @@ class DetectionService(BaseService):
         except (subprocess.TimeoutExpired, OSError):
             pids_out = ""
         raw_pids = [int(p) for p in pids_out.splitlines() if p.strip().isdigit()]
+        # pgrep matches argv[0] and misses native-installer processes whose
+        # kernel name is the version string (~/.local/share/claude/versions/X).
+        # Union with a libproc scan on executable path so neither source alone
+        # has to be complete.
+        pgrep_pids = set(raw_pids)
+        for proc in self._process_service.list_all():
+            if proc.pid not in pgrep_pids and _is_claude_cli(proc.comm):
+                raw_pids.append(proc.pid)
         child_pids = self._process_service.get_child_pids()
         pids = [p for p in raw_pids if p not in child_pids][:_MAX_SESSIONS]
         log.debug("detect: found %d claude processes", len(pids))
@@ -429,6 +455,7 @@ class DetectionService(BaseService):
                     window_id=window_id,
                     status=status,
                     session_id=self._get_session_id(cwd, jpath),
+                    ai_title=self._ai_title_by_path.get(jpath, "") if jpath else "",
                 )
             )
 
@@ -479,6 +506,16 @@ class DetectionService(BaseService):
             # else: title confirms IDLE or WORKING — trust it
 
         return sessions
+
+
+def _is_claude_cli(comm: str) -> bool:
+    """Match Claude Code CLI executables by path.
+
+    Covers the native installer (~/.local/share/claude/versions/<x.y.z>) and
+    installs whose binary is named exactly 'claude'. Case-sensitive so Claude
+    Desktop ('Claude', 'Claude Helper') doesn't match.
+    """
+    return os.path.basename(comm) == "claude" or "/claude/versions/" in comm
 
 
 def _format_tool_use(tool: dict) -> ToolUseInfo:

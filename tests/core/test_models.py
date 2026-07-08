@@ -34,6 +34,29 @@ class TestClaudeSession:
         )
         assert s.task_summary == "Running tests"
 
+    def test_task_summary_strips_host_suffix_in_current_title_format(self):
+        s = ClaudeSession(
+            pid=1,
+            tty="ttys001",
+            project="myapp",
+            cwd="/tmp/myapp",
+            host_app=HostApp.TERMINAL,
+            window_title="myapp — ✳ Fix login bug — node ◂ claude — 120×40",
+        )
+        assert s.task_summary == "Fix login bug"
+
+    def test_task_summary_prefers_ai_title(self):
+        s = ClaudeSession(
+            pid=1,
+            tty="ttys001",
+            project="myapp",
+            cwd="/tmp/myapp",
+            host_app=HostApp.VSCODE,
+            window_title="VS Code",
+            ai_title="Refactor detection service",
+        )
+        assert s.task_summary == "Refactor detection service"
+
     def test_task_summary_no_task(self):
         s = ClaudeSession(
             pid=1,

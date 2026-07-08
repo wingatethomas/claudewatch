@@ -19,8 +19,12 @@ class SessionLogService(BaseService):
         return jsonl.list_jsonls_in_cwd(cwd)
 
     def read_ai_title(self, path: str) -> str:
-        """Return the latest aiTitle recorded in a JSONL, or "" if none."""
+        """Return the latest aiTitle recorded in a JSONL's tail, or "" if none."""
         return jsonl.read_ai_title(path)
+
+    def read_ai_title_full(self, path: str) -> str:
+        """Scan the entire JSONL for the latest aiTitle. Callers should cache."""
+        return jsonl.read_ai_title_full(path)
 
     def is_safe_path(self, path: str) -> bool:
         """Check that a JSONL path resolves to within CLAUDE_PROJECTS_DIR."""
