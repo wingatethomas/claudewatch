@@ -264,6 +264,25 @@ class TestGenerateAndCache:
             assert svc.generate_and_cache("/Users/dev/myapp", "gone") == ""
             assert svc.get_cached_summary("/Users/dev/myapp", "gone") is None
 
+    def test_caches_title_alone_when_no_recap_yet(self, tmp_path):
+        """Sessions without a recap still get their aiTitle cached for display."""
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "session.jsonl",
+            [
+                {"type": "ai-title", "aiTitle": "Refactor auth module"},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}},
+            ],
+        )
+        svc = _make_service(tmp_path)
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            title = svc.generate_and_cache("/Users/dev/myapp")
+            assert title == "Refactor auth module"
+            assert svc.get_cached("/Users/dev/myapp") == "Refactor auth module"
+            # No recap content — the Summary submenu still shows its placeholder.
+            assert not svc.get_cached_summary("/Users/dev/myapp")
+
     def test_uses_ai_title_when_available(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
         proj_dir.mkdir(parents=True)
