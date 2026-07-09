@@ -576,6 +576,55 @@ class TestDetectSharedCwdAttention:
             for p in svc._test_patchers:
                 p.stop()
 
+    def test_blocked_fallback_reassigns_to_own_unclaimed_file(self, tmp_path):
+        """When the most-recent JSONL is claimed by a title-matched sibling, an
+        unmatched session reads the most-recent UNCLAIMED file — usually its own
+        — so a first permission prompt still reaches ATTENTION."""
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        # Session A: most recent file, title-matched.
+        _write_jsonl(
+            os.path.join(proj_dir, "active.jsonl"),
+            [
+                {"type": "ai-title", "aiTitle": "Fix claudewatch bugs"},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}},
+            ],
+            age_seconds=10,
+        )
+        # Session B: brand new (no aiTitle yet), waiting on its first permission.
+        _write_jsonl(
+            os.path.join(proj_dir, "fresh.jsonl"),
+            [
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}]},
+                },
+            ],
+            age_seconds=30,
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [100, 200],
+            pid_info={
+                100: ProcessInfo(tty="ttys001", ppid=1, comm="claude"),
+                200: ProcessInfo(tty="ttys002", ppid=1, comm="claude"),
+            },
+            pid_cwds={100: cwd, 200: cwd},
+            terminal_titles={
+                "/dev/ttys001": ("myapp — ✳ Fix claudewatch bugs — node ◂ claude", 1),
+                "/dev/ttys002": ("myapp — ✳ Claude Code", 2),
+            },
+        )
+        try:
+            sessions = svc.detect()
+            by_pid = {s.pid: s for s in sessions}
+            assert by_pid[200].status == SessionStatus.ATTENTION
+            assert by_pid[200].session_id == "fresh"
+            assert by_pid[100].status == SessionStatus.IDLE
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
     def test_brand_new_session_no_ai_title_falls_back(self, tmp_path):
         """Session with no aiTitle in window title falls back to most-recent JSONL."""
         cwd = "/Users/dev/myapp"

@@ -306,9 +306,13 @@ class DetectionService(BaseService):
 
         # Scan in reverse. Track whether we've seen a tool_result (user entry)
         # AFTER the most recent assistant tool_use. If yes, the tool completed.
+        # Scan the whole tail: Claude Code writes many trailing bookkeeping
+        # entries — mode, permission-mode, attachment, queue-operation — that
+        # would push a pending tool_use past any fixed line window. The loop
+        # terminates at the first user, assistant, or progress entry anyway.
         seen_tool_result = False
 
-        for line in reversed(lines[-20:]):
+        for line in reversed(lines):
             try:
                 d = json.loads(line)
                 dtype = d.get("type")
@@ -490,9 +494,17 @@ class DetectionService(BaseService):
         for s in sessions:
             jpath = session_jsonl.get(s.pid)
             if jpath and not matched_by_title.get(s.pid) and jpath in claimed_paths:
-                session_jsonl[s.pid] = None
-                s.session_id = ""
-                s.ai_title = ""
+                # The most-recent unclaimed file is usually the unmatched
+                # session's own brand-new log — reading it keeps ATTENTION
+                # detection working (e.g. a first permission prompt) instead
+                # of going dark until an aiTitle appears.
+                replacement = next(
+                    (p for p in self._session_log_service.list_in_cwd(s.cwd) if p not in claimed_paths),
+                    None,
+                )
+                session_jsonl[s.pid] = replacement
+                s.session_id = self._get_session_id(s.cwd, replacement) if replacement else ""
+                s.ai_title = self._ai_title_by_path.get(replacement, "") if replacement else ""
 
         self._get_ide_tab_indices(sessions, all_ps)
 

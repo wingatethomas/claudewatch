@@ -81,6 +81,35 @@ class TestPendingToolDetection:
         assert result.has_pending is True
         assert "Bash" in result.one_line
 
+    def test_pending_tool_survives_trailing_bookkeeping_entries(self, tmp_path: str) -> None:
+        """mode/permission-mode/attachment spam after a pending tool_use must not
+        push it out of the scan window — that read as IDLE instead of ATTENTION."""
+        service, jsonl_path = _make_service(tmp_path)
+        entries: list[dict] = [
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}],
+                },
+            },
+        ]
+        bookkeeping = [
+            {"type": "mode", "mode": "normal"},
+            {"type": "permission-mode", "permissionMode": "default"},
+            {"type": "attachment"},
+            {"type": "queue-operation", "operation": "dequeue"},
+            {"type": "pr-link"},
+            {"type": "ai-title", "aiTitle": "Some task"},
+        ]
+        for _ in range(6):
+            entries.extend(bookkeeping)
+        _write_jsonl(jsonl_path, entries, stale=True)
+
+        result = service._check_jsonl_for_pending_tool(_read_tail(jsonl_path))
+        assert result.has_pending is True
+        assert "Bash" in result.one_line
+
     def test_no_pending_when_user_responded(self, tmp_path: str) -> None:
         service, jsonl_path = _make_service(tmp_path)
         _write_jsonl(
