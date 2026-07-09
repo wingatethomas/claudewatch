@@ -25,6 +25,7 @@ def build_session_row(  # noqa: PLR0913
     model: str = "",
     ended_at: str = "",
     bookmarked: bool = False,
+    stale: bool = False,
     width: float,
     height: float,
     summary_title: str = "",
@@ -57,8 +58,8 @@ def build_session_row(  # noqa: PLR0913
                 bookmark_button.cell().setRepresentedObject_(bookmark_represented_object)
         view.addSubview_(bookmark_button)
 
-    # Project name
-    project_label = label(project, size=Font.BODY, bold=True)
+    # Project name — dimmed when the session's logs are gone
+    project_label = label(project, size=Font.BODY, bold=True, color=theme.tertiary if stale else None)
     project_label.setFrame_(NSMakeRect(_NAME_COL, name_y, usable_w - _NAME_COL - 30, 18))
     view.addSubview_(project_label)
 
@@ -85,6 +86,8 @@ def build_session_row(  # noqa: PLR0913
         meta_parts.append(model)
     if token_compact:
         meta_parts.append(token_compact)
+    if stale:
+        meta_parts.append("logs removed")
     if meta_parts:
         meta_text = " · ".join(meta_parts)
         meta_label = secondary_label(meta_text, size=Font.SMALL)

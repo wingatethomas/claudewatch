@@ -40,12 +40,19 @@ _ROW_H = 54
 
 
 def _build_subtitle() -> str:
-    """Build subtitle showing date range of recorded sessions."""
+    """Build subtitle with counts and date range of recorded sessions."""
     entries = get_history_service().get_all()
     if not entries:
         return "No sessions recorded yet"
-    oldest = min((e.ended_at or "" for e in entries), default="")
-    return f"Since {oldest[:10]}" if oldest and len(oldest) >= 10 else f"{len(entries)} sessions"
+    parts = [f"{len(entries)} session" + ("s" if len(entries) != 1 else "")]
+    week_cutoff = (datetime.now(tz=UTC) - timedelta(days=7)).isoformat()
+    this_week = sum(1 for e in entries if (e.ended_at or "") >= week_cutoff)
+    if this_week:
+        parts.append(f"{this_week} this week")
+    oldest = min((e.ended_at or "" for e in entries if e.ended_at), default="")
+    if len(oldest) >= 10:
+        parts.append(f"since {oldest[:10]}")
+    return " · ".join(parts)
 
 
 class SessionsPane(BasePane):
@@ -95,6 +102,15 @@ class SessionsPane(BasePane):
         bookmark_filter.setToolTip_("Show bookmarked only")
         view.addSubview_(bookmark_filter)
 
+        clear_stale = NSButton.alloc().initWithFrame_(NSMakeRect(_PAD + 392, toolbar_y - 1, 36, 24))
+        clear_stale.setTitle_("")
+        clear_stale.setImage_(sf_icon("trash", size=Font.SECONDARY))
+        clear_stale.setBezelStyle_(1)
+        clear_stale.setTarget_(self.delegate)
+        clear_stale.setAction_(objc.selector(self.delegate.historyClearStale_, signature=b"v@:@"))
+        clear_stale.setToolTip_("Clear entries whose session logs are gone")
+        view.addSubview_(clear_stale)
+
         # Separator
         separator_y = toolbar_y - Spacing.SM
         toolbar_separator = NSBox.alloc().initWithFrame_(NSMakeRect(_PAD, separator_y, self.width - _PAD * 2, 1))
@@ -129,10 +145,13 @@ def rebuild_rows(delegate: object) -> None:
         return
 
     w = scroll.frame().size.width
-    entries = [e.to_dict() for e in get_history_service().get_all()]
+    history_svc = get_history_service()
+    entries = [e.to_dict() for e in history_svc.get_all()]
     bookmark_svc = get_bookmark_service()
     summary_svc = get_summary_service()
     usage_svc = get_usage_service()
+
+    _queue_missing_titles(entries, summary_svc, history_svc)
 
     # Filter: bookmarked only
     if delegate._history_bookmarked_only:
@@ -147,7 +166,7 @@ def rebuild_rows(delegate: object) -> None:
             if search in proj:
                 filtered.append(e)
                 continue
-            cached = summary_svc.get_cached(e.get("cwd", ""))
+            cached = summary_svc.get_cached(e.get("cwd", ""), e.get("session_id", ""))
             if cached and search in cached.lower():
                 filtered.append(e)
         entries = filtered
@@ -186,11 +205,27 @@ def rebuild_rows(delegate: object) -> None:
                 usage_svc,
                 summary_svc,
                 display_project,
+                stale=not history_svc.logs_exist(entry.get("cwd", ""), entry.get("session_id", "")),
             )
 
     scroll.setDocumentView_(inner)
     inner.scrollPoint_((0, total_h))  # scroll to top (newest first)
     delegate._history_inner = inner
+
+
+def _queue_missing_titles(entries: list[dict], summary_svc: object, history_svc: object, limit: int = 30) -> None:
+    """Queue background title extraction for entries with nothing cached yet.
+
+    The summary thread fills them in; rows pick titles up on the next rebuild.
+    """
+    queued = 0
+    for e in entries:
+        if queued >= limit:
+            return
+        cwd, sid = e.get("cwd", ""), e.get("session_id", "")
+        if cwd and summary_svc.get_cached(cwd, sid) is None and history_svc.logs_exist(cwd, sid):  # type: ignore[attr-defined]
+            summary_svc.track_session(cwd, session_id=sid)  # type: ignore[attr-defined]
+            queued += 1
 
 
 def disambiguate_projects(entries: list[dict]) -> dict[str, str]:
@@ -252,6 +287,8 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     usage_svc: object,
     summary_svc: object,
     display_project: str = "",
+    *,
+    stale: bool = False,
 ) -> None:
     """Build a single history row using the SessionRow composite."""
 
@@ -270,7 +307,7 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     # Gather display data
     token_data = usage_svc.get_tokens(cwd)
     token_compact = format_tokens_compact(token_data)
-    cached_title = summary_svc.get_cached(cwd) if cwd else ""
+    cached_title = summary_svc.get_cached(cwd, session_id) if cwd else ""
 
     # Bookmark callback wiring — payload carries the raw project as identity.
     if is_pinned:
@@ -286,6 +323,7 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
         model=model,
         ended_at=_relative_time(ended_at),
         bookmarked=is_pinned,
+        stale=stale,
         width=w,
         height=h,
         summary_title=cached_title or "",

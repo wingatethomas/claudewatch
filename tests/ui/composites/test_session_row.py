@@ -108,3 +108,8 @@ class TestSessionRowMetaLine:
     def test_no_meta_line_when_everything_empty(self) -> None:
         view = build_session_row(project="myproject", width=400, height=60)
         assert not any("·" in t for t in _label_texts(view))
+
+    def test_stale_row_notes_missing_logs(self) -> None:
+        view = build_session_row(project="myproject", ended_at="3d ago", stale=True, width=400, height=60)
+        meta = next(t for t in _label_texts(view) if "3d ago" in t)
+        assert meta == "3d ago · logs removed"
