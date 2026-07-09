@@ -46,6 +46,31 @@ def handle_sort_changed(delegate: object, sender: object) -> None:
     rebuild_rows(delegate)
 
 
+def handle_clear_stale(delegate: object, sender: object) -> None:  # noqa: ARG001
+    """Remove history entries whose session logs are gone, after confirmation."""
+    history = get_history_service()
+    stale_count = sum(1 for e in history.get_all() if not history.logs_exist(e.cwd, e.session_id))
+    NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+    alert = NSAlert.alloc().init()
+    if not stale_count:
+        alert.setMessageText_("No stale entries")
+        alert.setInformativeText_("Every recorded session still has its logs on disk.")
+        alert.addButtonWithTitle_("OK")
+        alert.runModal()
+        return
+    alert.setMessageText_(f"Clear {stale_count} stale {'entry' if stale_count == 1 else 'entries'}?")
+    alert.setInformativeText_(
+        "These sessions' logs are gone (deleted worktrees, moved projects). This cannot be undone."
+    )
+    alert.addButtonWithTitle_("Clear")
+    alert.addButtonWithTitle_("Cancel")
+    if alert.runModal() == NSAlertFirstButtonReturn:
+        history.remove_stale()
+        from claudewatch.ui.preferences.panes.sessions import rebuild_rows
+
+        rebuild_rows(delegate)
+
+
 def handle_bookmark_filter(delegate: object, sender: object) -> None:
     """Toggle bookmarked-only filter."""
     delegate._history_bookmarked_only = sender.state() == NSControlStateValueOn

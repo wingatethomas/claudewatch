@@ -4,6 +4,7 @@ import threading
 
 from claudewatch.backend.core.dto import HistoryEntryDTO
 from claudewatch.backend.core.service import BaseService
+from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.history import repository as history_repo
 
 
@@ -15,10 +16,28 @@ class HistoryService(BaseService):
     invalidated by every mutation.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, session_log_service: SessionLogService | None = None) -> None:
         super().__init__()
+        self._session_log_service = session_log_service or SessionLogService()
         self._cache: list[HistoryEntryDTO] | None = None
         self._cache_lock = threading.Lock()
+
+    def logs_exist(self, cwd: str, session_id: str = "") -> bool:
+        """True if the session's JSONL (or any log for the CWD) is still on disk.
+
+        Entries whose logs are gone (deleted worktrees, moved projects) can't
+        show a model, tokens, or summary — the UI dims them as stale.
+        """
+        return self._session_log_service.resolve_jsonl(cwd, session_id) is not None
+
+    def remove_stale(self) -> int:
+        """Remove entries whose session logs no longer exist. Returns count removed."""
+        stale = [e for e in self.get_all() if not self.logs_exist(e.cwd, e.session_id)]
+        for entry in stale:
+            history_repo.remove_history_entry(entry.cwd)
+        if stale:
+            self._invalidate()
+        return len(stale)
 
     def record(self, session_id: str, project: str, cwd: str, model: str, host_app: str) -> None:
         """Record a session when it ends."""

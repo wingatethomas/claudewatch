@@ -386,3 +386,44 @@ class TestSeedFiltersSynthetic:
             result = history._seed_from_jsonl()
 
         assert result[0]["model"] == "claude-opus-4-6"
+
+
+class TestStaleEntries:
+    """HistoryService.logs_exist / remove_stale — stale = session logs gone."""
+
+    def _service_with_entries(self, tmp_path, entries):
+        from claudewatch.backend.core.session_log.service import SessionLogService
+        from claudewatch.backend.history.service import HistoryService
+
+        fake_path = str(tmp_path / "history.json")
+        with open(fake_path, "w") as f:
+            json.dump(entries, f)
+        return HistoryService(SessionLogService()), fake_path
+
+    def test_logs_exist_true_when_session_file_present(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "sid-1.jsonl").write_text("{}\n")
+        svc, _ = self._service_with_entries(tmp_path, [])
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            assert svc.logs_exist("/Users/dev/myapp", "sid-1") is True
+            assert svc.logs_exist("/Users/dev/myapp", "sid-gone") is False
+            assert svc.logs_exist("/Users/dev/nowhere") is False
+
+    def test_remove_stale_keeps_live_entries(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-live"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "sid-live.jsonl").write_text("{}\n")
+        entries = [
+            {"session_id": "sid-live", "project": "live", "cwd": "/Users/dev/live", "ended_at": "2026-07-01"},
+            {"session_id": "sid-dead", "project": "dead", "cwd": "/Users/dev/dead", "ended_at": "2026-07-01"},
+        ]
+        svc, fake_path = self._service_with_entries(tmp_path, entries)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch.object(history, "_PATH", fake_path),
+        ):
+            removed = svc.remove_stale()
+            remaining = svc.get_all()
+        assert removed == 1
+        assert [e.cwd for e in remaining] == ["/Users/dev/live"]

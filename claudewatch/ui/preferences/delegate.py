@@ -122,6 +122,12 @@ class PrefsDelegate(NSObject):
         handle_bookmark_filter(self, sender)
 
     @objc_callback
+    def historyClearStale_(self, sender: objc.objc_object) -> None:  # noqa: N802
+        from claudewatch.ui.preferences.handlers.history import handle_clear_stale
+
+        handle_clear_stale(self, sender)
+
+    @objc_callback
     def showRowMenu_(self, sender: objc.objc_object) -> None:  # noqa: N802
         from claudewatch.ui.preferences.handlers.history import handle_show_row_menu
 

@@ -204,6 +204,13 @@ class SummaryService(BaseService):
 
         recap = self._extract_recap(path)
         if recap is None:
+            # No recap yet — cache the session's aiTitle alone so history rows
+            # and menus still get a per-session name. The entry invalidates on
+            # file growth, so a recap written later replaces it.
+            title = _truncate_title(self._extract_ai_title(path) or "")
+            if title:
+                self.cache_full(cwd, title, "", session_id)
+                return title
             with self._no_recap_lock:
                 self._no_recap_mtimes[key] = current_mtime
             return ""
