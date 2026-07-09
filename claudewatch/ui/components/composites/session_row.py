@@ -75,11 +75,12 @@ def build_session_row(  # noqa: PLR0913
             menu_button.setAction_(on_menu_click)
         view.addSubview_(menu_button)
 
-    # Line 2: meta (time · model · tokens)
+    # Line 2: meta (time · model · tokens). ended_at arrives display-ready
+    # (relative time like '2h ago') — don't reformat or blank it here.
     meta_y = name_y - 17
     meta_parts = []
     if ended_at:
-        meta_parts.append(_format_date(ended_at))
+        meta_parts.append(ended_at)
     if model:
         meta_parts.append(model)
     if token_compact:
@@ -98,11 +99,3 @@ def build_session_row(  # noqa: PLR0913
         view.addSubview_(summary_label)
 
     return view
-
-
-def _format_date(ended_at: str) -> str:
-    """Format a date string for display. Returns relative or short date."""
-    _min_date_len = 10
-    if not ended_at or len(ended_at) < _min_date_len:
-        return ""
-    return ended_at[:10]
