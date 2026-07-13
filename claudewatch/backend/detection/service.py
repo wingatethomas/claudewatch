@@ -549,7 +549,11 @@ class DetectionService(BaseService):
             for path in self._session_log_service.list_in_cwd(s.cwd):
                 if path in claimed_paths:
                     continue
-                if starts[s.pid] and _file_birthtime(path) < starts[s.pid] - _BIRTHTIME_SLACK:
+                start = starts[s.pid]
+                if start and _file_birthtime(path) < start - _BIRTHTIME_SLACK and _file_mtime(path) < start:
+                    # Born before this process and untouched since it started —
+                    # someone else's log. (A resumed session appends to a file
+                    # born earlier, so a fresh mtime still qualifies it.)
                     continue
                 candidate = path
                 break
@@ -572,6 +576,13 @@ class DetectionService(BaseService):
                 continue
             jpath = session_jsonl.get(s.pid)
             cache_key = jpath or ""
+            if jpath is None:
+                # No log evidence at all (nothing pairable) — that's idle,
+                # not working. Title indicators still override below.
+                path_status_cache.setdefault(
+                    cache_key,
+                    (PendingToolResult(has_pending=False, one_line="", context=""), SessionStatus.IDLE),
+                )
             if cache_key not in path_status_cache:
                 tail, age = self._read_jsonl_tail(jpath)
                 if 0 <= age < _JSONL_STREAMING_THRESHOLD:
@@ -656,6 +667,14 @@ def _file_birthtime(path: str) -> float:
     except OSError:
         return 0.0
     return getattr(st, "st_birthtime", st.st_mtime)
+
+
+def _file_mtime(path: str) -> float:
+    """File modification time. Returns 0.0 when unreadable."""
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0.0
 
 
 def _is_claude_cli(comm: str) -> bool:
