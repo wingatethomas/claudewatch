@@ -193,7 +193,7 @@ class MenuBuilder:
                     short_note = pin.note[:_max_note] + "…" if len(pin.note) > _max_note else pin.note
                     label += f" — {short_note}"
                 item = make_menu_item(label, self._app._make_resume_handler(pin.session_id, pin.cwd), d)
-                token_data = self._app._usage_service.get_tokens(pin.cwd)
+                token_data = self._app._usage_service.get_tokens(pin.cwd, pin.session_id)
                 actions = SessionActions(
                     activity=self._app._make_history_activity_handler(pin.project, pin.cwd),
                     resume=self._app._make_resume_handler(pin.session_id, pin.cwd),
@@ -249,7 +249,7 @@ class MenuBuilder:
                     label += f"  ({' · '.join(detail_parts)})"
                 click_action = self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else noop
                 item = make_menu_item(label, click_action, d)
-                token_data = self._app._usage_service.get_tokens(entry.cwd)
+                token_data = self._app._usage_service.get_tokens(entry.cwd, entry.session_id)
                 actions = SessionActions(
                     activity=self._app._make_history_activity_handler(entry.project, entry.cwd),
                     resume=self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else None,
@@ -330,7 +330,7 @@ class MenuBuilder:
             item.setImage_(icon)
         # Build submenu using shared session_submenu builder
         is_active = s.status in (SessionStatus.ATTENTION, SessionStatus.WORKING)
-        token_data = self._app._usage_service.get_tokens(s.cwd)
+        token_data = self._app._usage_service.get_tokens(s.cwd, s.session_id)
         actions = SessionActions(
             activity=self._app._make_activity_handler(s),
             bookmark=self._app._make_bookmark_handler(s) if not pinned and s.session_id else None,
@@ -353,7 +353,7 @@ class MenuBuilder:
         item.setSubmenu_(sub)
         self._menu.addItem_(item)
         # Detail line: model + summary (or status as fallback)
-        model = model_display_name(self._app._usage_service.get_model(s.cwd))
+        model = model_display_name(self._app._usage_service.get_model(s.cwd, s.session_id))
         cached = self._get_summary(s.cwd, s.session_id)
         _max_detail_total = 55
         oneliner = cached.replace("\n", " ").strip() if cached else s.detail_line

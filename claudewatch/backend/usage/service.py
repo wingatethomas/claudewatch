@@ -97,18 +97,19 @@ class UsageService(BaseService):
     def __init__(self, session_log_service: SessionLogService) -> None:
         super().__init__()
         self._session_log_service = session_log_service
-        # CWD -> (tokens_dto, jsonl_mtime)
+        # JSONL path -> (tokens_dto, jsonl_mtime)
         self._token_cache: dict[str, tuple[TokenUsageDTO, float]] = {}
 
-    def get_model(self, cwd: str) -> str:
-        """Get the raw model id for the most recent session at a CWD.
+    def get_model(self, cwd: str, session_id: str = "") -> str:
+        """Get the raw model id for a session at a CWD.
 
-        Reads the last assistant message from the JSONL to find the model.
+        With a session_id, reads that session's own JSONL (empty if gone —
+        never a sibling's); without one, falls back to the most recent.
         Returns the raw id (e.g. 'claude-opus-4-6') so callers store a stable
         identifier; display name mapping via model_display_name is done at
         render time. Returns empty string if unavailable or synthetic.
         """
-        path = self._session_log_service.find_most_recent(cwd)
+        path = self._session_log_service.resolve_jsonl(cwd, session_id)
         if not path:
             return ""
 
@@ -130,13 +131,15 @@ class UsageService(BaseService):
 
         return last_model
 
-    def get_tokens(self, cwd: str) -> TokenUsageDTO:
-        """Get token usage breakdown for the most recent session at a CWD.
+    def get_tokens(self, cwd: str, session_id: str = "") -> TokenUsageDTO:
+        """Get token usage breakdown for a session at a CWD.
 
+        With a session_id, reads that session's own JSONL (empty if gone —
+        never a sibling's); without one, falls back to the most recent.
         Returns TokenUsageDTO(input, output, cache_create, cache_read) summed across all messages.
         Cached by JSONL mtime — only re-reads when the file changes.
         """
-        path = self._session_log_service.find_most_recent(cwd)
+        path = self._session_log_service.resolve_jsonl(cwd, session_id)
         if not path:
             return _EMPTY_TOKENS
 
@@ -145,7 +148,7 @@ class UsageService(BaseService):
         except OSError:
             return _EMPTY_TOKENS
 
-        cached = self._token_cache.get(cwd)
+        cached = self._token_cache.get(path)
         if cached and cached[1] >= mtime:
             return cached[0]
 
@@ -180,5 +183,5 @@ class UsageService(BaseService):
             # Evict oldest entry by mtime
             oldest = min(self._token_cache, key=lambda k: self._token_cache[k][1])
             del self._token_cache[oldest]
-        self._token_cache[cwd] = (result, mtime)
+        self._token_cache[path] = (result, mtime)
         return result

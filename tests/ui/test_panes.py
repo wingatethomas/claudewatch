@@ -297,7 +297,15 @@ class TestResolveModelLabel:
         svc = MagicMock()
         svc.get_model.return_value = "claude-sonnet-4-6"
         assert _resolve_model_label("", "/tmp/proj", svc) == "sonnet 4.6"
-        svc.get_model.assert_called_once_with("/tmp/proj")
+        svc.get_model.assert_called_once_with("/tmp/proj", "")
+
+    def test_fallback_passes_session_id(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
+
+        svc = MagicMock()
+        svc.get_model.return_value = "claude-sonnet-4-6"
+        assert _resolve_model_label("", "/tmp/proj", svc, "sid-a") == "sonnet 4.6"
+        svc.get_model.assert_called_once_with("/tmp/proj", "sid-a")
 
     def test_fallback_service_id_derives_label(self) -> None:
         from claudewatch.ui.preferences.panes.sessions import _resolve_model_label
