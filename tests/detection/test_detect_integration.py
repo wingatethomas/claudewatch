@@ -60,8 +60,9 @@ def _build_service(  # noqa: PLR0913
     session_log = SessionLogService()
     service = DetectionService(process_service, session_log)
 
-    # Mock the terminal lookup to skip AppleScript entirely
+    # Mock the terminal lookups to skip AppleScript entirely
     service._get_terminal_windows = MagicMock(return_value=terminal_titles or {})  # type: ignore[method-assign]
+    service._get_terminal_buffers = MagicMock(return_value={})  # type: ignore[method-assign]
 
     # Patch CLAUDE_PROJECTS_DIR so find_most_recent / read_tail hit the tmp dir
     patcher = patch(
@@ -172,6 +173,98 @@ class TestDetectWorktreeSession:
             assert sessions[0].worktree_repo == "myrepo"
             assert sessions[0].worktree_branch == "feature-x"
             assert "myrepo [feature-x]" in sessions[0].menu_label
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+
+class TestDetectBufferDialog:
+    """Permission dialogs are detected from the visible Terminal screen —
+    Claude Code no longer writes the pending tool_use to the JSONL first."""
+
+    DIALOG = (
+        "⏺ Bash(touch /private/tmp/cwtest/probe.txt)\n"
+        "  ⎿  Waiting…\n"
+        "────────────────\n"
+        " Bash command\n"
+        " touch /private/tmp/cwtest/probe.txt\n"
+        " Create empty probe.txt file\n"
+        "\n"
+        " Do you want to proceed?\n"
+        " ❯ 1. Yes\n"
+        "   2. Yes, and always allow access to cwtest/ from this project\n"
+        "   3. No\n"
+        " Esc to cancel · Tab to amend · ctrl+e to explain\n"
+    )
+
+    def test_idle_session_with_dialog_on_screen_is_attention(self, tmp_path):
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        # JSONL shows nothing pending — the CLI hasn't written the tool_use yet.
+        _write_jsonl(
+            os.path.join(proj_dir, "s1.jsonl"),
+            [{"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}],
+            age_seconds=120,
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [100],
+            pid_info={100: ProcessInfo(tty="ttys001", ppid=1, comm="claude")},
+            pid_cwds={100: cwd},
+            terminal_titles={"/dev/ttys001": ("myapp — ✳ Claude Code", 1)},
+        )
+        svc._get_terminal_buffers = MagicMock(return_value={"ttys001": self.DIALOG})
+        try:
+            sessions = svc.detect()
+            assert sessions[0].status == SessionStatus.ATTENTION
+            assert "Bash(touch" in sessions[0].prompt_text
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+    def test_plain_idle_screen_stays_idle(self, tmp_path):
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        _write_jsonl(
+            os.path.join(proj_dir, "s1.jsonl"),
+            [{"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}],
+            age_seconds=120,
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [100],
+            pid_info={100: ProcessInfo(tty="ttys001", ppid=1, comm="claude")},
+            pid_cwds={100: cwd},
+            terminal_titles={"/dev/ttys001": ("myapp — ✳ Claude Code", 1)},
+        )
+        svc._get_terminal_buffers = MagicMock(return_value={"ttys001": "⏺ done\n❯ \n? for shortcuts"})
+        try:
+            sessions = svc.detect()
+            assert sessions[0].status == SessionStatus.IDLE
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+    def test_working_session_skips_buffer_check(self, tmp_path):
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        _write_jsonl(
+            os.path.join(proj_dir, "s1.jsonl"),
+            [{"type": "assistant", "message": {"content": [{"type": "text", "text": "..."}]}}],
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [100],
+            pid_info={100: ProcessInfo(tty="ttys001", ppid=1, comm="claude")},
+            pid_cwds={100: cwd},
+            terminal_titles={"/dev/ttys001": ("myapp — ⠂ streaming", 1)},
+        )
+        buffers = MagicMock(return_value={"ttys001": self.DIALOG})
+        svc._get_terminal_buffers = buffers
+        try:
+            sessions = svc.detect()
+            assert sessions[0].status == SessionStatus.WORKING
+            buffers.assert_not_called()
         finally:
             for p in svc._test_patchers:
                 p.stop()
