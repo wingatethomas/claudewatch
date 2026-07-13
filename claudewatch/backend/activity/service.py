@@ -18,12 +18,13 @@ class ActivityService(BaseService):
         super().__init__()
         self._session_log_service = session_log_service
 
-    def parse(self, cwd: str, max_entries: int = 100) -> list[ActivityEventDTO]:  # noqa: PLR0912
-        """Parse the most recent JSONL for a CWD into an activity timeline.
+    def parse(self, cwd: str, session_id: str = "", max_entries: int = 100) -> list[ActivityEventDTO]:  # noqa: PLR0912
+        """Parse a session's JSONL (or the CWD's most recent) into an activity timeline.
 
-        Returns newest-first list of ActivityEventDTO objects.
+        With a session_id, reads that session's own file — never a sibling's;
+        returns [] if it's gone. Returns newest-first list of ActivityEventDTO.
         """
-        path = self._session_log_service.find_most_recent(cwd)
+        path = self._session_log_service.resolve_jsonl(cwd, session_id)
         if not path:
             return []
 

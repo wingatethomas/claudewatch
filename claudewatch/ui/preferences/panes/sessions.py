@@ -385,7 +385,7 @@ def _build_row_menu(  # noqa: PLR0913, ARG001
 
     if session_id:
         _add_action("Resume", delegate.resumeSession_, f"{session_id}|{cwd}")
-    _add_action("Activity", delegate.viewActivity_, f"{project}|{cwd}")
+    _add_action("Activity", delegate.viewActivity_, f"{project}|{cwd}|{session_id}")
     menu.addItem_(NSMenuItem.separatorItem())
 
     if is_pinned:

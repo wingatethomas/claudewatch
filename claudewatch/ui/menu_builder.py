@@ -195,7 +195,7 @@ class MenuBuilder:
                 item = make_menu_item(label, self._app._make_resume_handler(pin.session_id, pin.cwd), d)
                 token_data = self._app._usage_service.get_tokens(pin.cwd, pin.session_id)
                 actions = SessionActions(
-                    activity=self._app._make_history_activity_handler(pin.project, pin.cwd),
+                    activity=self._app._make_history_activity_handler(pin.project, pin.cwd, pin.session_id or ""),
                     resume=self._app._make_resume_handler(pin.session_id, pin.cwd),
                     unbookmark=self._app._make_unbookmark_handler(pin.session_id, pin.cwd),
                     track_summary=lambda cwd=pin.cwd, sid=pin.session_id: self._app._summary_service.track_session(
@@ -251,7 +251,7 @@ class MenuBuilder:
                 item = make_menu_item(label, click_action, d)
                 token_data = self._app._usage_service.get_tokens(entry.cwd, entry.session_id)
                 actions = SessionActions(
-                    activity=self._app._make_history_activity_handler(entry.project, entry.cwd),
+                    activity=self._app._make_history_activity_handler(entry.project, entry.cwd, entry.session_id or ""),
                     resume=self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else None,
                     remove=self._app._make_remove_history_handler(entry.session_id, entry.cwd),
                     track_summary=lambda cwd=entry.cwd, sid=entry.session_id: self._app._summary_service.track_session(

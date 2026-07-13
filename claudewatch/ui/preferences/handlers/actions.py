@@ -47,12 +47,17 @@ def handle_resume(delegate: object, sender: object) -> None:  # noqa: ARG001
 
 
 def handle_view_activity(delegate: object, sender: object) -> None:  # noqa: ARG001
-    """Open the activity window for a session."""
+    """Open the activity window for a session.
+
+    Payload is "project|cwd|session_id"; legacy 2-part payloads omit session_id.
+    """
     data = get_represented_object(sender)
     if "|" not in data:
         return
-    project, cwd = data.split("|", 1)
-    show_activity(project, cwd)
+    parts = data.split("|", 2)
+    project, cwd = parts[0], parts[1]
+    session_id = parts[2] if len(parts) > 2 else ""
+    show_activity(project, cwd, session_id)
 
 
 def handle_copy_cwd(delegate: object, sender: object) -> None:  # noqa: ARG001

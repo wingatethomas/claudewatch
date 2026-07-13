@@ -288,6 +288,52 @@ class TestParseActivity:
         assert len(result) == 1
         assert result[0].detail == "new msg"
 
+    def test_session_id_reads_that_sessions_file_not_newest_sibling(self, tmp_path):
+        """Two sessions share a cwd; parse(cwd, old_sid) must not read the newer sibling."""
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        sid_old = "11111111-1111-1111-1111-111111111111"
+        sid_new = "22222222-2222-2222-2222-222222222222"
+        old = proj_dir / f"{sid_old}.jsonl"
+        _write_jsonl(old, [{"type": "user", "message": {"content": "old msg"}, "timestamp": ""}])
+        os.utime(old, (1000, 1000))
+        new = proj_dir / f"{sid_new}.jsonl"
+        _write_jsonl(new, [{"type": "user", "message": {"content": "new msg"}, "timestamp": ""}])
+        os.utime(new, (2000, 2000))
+
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp", sid_old)
+        assert len(result) == 1
+        assert result[0].detail == "old msg"
+
+    def test_session_id_missing_file_returns_empty_no_sibling_fallback(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_jsonl(
+            proj_dir / "22222222-2222-2222-2222-222222222222.jsonl",
+            [{"type": "user", "message": {"content": "sibling msg"}, "timestamp": ""}],
+        )
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = ActivityService(SessionLogService()).parse(
+                "/Users/dev/myapp", "11111111-1111-1111-1111-111111111111"
+            )
+        assert result == []
+
+    def test_empty_session_id_falls_back_to_most_recent(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        old = proj_dir / "old.jsonl"
+        _write_jsonl(old, [{"type": "user", "message": {"content": "old msg"}, "timestamp": ""}])
+        os.utime(old, (1000, 1000))
+        new = proj_dir / "new.jsonl"
+        _write_jsonl(new, [{"type": "user", "message": {"content": "new msg"}, "timestamp": ""}])
+        os.utime(new, (2000, 2000))
+
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            result = ActivityService(SessionLogService()).parse("/Users/dev/myapp", "")
+        assert len(result) == 1
+        assert result[0].detail == "new msg"
+
     def test_parses_recap_from_away_summary(self, tmp_path):
         proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
         proj_dir.mkdir(parents=True)

@@ -341,9 +341,10 @@ class ClaudeWatchApp:
     def _make_activity_handler(self, session: ClaudeSession) -> MenuCallback:
         project = session.project
         cwd = session.cwd
+        session_id = session.session_id
 
         def handler(_: NSMenuItem) -> None:
-            show_activity(project, cwd, session_active=True)
+            show_activity(project, cwd, session_id, session_active=True)
 
         return handler
 
@@ -523,9 +524,9 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_history_activity_handler(self, project: str, cwd: str) -> MenuCallback:
+    def _make_history_activity_handler(self, project: str, cwd: str, session_id: str = "") -> MenuCallback:
         def handler(_: NSMenuItem) -> None:
-            show_activity(project, cwd)
+            show_activity(project, cwd, session_id)
 
         return handler
 
