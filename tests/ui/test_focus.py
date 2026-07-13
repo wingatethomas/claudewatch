@@ -30,7 +30,7 @@ class TestFocusIdeTabAccessibilityGuard:
         ):
             from claudewatch.ui.focus import _focus_ide_tab
 
-            _focus_ide_tab("pycharm", "pycharm", "myproject", None)
+            _focus_ide_tab("pycharm", "myproject", None)
         mock_run.assert_not_called()
 
     def test_runs_applescript_when_trusted(self) -> None:
@@ -40,8 +40,23 @@ class TestFocusIdeTabAccessibilityGuard:
         ):
             from claudewatch.ui.focus import _focus_ide_tab
 
-            _focus_ide_tab("pycharm", "pycharm", "myproject", None)
+            _focus_ide_tab("pycharm", "myproject", None)
             # No exception means it proceeded past the guard
+
+    def test_activation_is_separate_from_window_raise(self) -> None:
+        """Activation must run on its own — a failed window-name match (IDE
+        diff viewers carry no project name) must not abort it."""
+        with (
+            patch(f"{_MOD}.is_accessibility_trusted", return_value=True),
+            patch(f"{_MOD}.run_applescript", return_value="") as mock_run,
+        ):
+            from claudewatch.ui.focus import _focus_ide_tab
+
+            _focus_ide_tab("pycharm", "myproject", None)
+        scripts = [c.args[0] for c in mock_run.call_args_list]
+        assert "frontmost" in scripts[0]
+        assert "AXRaise" not in scripts[0]
+        assert any("AXRaise" in s and "try" in s for s in scripts[1:])
 
 
 class TestFindJetbrainsProcessAccessibilityGuard:
