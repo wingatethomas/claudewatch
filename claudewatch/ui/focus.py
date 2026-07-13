@@ -27,20 +27,29 @@ def _click_at(x: float, y: float) -> None:
     CGEventPost(kCGHIDEventTap, evt)
 
 
-def _focus_ide_tab(process_name: str, app_name: str, project: str, tab_index: int | None) -> None:
+def _focus_ide_tab(process_name: str, project: str, tab_index: int | None) -> None:
     """Focus an IDE window and switch to the right terminal tab."""
     if not is_accessibility_trusted():
         log.warning("focus: skipping System Events — Accessibility permission not granted")
         return
-    # Step 1: Raise the right window and activate
+    # Step 1: Activate the app first, on its own. Window raising is
+    # best-effort — IDE window titles (diff viewers, detached editors)
+    # often contain no project name, and a failed whose-clause must not
+    # abort activation with it.
+    run_applescript(f'''
+        tell application "System Events"
+            set frontmost of process "{escape_applescript(process_name)}" to true
+        end tell
+    ''')
     run_applescript(f'''
         tell application "System Events"
             tell process "{escape_applescript(process_name)}"
-                set targetWindow to first window whose name contains "{escape_applescript(project)}"
-                perform action "AXRaise" of targetWindow
+                try
+                    set targetWindow to first window whose name contains "{escape_applescript(project)}"
+                    perform action "AXRaise" of targetWindow
+                end try
             end tell
         end tell
-        tell application "{escape_applescript(app_name)}" to activate
     ''')
     # Step 2: If we know the tab index, click the terminal tab via AX position
     if tab_index is not None:
@@ -148,9 +157,9 @@ def focus_session(session: ClaudeSession) -> None:
     log.info("focus: pid=%d project=%s host=%s", session.pid, session.project, session.host_app.value)
     if session.host_app == HostApp.PYCHARM:
         proc = _find_jetbrains_process()
-        _focus_ide_tab(proc, proc, session.project, session.tab_index)
+        _focus_ide_tab(proc, session.project, session.tab_index)
     elif session.host_app == HostApp.VSCODE:
-        _focus_ide_tab("Code", "Visual Studio Code", session.project, session.tab_index)
+        _focus_ide_tab("Code", session.project, session.tab_index)
     elif session.window_id is not None:
         # 1. Unminimize and reorder target window to front within Terminal
         # 2. Activate Terminal without raising all windows — use
