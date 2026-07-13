@@ -34,10 +34,13 @@ _PTY_MAJOR = 16  # pseudo-terminal major device number
 
 # Struct offsets — verified empirically on macOS ARM64.
 # proc_pidinfo(PROC_PIDTASKALLINFO) returns 232 bytes.
-# Fields from proc_bsdinfo: ppid @ offset 16, tdev @ offset 108.
+# Fields from proc_bsdinfo: ppid @ offset 16, tdev @ offset 108,
+# pbi_start_tvsec @ 120 / pbi_start_tvusec @ 128 (both uint64).
 _TASKALLINFO_SIZE = 232
 _PBSD_PPID_OFFSET = 16
 _PBSD_TDEV_OFFSET = 108
+_PBSD_START_SEC_OFFSET = 120
+_PBSD_START_USEC_OFFSET = 128
 
 # proc_vnodepathinfo: the CWD vnode path starts at the vip_path field.
 # struct vnode_info_path = vnode_info (152 bytes) + path[MAXPATHLEN]
@@ -127,6 +130,18 @@ def _dev_to_tty(dev: int) -> str:
 
 
 # Public API
+
+
+def get_start_time(pid: int) -> float:
+    """Process start time as a Unix timestamp. Returns 0.0 on failure."""
+    info_buf = ctypes.create_string_buffer(_TASKALLINFO_SIZE)
+    ret = _libproc.proc_pidinfo(pid, PROC_PIDTASKALLINFO, 0, ctypes.byref(info_buf), _TASKALLINFO_SIZE)
+    if ret < _TASKALLINFO_SIZE:
+        return 0.0
+    raw = info_buf.raw
+    sec = int.from_bytes(raw[_PBSD_START_SEC_OFFSET : _PBSD_START_SEC_OFFSET + 8], "little")
+    usec = int.from_bytes(raw[_PBSD_START_USEC_OFFSET : _PBSD_START_USEC_OFFSET + 8], "little")
+    return sec + usec / 1_000_000
 
 
 def get_process_info(pids: list[int]) -> dict[int, ProcessInfo]:

@@ -54,6 +54,7 @@ def _build_service(  # noqa: PLR0913
     process_service.get_cwds.return_value = pid_cwds or {}
     process_service.get_child_pids.return_value = child_pids or set()
     process_service.get_single_info.return_value = None
+    process_service.get_start_time.return_value = 0.0
     process_service.list_all.return_value = []
 
     session_log = SessionLogService()
@@ -621,6 +622,76 @@ class TestDetectSharedCwdAttention:
             assert by_pid[200].status == SessionStatus.ATTENTION
             assert by_pid[200].session_id == "fresh"
             assert by_pid[100].status == SessionStatus.IDLE
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+    def test_dead_sessions_pending_file_is_not_a_magnet(self, tmp_path):
+        """A dead session's JSONL ending in an unresolved tool_use must not be
+        inherited by sessions started after it — that showed phantom ATTENTION
+        rows duplicating the dead session's title."""
+        import time as _time
+
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        _write_jsonl(
+            os.path.join(proj_dir, "dead.jsonl"),
+            [
+                {"type": "ai-title", "aiTitle": "Set up Sentry CLI"},
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "source x"}}]},
+                },
+            ],
+            age_seconds=300,
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [100],
+            pid_info={100: ProcessInfo(tty="ttys001", ppid=1, comm="claude")},
+            pid_cwds={100: cwd},
+            terminal_titles={"/dev/ttys001": ("myapp — ✳ Claude Code", 1)},
+        )
+        # This process started after the dead session's file was created.
+        svc._process_service.get_start_time.return_value = _time.time() + 60
+        try:
+            sessions = svc.detect()
+            assert sessions[0].status == SessionStatus.IDLE
+            assert sessions[0].session_id == ""
+            assert sessions[0].ai_title == ""
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+    def test_two_unmatched_sessions_pair_with_distinct_files(self, tmp_path):
+        """Two sessions without title matches must not render as duplicates of
+        one file — each claims its own log."""
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        for name in ("first.jsonl", "second.jsonl"):
+            _write_jsonl(
+                os.path.join(proj_dir, name),
+                [{"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}],
+                age_seconds=120,
+            )
+        svc = _build_service(
+            str(tmp_path),
+            [100, 200],
+            pid_info={
+                100: ProcessInfo(tty="ttys001", ppid=1, comm="claude"),
+                200: ProcessInfo(tty="ttys002", ppid=1, comm="claude"),
+            },
+            pid_cwds={100: cwd, 200: cwd},
+            terminal_titles={
+                "/dev/ttys001": ("myapp — ✳ Claude Code", 1),
+                "/dev/ttys002": ("myapp — ✳ Claude Code", 2),
+            },
+        )
+        try:
+            sessions = svc.detect()
+            sids = [s.session_id for s in sessions]
+            assert all(sids)
+            assert len(set(sids)) == 2
         finally:
             for p in svc._test_patchers:
                 p.stop()
