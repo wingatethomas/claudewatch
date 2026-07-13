@@ -188,7 +188,7 @@ class ClaudeWatchApp:
         if self._prev_pids:  # not first poll
             for pid in new_pids:
                 s = session_map[pid]
-                model = self._usage_service.get_model(s.cwd)
+                model = self._usage_service.get_model(s.cwd, s.session_id)
                 log.info(
                     "session.started project=%s host=%s model=%s pid=%d",
                     s.project,
@@ -210,7 +210,7 @@ class ClaudeWatchApp:
                     session_id=prev.session_id,
                     project=prev.project,
                     cwd=prev.cwd,
-                    model=self._usage_service.get_model(prev.cwd),
+                    model=self._usage_service.get_model(prev.cwd, prev.session_id),
                     host_app=prev.host_app.value,
                 )
 

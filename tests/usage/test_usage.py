@@ -1,19 +1,22 @@
 """Tests for claudewatch.backend.usage.service."""
 
 import json
-from unittest.mock import MagicMock
+import os
+import time
+from unittest.mock import MagicMock, patch
 
+from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.usage.service import UsageService, model_display_name
 
 
 def _make_service(
-    find_most_recent: str | None = None,
+    resolve_jsonl: str | None = None,
     read_tail: str = "",
     read_full: list[str] | None = None,
 ) -> UsageService:
     """Create a UsageService with a mocked SessionLogService."""
     mock_log = MagicMock()
-    mock_log.find_most_recent.return_value = find_most_recent
+    mock_log.resolve_jsonl.return_value = resolve_jsonl
     mock_log.read_tail.return_value = read_tail
     mock_log.read_full.return_value = read_full or []
     return UsageService(mock_log)
@@ -63,21 +66,21 @@ class TestUsageServiceGetModel:
     """Tests for UsageService.get_model — returns raw model ids."""
 
     def test_returns_empty_when_no_jsonl_found(self):
-        svc = _make_service(find_most_recent=None)
+        svc = _make_service(resolve_jsonl=None)
         assert svc.get_model("/Users/dev/myapp") == ""
 
     def test_returns_empty_when_tail_empty(self):
-        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail="")
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail="")
         assert svc.get_model("/Users/dev/myapp") == ""
 
     def test_returns_raw_id_for_known_model(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
-        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "claude-opus-4-6"
 
     def test_returns_raw_model_for_unknown(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "claude-future-99"}}) + "\n"
-        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "claude-future-99"
 
     def test_uses_last_model_in_file(self):
@@ -87,7 +90,7 @@ class TestUsageServiceGetModel:
             + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}})
             + "\n"
         )
-        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "claude-opus-4-6"
 
     def test_skips_synthetic_placeholder(self):
@@ -99,25 +102,78 @@ class TestUsageServiceGetModel:
             + json.dumps({"type": "assistant", "message": {"model": "<synthetic>"}})
             + "\n"
         )
-        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "claude-opus-4-6"
 
     def test_returns_empty_when_only_synthetic(self):
         tail = json.dumps({"type": "assistant", "message": {"model": "<synthetic>"}}) + "\n"
-        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == ""
 
     def test_handles_invalid_json_lines(self):
         tail = "not json\n" + json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-6"}}) + "\n"
-        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == "claude-opus-4-6"
 
     def test_handles_non_dict_message(self):
         tail = json.dumps({"type": "assistant", "message": "string"}) + "\n"
-        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == ""
 
     def test_returns_empty_for_no_model_field(self):
         tail = json.dumps({"type": "user", "message": {"content": "hello"}}) + "\n"
-        svc = _make_service(find_most_recent="/fake/path.jsonl", read_tail=tail)
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail=tail)
         assert svc.get_model("/Users/dev/myapp") == ""
+
+    def test_no_session_id_resolves_most_recent(self):
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail="")
+        svc.get_model("/Users/dev/myapp")
+        svc._session_log_service.resolve_jsonl.assert_called_once_with("/Users/dev/myapp", "")
+
+    def test_session_id_passed_through(self):
+        svc = _make_service(resolve_jsonl="/fake/path.jsonl", read_tail="")
+        svc.get_model("/Users/dev/myapp", "sid-a")
+        svc._session_log_service.resolve_jsonl.assert_called_once_with("/Users/dev/myapp", "sid-a")
+
+
+def _write_session(path, model: str, input_tokens: int, output_tokens: int, mtime: float) -> None:
+    """Write a one-message session JSONL and pin its mtime."""
+    line = json.dumps(
+        {
+            "type": "assistant",
+            "message": {"model": model, "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens}},
+        }
+    )
+    path.write_text(line + "\n")
+    os.utime(path, (mtime, mtime))
+
+
+class TestUsageServiceSharedCwd:
+    """Two sessions sharing one cwd must not read each other's JSONL."""
+
+    def test_session_id_wins_over_newer_sibling(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        now = time.time()
+        _write_session(proj_dir / "sid-a.jsonl", "claude-opus-4-6", 100, 50, now - 100)
+        _write_session(proj_dir / "sid-b.jsonl", "claude-sonnet-4-6", 7, 3, now)
+
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            svc = UsageService(SessionLogService())
+            assert svc.get_model("/Users/dev/myapp", "sid-a") == "claude-opus-4-6"
+            tokens_a = svc.get_tokens("/Users/dev/myapp", "sid-a")
+            assert (tokens_a.input, tokens_a.output) == (100, 50)
+            # No session_id still falls back to the most recent file.
+            assert svc.get_model("/Users/dev/myapp") == "claude-sonnet-4-6"
+            tokens_recent = svc.get_tokens("/Users/dev/myapp")
+            assert (tokens_recent.input, tokens_recent.output) == (7, 3)
+
+    def test_gone_session_returns_empty_not_sibling(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        _write_session(proj_dir / "sid-b.jsonl", "claude-sonnet-4-6", 7, 3, time.time())
+
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            svc = UsageService(SessionLogService())
+            assert svc.get_model("/Users/dev/myapp", "sid-gone") == ""
+            assert svc.get_tokens("/Users/dev/myapp", "sid-gone").total == 0

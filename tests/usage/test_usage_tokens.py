@@ -13,12 +13,12 @@ from claudewatch.backend.usage.service import (
 
 
 def _make_service(
-    find_most_recent: str | None = None,
+    resolve_jsonl: str | None = None,
     read_full: list[str] | None = None,
 ) -> UsageService:
     """Create a UsageService with a mocked SessionLogService."""
     mock_log = MagicMock()
-    mock_log.find_most_recent.return_value = find_most_recent
+    mock_log.resolve_jsonl.return_value = resolve_jsonl
     mock_log.read_full.return_value = read_full or []
     return UsageService(mock_log)
 
@@ -68,13 +68,13 @@ class TestUsageServiceGetTokens:
     """Tests for UsageService.get_tokens."""
 
     def test_returns_empty_when_no_jsonl(self):
-        svc = _make_service(find_most_recent=None)
+        svc = _make_service(resolve_jsonl=None)
         result = svc.get_tokens("/Users/dev/myapp")
         assert isinstance(result, TokenUsageDTO)
         assert result.total == 0
 
     def test_returns_empty_when_file_gone(self, tmp_path):
-        svc = _make_service(find_most_recent=str(tmp_path / "gone.jsonl"))
+        svc = _make_service(resolve_jsonl=str(tmp_path / "gone.jsonl"))
         result = svc.get_tokens("/Users/dev/myapp")
         assert isinstance(result, TokenUsageDTO)
         assert result.total == 0
@@ -105,7 +105,7 @@ class TestUsageServiceGetTokens:
         ]
         jsonl_file.write_text("\n".join(lines) + "\n")
 
-        svc = _make_service(find_most_recent=str(jsonl_file), read_full=lines)
+        svc = _make_service(resolve_jsonl=str(jsonl_file), read_full=lines)
         result = svc.get_tokens("/Users/dev/myapp")
         assert result.input == 110
         assert result.output == 55
@@ -117,7 +117,7 @@ class TestUsageServiceGetTokens:
         line = json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 42, "output_tokens": 10}}})
         jsonl_file.write_text(line + "\n")
 
-        svc = _make_service(find_most_recent=str(jsonl_file), read_full=[line])
+        svc = _make_service(resolve_jsonl=str(jsonl_file), read_full=[line])
         r1 = svc.get_tokens("/Users/dev/myapp")
         r2 = svc.get_tokens("/Users/dev/myapp")
         assert r1 == r2
@@ -133,7 +133,7 @@ class TestUsageServiceGetTokens:
         ]
         jsonl_file.write_text("\n".join(lines) + "\n")
 
-        svc = _make_service(find_most_recent=str(jsonl_file), read_full=lines)
+        svc = _make_service(resolve_jsonl=str(jsonl_file), read_full=lines)
         result = svc.get_tokens("/Users/dev/myapp")
         assert result.input == 5
 
@@ -143,8 +143,8 @@ class TestUsageServiceGetTokens:
         line = json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 7, "output_tokens": 2}}})
         jsonl_file.write_text(line + "\n")
 
-        svc1 = _make_service(find_most_recent=str(jsonl_file), read_full=[line])
-        svc2 = _make_service(find_most_recent=str(jsonl_file), read_full=[line])
+        svc1 = _make_service(resolve_jsonl=str(jsonl_file), read_full=[line])
+        svc2 = _make_service(resolve_jsonl=str(jsonl_file), read_full=[line])
         svc1.get_tokens("/Users/dev/myapp")
         assert len(svc1._token_cache) == 1
         assert len(svc2._token_cache) == 0

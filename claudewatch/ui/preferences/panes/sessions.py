@@ -258,7 +258,7 @@ def disambiguate_projects(entries: list[dict]) -> dict[str, str]:
     return labels
 
 
-def _resolve_model_label(model_raw: str, cwd: str, usage_svc: object) -> str:
+def _resolve_model_label(model_raw: str, cwd: str, usage_svc: object, session_id: str = "") -> str:
     """Map a raw model id to its display name, falling back to live JSONL lookup.
 
     History rows occasionally have an empty ``model`` field — sessions seeded
@@ -271,7 +271,7 @@ def _resolve_model_label(model_raw: str, cwd: str, usage_svc: object) -> str:
     if not cwd:
         return ""
     try:
-        fallback = usage_svc.get_model(cwd)  # type: ignore[attr-defined]
+        fallback = usage_svc.get_model(cwd, session_id)  # type: ignore[attr-defined]
     except (OSError, AttributeError):
         return ""
     return model_display_name(fallback)
@@ -299,7 +299,7 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     cwd = entry.get("cwd", "")
     session_id = entry.get("session_id", "")
     model_raw = entry.get("model", "")
-    model = _resolve_model_label(model_raw, cwd, usage_svc)
+    model = _resolve_model_label(model_raw, cwd, usage_svc, session_id)
     ended_at = entry.get("ended_at", "")
     is_pinned = bookmark_svc.is_bookmarked(session_id, cwd)  # type: ignore[attr-defined]
 
@@ -307,7 +307,7 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
     row_menu = _build_row_menu(delegate, entry, is_pinned, cwd, session_id, raw_project, summary_svc)
 
     # Gather display data
-    token_data = usage_svc.get_tokens(cwd)
+    token_data = usage_svc.get_tokens(cwd, session_id)
     token_compact = format_tokens_compact(token_data)
     cached_title = summary_svc.get_cached(cwd, session_id) if cwd else ""
 
