@@ -31,7 +31,6 @@ from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FeatureKey
-from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.login_item import refresh_login_item
 from claudewatch.backend.core.models import ClaudeSession
 from claudewatch.backend.core.paths import LOG_PATH, ensure_data_dir
@@ -60,7 +59,12 @@ from claudewatch.ui.focus import focus_session
 from claudewatch.ui.menu.core import AppDelegate, MenuCallback, make_menu_item
 from claudewatch.ui.menu_builder import MenuBuilder
 from claudewatch.ui.preferences import show_preferences
-from claudewatch.ui.session_actions import clean_exit_session, is_accessibility_trusted, notify_paused
+from claudewatch.ui.session_actions import (
+    clean_exit_session,
+    is_accessibility_trusted,
+    notify_paused,
+    open_terminal_and_run,
+)
 from claudewatch.ui.theme import theme
 from claudewatch.ui.welcome import should_show_welcome, show_welcome
 
@@ -498,28 +502,12 @@ class ClaudeWatchApp:
             if not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", session_id):
                 log.warning("invalid session ID: %s", session_id[:20])
                 return
-            # Verify the session JSONL still exists before trying to resume
-            path = get_session_log_service().find_most_recent(cwd) if cwd else None
+            # Verify the session's own JSONL still exists before trying to resume
+            path = get_session_log_service().resolve_jsonl(cwd, session_id) if cwd else None
             if not path:
                 log.warning("session JSONL not found for resume: %s", session_id[:8])
                 return
-            # Open a new Terminal tab, cd to the project dir, and resume
-            safe_cwd = escape_applescript(cwd) if cwd else ""
-            if safe_cwd:
-                run_applescript(f"""
-                    do shell script "open -a Terminal \\"{safe_cwd}\\""
-                    delay 0.5
-                    tell application "Terminal"
-                        do script "claude -r {session_id}" in front window
-                    end tell
-                """)
-            else:
-                run_applescript(f"""
-                    tell application "Terminal"
-                        activate
-                        do script "claude -r {session_id}"
-                    end tell
-                """)
+            open_terminal_and_run(f"claude -r {session_id}", cwd)
             log.info("session resumed: %s", session_id[:8])
 
         return handler

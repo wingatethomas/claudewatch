@@ -1,4 +1,4 @@
-"""Session lifecycle actions — exit, pause, accessibility check."""
+"""Session lifecycle actions — exit, pause, resume, accessibility check."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import signal
 import threading
 import time
 
-from claudewatch.backend.core.helpers import is_accessibility_trusted, run_applescript
+from claudewatch.backend.core.helpers import escape_applescript, is_accessibility_trusted, run_applescript
 from claudewatch.backend.notifications.dependencies import get_notification_service
 
 log = logging.getLogger("claudewatch")
@@ -54,4 +54,26 @@ def notify_paused(project: str) -> None:
     get_notification_service().send("Session paused", project, "Resume from the Pinned section")
 
 
-__all__ = ["clean_exit_session", "is_accessibility_trusted", "notify_paused"]
+def open_terminal_and_run(command: str, cwd: str = "") -> None:
+    """Run a shell command in a new Terminal window, cd'ing to cwd first if given.
+
+    A bare ``do script`` opens a new window — no positional window references,
+    which race the window opening. Callers build ``command`` from validated
+    parts (e.g. UUID-checked session IDs); everything interpolated here is
+    escaped via ``escape_applescript``.
+    """
+    safe_command = escape_applescript(command)
+    if cwd:
+        safe_cwd = escape_applescript(cwd)
+        shell = f'"cd " & quoted form of "{safe_cwd}" & " && {safe_command}"'
+    else:
+        shell = f'"{safe_command}"'
+    run_applescript(f"""
+        tell application "Terminal"
+            activate
+            do script {shell}
+        end tell
+    """)
+
+
+__all__ = ["clean_exit_session", "is_accessibility_trusted", "notify_paused", "open_terminal_and_run"]
