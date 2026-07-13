@@ -24,16 +24,43 @@ class TestRecordSession:
         assert entries[0]["host_app"] == "Terminal"
         assert "ended_at" in entries[0]
 
-    def test_deduplicates_by_cwd(self, tmp_path):
+    def test_same_cwd_different_sessions_kept(self, tmp_path):
         fake_path = str(tmp_path / "history.json")
         with patch.object(history, "_PATH", fake_path):
             history.record_session("sess-1", "proj", "/cwd", "opus", "Terminal")
             history.record_session("sess-2", "proj", "/cwd", "sonnet", "Terminal")
             entries = history._load()
 
+        assert [e["session_id"] for e in entries] == ["sess-1", "sess-2"]
+
+    def test_rerecording_same_session_updates_in_place(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with patch.object(history, "_PATH", fake_path):
+            history.record_session("sess-1", "proj", "/cwd", "opus", "Terminal")
+            history.record_session("sess-1", "proj", "/cwd", "sonnet", "Terminal")
+            entries = history._load()
+
         assert len(entries) == 1
-        assert entries[0]["session_id"] == "sess-2"
         assert entries[0]["model"] == "sonnet"
+
+    def test_legacy_entries_dedupe_by_cwd(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with patch.object(history, "_PATH", fake_path):
+            history.record_session("", "proj", "/cwd", "opus", "Terminal")
+            history.record_session("", "proj", "/cwd", "sonnet", "Terminal")
+            entries = history._load()
+
+        assert len(entries) == 1
+        assert entries[0]["model"] == "sonnet"
+
+    def test_legacy_record_keeps_session_entries_for_same_cwd(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with patch.object(history, "_PATH", fake_path):
+            history.record_session("sess-1", "proj", "/cwd", "opus", "Terminal")
+            history.record_session("", "proj", "/cwd", "sonnet", "Terminal")
+            entries = history._load()
+
+        assert len(entries) == 2
 
     def test_different_cwds_kept(self, tmp_path):
         fake_path = str(tmp_path / "history.json")
@@ -196,17 +223,37 @@ class TestRemoveHistoryEntry:
         with patch.object(history, "_PATH", fake_path):
             history.record_session("s1", "p1", "/a", "", "Terminal")
             history.record_session("s2", "p2", "/b", "", "Terminal")
-            history.remove_history_entry("/a")
+            history.remove_history_entry("s1")
             entries = history._load()
 
         assert len(entries) == 1
         assert entries[0]["cwd"] == "/b"
 
+    def test_removes_only_matching_session_in_shared_cwd(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with patch.object(history, "_PATH", fake_path):
+            history.record_session("s1", "p", "/a", "", "Terminal")
+            history.record_session("s2", "p", "/a", "", "Terminal")
+            history.remove_history_entry("s1")
+            entries = history._load()
+
+        assert [e["session_id"] for e in entries] == ["s2"]
+
+    def test_legacy_removed_by_cwd(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with patch.object(history, "_PATH", fake_path):
+            history.record_session("", "p", "/a", "", "Terminal")
+            history.record_session("s1", "p", "/a", "", "Terminal")
+            history.remove_history_entry("", "/a")
+            entries = history._load()
+
+        assert [e["session_id"] for e in entries] == ["s1"]
+
     def test_remove_nonexistent_is_noop(self, tmp_path):
         fake_path = str(tmp_path / "history.json")
         with patch.object(history, "_PATH", fake_path):
             history.record_session("s1", "p1", "/a", "", "Terminal")
-            history.remove_history_entry("/nonexistent")
+            history.remove_history_entry("s-nonexistent")
             entries = history._load()
 
         assert len(entries) == 1
@@ -427,3 +474,21 @@ class TestStaleEntries:
             remaining = svc.get_all()
         assert removed == 1
         assert [e.cwd for e in remaining] == ["/Users/dev/live"]
+
+    def test_remove_stale_per_session_in_shared_cwd(self, tmp_path):
+        proj_dir = tmp_path / "projects" / "-Users-dev-app"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "sid-live.jsonl").write_text("{}\n")
+        entries = [
+            {"session_id": "sid-live", "project": "app", "cwd": "/Users/dev/app", "ended_at": "2026-07-01"},
+            {"session_id": "sid-dead", "project": "app", "cwd": "/Users/dev/app", "ended_at": "2026-07-02"},
+        ]
+        svc, fake_path = self._service_with_entries(tmp_path, entries)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch.object(history, "_PATH", fake_path),
+        ):
+            removed = svc.remove_stale()
+            remaining = svc.get_all()
+        assert removed == 1
+        assert [e.session_id for e in remaining] == ["sid-live"]

@@ -529,9 +529,9 @@ class ClaudeWatchApp:
 
         return handler
 
-    def _make_remove_history_handler(self, cwd: str) -> MenuCallback:
+    def _make_remove_history_handler(self, session_id: str, cwd: str = "") -> MenuCallback:
         def handler(_: NSMenuItem) -> None:
-            self._history_service.remove(cwd)
+            self._history_service.remove(session_id, cwd)
             self._last_menu_key = ""
             self.update_display()
 

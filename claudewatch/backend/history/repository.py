@@ -83,11 +83,14 @@ def _save(entries: list[_HistoryRecord]) -> None:
 
 
 def record_session(session_id: str, project: str, cwd: str, model: str, host_app: str) -> None:
-    """Record a session when it ends. Deduplicates by CWD (keeps latest)."""
+    """Record a session when it ends. Deduplicates by session id (CWD for legacy entries without one)."""
     with _LOCK:
         entries = _load()
         ts = datetime.now(tz=UTC).isoformat()
-        entries = [e for e in entries if e["cwd"] != cwd]
+        if session_id:
+            entries = [e for e in entries if e.get("session_id") != session_id]
+        else:
+            entries = [e for e in entries if e.get("session_id") or e["cwd"] != cwd]
         entries.append(
             _HistoryRecord(
                 session_id=session_id,
@@ -182,9 +185,12 @@ def _seed_from_jsonl() -> list[_HistoryRecord]:
     return entries
 
 
-def remove_history_entry(cwd: str) -> None:
-    """Remove a history entry by CWD."""
+def remove_history_entry(session_id: str, cwd: str = "") -> None:
+    """Remove a history entry by session id (CWD match for legacy entries without one)."""
     with _LOCK:
         entries = _load()
-        entries = [e for e in entries if e["cwd"] != cwd]
+        if session_id:
+            entries = [e for e in entries if e.get("session_id") != session_id]
+        else:
+            entries = [e for e in entries if e.get("session_id") or e["cwd"] != cwd]
         _save(entries)
