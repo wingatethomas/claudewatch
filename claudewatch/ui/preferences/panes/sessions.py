@@ -242,7 +242,9 @@ def disambiguate_projects(entries: list[dict]) -> dict[str, str]:
         cwd = entry.get("cwd", "")
         if not cwd:
             continue
-        by_name.setdefault(name, []).append(cwd)
+        cwds = by_name.setdefault(name, [])
+        if cwd not in cwds:
+            cwds.append(cwd)
 
     labels: dict[str, str] = {}
     for name, cwds in by_name.items():
@@ -394,7 +396,7 @@ def _build_row_menu(  # noqa: PLR0913, ARG001
     _add_action("Copy Path", delegate.copyCwd_, cwd)
     _add_action("Open in Finder", delegate.revealInFinder_, cwd)
     menu.addItem_(NSMenuItem.separatorItem())
-    _add_action("Delete", delegate.deleteHistoryEntry_, cwd)
+    _add_action("Delete", delegate.deleteHistoryEntry_, f"{session_id}|{cwd}")
 
     return menu
 

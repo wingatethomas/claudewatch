@@ -250,6 +250,16 @@ class TestDisambiguateProjects:
         assert labels["/Users/dev/frontend/api"] == "frontend/api"
         assert labels["/Users/dev/webtools"] == "webtools"
 
+    def test_multiple_sessions_same_cwd_share_label(self) -> None:
+        from claudewatch.ui.preferences.panes.sessions import disambiguate_projects
+
+        entries = [
+            {"project": "api", "cwd": "/Users/dev/api"},
+            {"project": "api", "cwd": "/Users/dev/api"},
+        ]
+        labels = disambiguate_projects(entries)
+        assert labels == {"/Users/dev/api": "api"}
+
     def test_missing_cwd_is_skipped(self) -> None:
         from claudewatch.ui.preferences.panes.sessions import disambiguate_projects
 

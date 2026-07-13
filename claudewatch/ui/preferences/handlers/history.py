@@ -110,8 +110,9 @@ def handle_unbookmark(delegate: object, sender: object) -> None:
 
 
 def handle_delete(delegate: object, sender: object) -> None:
-    """Delete a history entry with confirmation."""
-    cwd = get_represented_object(sender)
+    """Delete a history entry with confirmation. Payload is 'session_id|cwd' (or bare cwd)."""
+    data = get_represented_object(sender)
+    sid, cwd = data.split("|", 1) if "|" in data else ("", data)
     NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
     alert = NSAlert.alloc().init()
     alert.setMessageText_("Delete this session from history?")
@@ -119,7 +120,7 @@ def handle_delete(delegate: object, sender: object) -> None:
     alert.addButtonWithTitle_("Delete")
     alert.addButtonWithTitle_("Cancel")
     if alert.runModal() == NSAlertFirstButtonReturn:
-        get_history_service().remove(cwd)
+        get_history_service().remove(sid, cwd)
         from claudewatch.ui.preferences.panes.sessions import rebuild_rows
 
         rebuild_rows(delegate)

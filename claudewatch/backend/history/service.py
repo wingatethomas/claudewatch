@@ -34,7 +34,7 @@ class HistoryService(BaseService):
         """Remove entries whose session logs no longer exist. Returns count removed."""
         stale = [e for e in self.get_all() if not self.logs_exist(e.cwd, e.session_id)]
         for entry in stale:
-            history_repo.remove_history_entry(entry.cwd)
+            history_repo.remove_history_entry(entry.session_id, entry.cwd)
         if stale:
             self._invalidate()
         return len(stale)
@@ -51,9 +51,9 @@ class HistoryService(BaseService):
                 self._cache = history_repo.get_history()
             return list(self._cache)
 
-    def remove(self, cwd: str) -> None:
-        """Remove a history entry by CWD."""
-        history_repo.remove_history_entry(cwd)
+    def remove(self, session_id: str, cwd: str = "") -> None:
+        """Remove a history entry by session id (CWD match for legacy entries without one)."""
+        history_repo.remove_history_entry(session_id, cwd)
         self._invalidate()
 
     def warm(self) -> None:

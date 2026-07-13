@@ -44,7 +44,12 @@ class UsagePane(BasePane):
         total = {"input": 0, "output": 0, "cache_create": 0, "cache_read": 0}
         cutoff = datetime.now(tz=UTC) - timedelta(days=30)
 
+        seen_cwds: set[str] = set()
         for entry in history:
+            # get_tokens is cwd-level; count each cwd once even with multiple sessions
+            if entry.cwd in seen_cwds:
+                continue
+            seen_cwds.add(entry.cwd)
             tokens = usage_svc.get_tokens(entry.cwd)
             t_in = tokens.input + tokens.cache_create + tokens.cache_read
             t_out = tokens.output

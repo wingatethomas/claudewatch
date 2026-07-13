@@ -253,7 +253,7 @@ class MenuBuilder:
                 actions = SessionActions(
                     activity=self._app._make_history_activity_handler(entry.project, entry.cwd),
                     resume=self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else None,
-                    remove=self._app._make_remove_history_handler(entry.cwd),
+                    remove=self._app._make_remove_history_handler(entry.session_id, entry.cwd),
                     track_summary=lambda cwd=entry.cwd, sid=entry.session_id: self._app._summary_service.track_session(
                         cwd, session_id=sid or ""
                     ),

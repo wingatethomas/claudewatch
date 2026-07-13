@@ -65,8 +65,8 @@ class TestHistoryService:
 
     @patch("claudewatch.backend.history.service.history_repo")
     def test_remove_delegates_to_repo(self, mock_repo):
-        self.svc.remove("/tmp/cwd")
-        mock_repo.remove_history_entry.assert_called_once_with("/tmp/cwd")
+        self.svc.remove("sid-1", "/tmp/cwd")
+        mock_repo.remove_history_entry.assert_called_once_with("sid-1", "/tmp/cwd")
 
     @patch("claudewatch.backend.history.service.history_repo")
     def test_get_all_caches_after_first_call(self, mock_repo):
@@ -88,7 +88,7 @@ class TestHistoryService:
     def test_remove_invalidates_cache(self, mock_repo):
         mock_repo.get_history.return_value = []
         self.svc.get_all()
-        self.svc.remove("/tmp/c")
+        self.svc.remove("sid-1", "/tmp/c")
         self.svc.get_all()
         assert mock_repo.get_history.call_count == 2
 
