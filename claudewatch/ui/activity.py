@@ -38,10 +38,11 @@ from claudewatch.ui.safety import objc_callback
 _W = 750
 _H = 500
 
+# All dicts keyed by "{cwd}::{session_id}" so sessions sharing a cwd get separate windows
 _windows: dict[str, NSWindow] = {}
 _delegates: dict[str, object] = {}  # prevent GC of delegate
 _text_views: dict[str, NSTextView] = {}
-_sort_state: dict[str, bool] = {}  # CWD → newest_first
+_sort_state: dict[str, bool] = {}  # key → newest_first
 
 # Styles per entry kind
 _KIND_CONFIG = {
@@ -66,13 +67,15 @@ class _ActivityDelegate(NSObject):
     """Handle window close, resume, and sort actions."""
 
     _cwd: str = ""
+    _session_id: str = ""
+    _key: str = ""
 
     @objc_callback
     def windowWillClose_(self, notification: objc.objc_object) -> None:
-        _windows.pop(self._cwd, None)
-        _delegates.pop(self._cwd, None)
-        _text_views.pop(self._cwd, None)
-        _sort_state.pop(self._cwd, None)
+        _windows.pop(self._key, None)
+        _delegates.pop(self._key, None)
+        _text_views.pop(self._key, None)
+        _sort_state.pop(self._key, None)
 
     @objc_callback
     def openInFinder_(self, sender: objc.objc_object) -> None:
@@ -81,7 +84,7 @@ class _ActivityDelegate(NSObject):
 
     @objc_callback
     def copyToClipboard_(self, sender: objc.objc_object) -> None:
-        tv = _text_views.get(self._cwd)
+        tv = _text_views.get(self._key)
         if tv:
             pb = NSPasteboard.generalPasteboard()
             pb.clearContents()
@@ -89,19 +92,19 @@ class _ActivityDelegate(NSObject):
 
     @objc_callback
     def openJsonlInFinder_(self, sender: objc.objc_object) -> None:
-        path = get_session_log_service().find_most_recent(self._cwd)
+        path = get_session_log_service().resolve_jsonl(self._cwd, self._session_id)
         if path:
             subprocess.run(["open", "-R", path], check=False)  # noqa: S603, S607
 
     @objc_callback
     def toggleSort_(self, sender: objc.objc_object) -> None:
-        newest_first = not _sort_state.get(self._cwd, False)
-        _sort_state[self._cwd] = newest_first
+        newest_first = not _sort_state.get(self._key, False)
+        _sort_state[self._key] = newest_first
         sender.setTitle_("↓ Newest first" if newest_first else "↑ Oldest first")
-        entries = get_activity_service().parse(self._cwd)
+        entries = get_activity_service().parse(self._cwd, self._session_id)
         if newest_first:
             entries = list(reversed(entries))
-        tv = _text_views.get(self._cwd)
+        tv = _text_views.get(self._key)
         if tv is not None:
             tv.textStorage().setAttributedString_(_render_timeline(entries))
             if newest_first:
@@ -111,14 +114,16 @@ class _ActivityDelegate(NSObject):
 
     @objc_callback
     def focusSession_(self, sender: objc.objc_object) -> None:  # noqa: N802
-        for s in get_detection_service().detect():
-            if s.cwd == self._cwd:
-                focus_session(s)
-                return
+        sessions = get_detection_service().detect()
+        match = next((s for s in sessions if self._session_id and s.session_id == self._session_id), None)
+        if match is None:
+            match = next((s for s in sessions if s.cwd == self._cwd), None)
+        if match is not None:
+            focus_session(match)
 
     @objc_callback
     def resumeSession_(self, sender: objc.objc_object) -> None:
-        sid = _get_session_id(self._cwd)
+        sid = self._session_id or _get_session_id(self._cwd)
         if not sid or not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", sid):
             return
         safe_cwd = escape_applescript(self._cwd)
@@ -184,10 +189,11 @@ def _render_timeline(entries: list[ActivityEventDTO]) -> NSMutableAttributedStri
     return result
 
 
-def show_activity(project: str, cwd: str, *, session_active: bool = False) -> None:  # noqa: PLR0915
+def show_activity(project: str, cwd: str, session_id: str = "", *, session_active: bool = False) -> None:  # noqa: PLR0915
     """Show (or bring to front) the activity window for a session."""
-    if cwd in _windows:
-        _windows[cwd].makeKeyAndOrderFront_(None)
+    key = f"{cwd}::{session_id}"
+    if key in _windows:
+        _windows[key].makeKeyAndOrderFront_(None)
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         return
 
@@ -195,6 +201,8 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
 
     delegate = _ActivityDelegate.alloc().init()
     delegate._cwd = cwd
+    delegate._session_id = session_id
+    delegate._key = key
 
     style = (
         NSWindowStyleMaskTitled
@@ -296,8 +304,8 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
     text_view.setAutoresizingMask_(18)
     text_view.setTextContainerInset_(NSMakeSize(16, 16))
 
-    _text_views[cwd] = text_view
-    entries = get_activity_service().parse(cwd)
+    _text_views[key] = text_view
+    entries = get_activity_service().parse(cwd, session_id)
     text_view.textStorage().setAttributedString_(_render_timeline(entries))
     text_view.scrollRangeToVisible_(NSRange(len(text_view.string()), 0))
 
@@ -306,8 +314,8 @@ def show_activity(project: str, cwd: str, *, session_active: bool = False) -> No
 
     window.setContentView_(root)
 
-    _delegates[cwd] = delegate
-    _windows[cwd] = window
+    _delegates[key] = delegate
+    _windows[key] = window
     window.center()
     window.makeKeyAndOrderFront_(None)
     NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
