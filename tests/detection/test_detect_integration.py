@@ -756,6 +756,65 @@ class TestDetectSharedCwdAttention:
             for p in svc._test_patchers:
                 p.stop()
 
+    def test_unpaired_session_defaults_to_idle_not_working(self, tmp_path):
+        """A session with no pairable log must not show as actively working —
+        resumed IDE sessions sat green forever on the empty-tail bias."""
+        import time as _time
+
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        _write_jsonl(
+            os.path.join(proj_dir, "old.jsonl"),
+            [{"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}],
+            age_seconds=300,
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [100],
+            pid_info={100: ProcessInfo(tty="ttys001", ppid=1, comm="claude")},
+            pid_cwds={100: cwd},
+            terminal_titles={"/dev/ttys001": ("myapp — no indicator", 1)},
+        )
+        svc._process_service.get_start_time.return_value = _time.time() + 60
+        try:
+            sessions = svc.detect()
+            assert sessions[0].session_id == ""
+            assert sessions[0].status == SessionStatus.IDLE
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+    def test_resumed_session_pairs_via_fresh_mtime(self, tmp_path):
+        """A resumed session appends to a file born before the process —
+        a fresh mtime qualifies it for pairing."""
+        import time as _time
+
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        _write_jsonl(
+            os.path.join(proj_dir, "resumed.jsonl"),
+            [{"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}],
+            age_seconds=30,  # written after the process started
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [100],
+            pid_info={100: ProcessInfo(tty="ttys001", ppid=1, comm="claude")},
+            pid_cwds={100: cwd},
+            terminal_titles={"/dev/ttys001": ("myapp — ✳ Claude Code", 1)},
+        )
+        svc._process_service.get_start_time.return_value = _time.time() - 3600
+        try:
+            with patch(
+                "claudewatch.backend.detection.service._file_birthtime",
+                return_value=_time.time() - 7200,  # born long before the process
+            ):
+                sessions = svc.detect()
+            assert sessions[0].session_id == "resumed"
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
     def test_two_unmatched_sessions_pair_with_distinct_files(self, tmp_path):
         """Two sessions without title matches must not render as duplicates of
         one file — each claims its own log."""
