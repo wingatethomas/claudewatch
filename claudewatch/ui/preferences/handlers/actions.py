@@ -18,12 +18,12 @@ from AppKit import (
 
 from claudewatch import __version__
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
-from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.paths import LOG_PATH
 from claudewatch.backend.history.dependencies import get_history_service
 from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.safety import get_represented_object
+from claudewatch.ui.session_actions import open_terminal_and_run
 
 _DIAGNOSTIC_TAIL_BYTES = 50_000
 
@@ -36,14 +36,7 @@ def handle_resume(delegate: object, sender: object) -> None:  # noqa: ARG001
     sid, cwd = data.split("|", 1)
     if not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", sid):
         return
-    safe_cwd = escape_applescript(cwd)
-    run_applescript(f'''
-        do shell script "open -a Terminal \\"{safe_cwd}\\""
-        delay 0.5
-        tell application "Terminal"
-            do script "claude -r {sid}" in front window
-        end tell
-    ''')
+    open_terminal_and_run(f"claude -r {sid}", cwd)
 
 
 def handle_view_activity(delegate: object, sender: object) -> None:  # noqa: ARG001
@@ -117,13 +110,7 @@ def handle_open_claude_usage(delegate: object, sender: object) -> None:  # noqa:
         break
     if not cwd:
         cwd = os.path.expanduser("~")
-    safe_cwd = escape_applescript(cwd)
-    run_applescript(f'''
-        tell application "Terminal"
-            activate
-            do script "cd \\"{safe_cwd}\\" && claude /usage"
-        end tell
-    ''')
+    open_terminal_and_run("claude /usage", cwd)
 
 
 def handle_view_audit_log(delegate: object, sender: object) -> None:  # noqa: ARG001

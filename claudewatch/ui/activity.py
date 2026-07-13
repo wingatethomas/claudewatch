@@ -28,12 +28,12 @@ from Foundation import NSMakeRect, NSMakeSize, NSObject, NSRange
 
 from claudewatch.backend.activity.dependencies import get_activity_service
 from claudewatch.backend.core.dto import ActivityEventDTO
-from claudewatch.backend.core.helpers import escape_applescript, run_applescript
 from claudewatch.backend.core.session_log.dependencies import get_session_log_service
 from claudewatch.backend.detection.dependencies import get_detection_service
 from claudewatch.ui.components.tokens import Font
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.safety import objc_callback
+from claudewatch.ui.session_actions import open_terminal_and_run
 
 _W = 750
 _H = 500
@@ -126,14 +126,7 @@ class _ActivityDelegate(NSObject):
         sid = self._session_id or _get_session_id(self._cwd)
         if not sid or not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", sid):
             return
-        safe_cwd = escape_applescript(self._cwd)
-        run_applescript(f'''
-            do shell script "open -a Terminal \\"{safe_cwd}\\""
-            delay 0.5
-            tell application "Terminal"
-                do script "claude -r {sid}" in front window
-            end tell
-        ''')
+        open_terminal_and_run(f"claude -r {sid}", self._cwd)
 
 
 def _append(attr_str: NSMutableAttributedString, text: str, font: NSFont, color: NSColor) -> None:
