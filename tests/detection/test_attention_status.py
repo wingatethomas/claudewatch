@@ -12,7 +12,7 @@ import os
 import time
 
 from claudewatch.backend.core.models import SessionStatus
-from claudewatch.backend.detection.service import DetectionService, _match_jsonl_by_title
+from claudewatch.backend.detection.service import DetectionService, _buffer_prompt_line, _match_jsonl_by_title
 
 _STALE_AGE = 10  # seconds — old enough that the pending check runs
 
@@ -369,3 +369,27 @@ class TestMatchJsonlByTitle:
 
     def test_returns_fallback_when_fallback_is_none(self):
         assert _match_jsonl_by_title("x", {}, None) == (None, False)
+
+
+class TestBufferPromptLine:
+    """Dialog signatures on the visible Terminal screen."""
+
+    def test_permission_dialog_returns_tool_line(self):
+        screen = (
+            "⏺ Bash(touch probe.txt)\n  ⎿  Waiting…\n Bash command\n"
+            " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n Esc to cancel\n"
+        )
+        assert "Bash(touch probe.txt)" in _buffer_prompt_line(screen)
+
+    def test_trust_prompt_detected(self):
+        screen = " Do you trust the files in this folder?\n ❯ 1. Yes, proceed\n   2. No, exit\n"
+        assert "Do you trust" in _buffer_prompt_line(screen)
+
+    def test_numbered_choices_with_esc_detected(self):
+        screen = "Which option?\n ❯ 1. First\n   2. Second\n Esc to skip\n"
+        assert _buffer_prompt_line(screen) == "Waiting for your input"
+
+    def test_plain_output_is_not_a_dialog(self):
+        assert _buffer_prompt_line("⏺ done\n❯ \n? for shortcuts") == ""
+        assert _buffer_prompt_line("1. first thing I did\n2. second thing\n") == ""
+        assert _buffer_prompt_line("") == ""

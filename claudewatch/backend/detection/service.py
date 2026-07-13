@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 
@@ -55,6 +56,8 @@ class DetectionService(BaseService):
         self._host_app_cache: dict[int, HostApp] = {}
         self._terminal_cache: dict[str, tuple[str, int]] | None = None
         self._terminal_cache_time: float = 0
+        # (requested ttys key, {tty: visible screen}, timestamp)
+        self._buffer_cache: tuple[str, dict[str, str], float] | None = None
         # cwd → ({ai_title: jsonl_path}, timestamp). Lets each session in a shared
         # CWD read its own JSONL instead of the most-recent one for the project.
         self._ai_title_cache: dict[str, tuple[dict[str, str], float]] = {}
@@ -115,6 +118,59 @@ class DetectionService(BaseService):
         self._terminal_cache = windows
         self._terminal_cache_time = now
         return windows
+
+    def _get_terminal_buffers(self, targets: list[tuple[str, int]]) -> dict[str, str]:
+        """Visible screen contents for (tty, window_id) Terminal.app tabs.
+
+        One AppleScript pass, cached for _TERMINAL_CACHE_TTL seconds. Only
+        inline reference chains are used — stored tab references fail to
+        dereference their properties — and addressing by window id skips
+        ghost windows entirely. TTY names are validated (ttysNNN only) and
+        window ids are ints, so the script receives no untrusted input.
+        """
+        now = time.time()
+        wanted = sorted(
+            {(t, int(w)) for t, w in targets if re.fullmatch(r"ttys[0-9]+", t or "")},
+        )
+        if not wanted:
+            return {}
+        cache_key = ",".join(f"{t}:{w}" for t, w in wanted)
+        if (
+            self._buffer_cache is not None
+            and self._buffer_cache[0] == cache_key
+            and now - self._buffer_cache[2] < _TERMINAL_CACHE_TTL
+        ):
+            return self._buffer_cache[1]
+
+        tty_list = ", ".join(f'"/dev/{t}"' for t, _ in wanted)
+        wid_list = ", ".join(str(w) for w in sorted({w for _, w in wanted}))
+        result = run_applescript(f"""
+        if application "Terminal" is running then
+            tell application "Terminal"
+                set wantedTtys to {{{tty_list}}}
+                set output to ""
+                repeat with wid in {{{wid_list}}}
+                    try
+                        set tabCount to count of tabs of window id wid
+                        repeat with i from 1 to tabCount
+                            if wantedTtys contains (tty of tab i of window id wid) then
+                                set output to output & "<<TTY:" & (tty of tab i of window id wid) & ">>" & (contents of tab i of window id wid)
+                            end if
+                        end repeat
+                    end try
+                end repeat
+                return output
+            end tell
+        end if
+        return ""
+        """)
+
+        buffers: dict[str, str] = {}
+        for chunk in result.split("<<TTY:/dev/")[1:]:
+            name, _, body = chunk.partition(">>")
+            buffers[name] = body
+        self._buffer_cache = (cache_key, buffers, now)
+        return buffers
 
     # -- Host app detection -------------------------------------------------
 
@@ -549,7 +605,48 @@ class DetectionService(BaseService):
                 s.status = jsonl_status
             # else: title confirms IDLE or WORKING — trust it
 
+        # Claude Code no longer writes the pending tool_use to the JSONL until
+        # the permission decision is made, so the JSONL alone can't see a
+        # waiting dialog. For Terminal sessions the dialog is on the visible
+        # screen — read it and upgrade to ATTENTION.
+        idle_terminal = [
+            s
+            for s in sessions
+            if s.host_app == HostApp.TERMINAL and s.status != SessionStatus.WORKING and s.tty and s.window_id
+        ]
+        if idle_terminal:
+            buffers = self._get_terminal_buffers([(s.tty, s.window_id) for s in idle_terminal])
+            for s in idle_terminal:
+                prompt = _buffer_prompt_line(buffers.get(s.tty, ""))
+                if prompt:
+                    s.status = SessionStatus.ATTENTION
+                    s.prompt_text = prompt
+
         return sessions
+
+
+_DIALOG_QUESTION_RE = re.compile(r"(?m)^\s*(.*Do you (?:want|trust).*?)\s*$")
+_DIALOG_OPTION_RE = re.compile(r"(?m)^\s*❯?\s*1\.\s")
+_DIALOG_TOOL_RE = re.compile(r"(?m)^\s*⏺\s*(\S.*?)\s*$")
+
+
+def _buffer_prompt_line(buffer_text: str) -> str:
+    """One-line description when the visible screen shows an input dialog.
+
+    Matches permission prompts, edit confirmations, trust prompts, and
+    numbered-choice dialogs. Returns "" when the screen shows no dialog.
+    """
+    if not buffer_text:
+        return ""
+    question = _DIALOG_QUESTION_RE.search(buffer_text)
+    has_choices = _DIALOG_OPTION_RE.search(buffer_text) and "2." in buffer_text and "sc to" in buffer_text
+    if not question and not has_choices:
+        return ""
+    tool_lines = _DIALOG_TOOL_RE.findall(buffer_text)
+    line = tool_lines[-1] if tool_lines else (question.group(1) if question else "Waiting for your input")
+    if len(line) > _TEXT_MAX_LEN:
+        line = line[: _TEXT_MAX_LEN - 3] + "..."
+    return line
 
 
 def _file_birthtime(path: str) -> float:
