@@ -42,6 +42,10 @@ class ProcessService(BaseService):
         """Get the parent PID for a single process. Returns 0 on failure."""
         return procinfo.get_ppid(pid)
 
+    def get_start_time(self, pid: int) -> float:
+        """Process start time as a Unix timestamp. Returns 0.0 on failure."""
+        return procinfo.get_start_time(pid)
+
     def get_single_info(self, pid: int) -> ProcessInfo | None:
         """Get tty, ppid, and comm for a single PID. Returns None on failure."""
         return procinfo.get_single_process_info(pid)

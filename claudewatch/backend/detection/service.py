@@ -29,6 +29,7 @@ _TERMINAL_CACHE_TTL = 3  # seconds between AppleScript refreshes
 _AI_TITLE_CACHE_TTL = 3  # seconds between per-CWD ai-title scans
 _WORKTREE_CACHE_TTL = 30  # seconds between per-CWD worktree re-resolution
 _JSONL_STREAMING_THRESHOLD = 5  # JSONL modified within this → actively streaming
+_BIRTHTIME_SLACK = 5.0  # clock slack when comparing file birth to process start
 _JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
 
 
@@ -406,15 +407,11 @@ class DetectionService(BaseService):
             if stale_cwd not in live_cwds:
                 del self._worktree_cache[stale_cwd]
 
-        # Per-CWD fallback (most-recent JSONL) when ai-title matching can't
-        # disambiguate a session. Built lazily.
-        cwd_fallback_jsonl: dict[str, str | None] = {}
         # Per-session JSONL path — keyed by PID. With shared-CWD setups the
         # most-recent file in the project dir often belongs to a sibling
-        # session, so we match on aiTitle from the window title instead.
+        # session, so we match on aiTitle from the window title first and
+        # pair the rest by process start time vs file birth time below.
         session_jsonl: dict[int, str | None] = {}
-        # pid → whether its JSONL was matched via aiTitle (vs the most-recent fallback)
-        matched_by_title: dict[int, bool] = {}
 
         sessions = []
         for pid in pids:
@@ -461,12 +458,8 @@ class DetectionService(BaseService):
 
             status = _determine_status(window_title)
 
-            if cwd not in cwd_fallback_jsonl:
-                cwd_fallback_jsonl[cwd] = self._session_log_service.find_most_recent(cwd)
-            fallback = cwd_fallback_jsonl[cwd]
-            jpath, title_matched = _match_jsonl_by_title(window_title, self._get_ai_title_map(cwd), fallback)
-            session_jsonl[pid] = jpath
-            matched_by_title[pid] = title_matched
+            jpath, title_matched = _match_jsonl_by_title(window_title, self._get_ai_title_map(cwd), None)
+            session_jsonl[pid] = jpath if title_matched else None
             worktree = self._get_worktree(cwd)
 
             sessions.append(
@@ -479,32 +472,36 @@ class DetectionService(BaseService):
                     window_title=window_title,
                     window_id=window_id,
                     status=status,
-                    session_id=self._get_session_id(cwd, jpath),
-                    ai_title=self._ai_title_by_path.get(jpath, "") if jpath else "",
+                    session_id=self._get_session_id(cwd, jpath) if title_matched and jpath else "",
+                    ai_title=self._ai_title_by_path.get(jpath, "") if title_matched and jpath else "",
                     worktree_repo=worktree.repo if worktree else "",
                     worktree_branch=worktree.branch if worktree else "",
                 )
             )
 
-        # A fallback JSONL that another session already claimed via title match
-        # belongs to that session. Dressing an unmatched session in it would
-        # mirror the sibling's title, status, and summary — show it plainly
-        # (no session id, title-only status) until its own aiTitle appears.
-        claimed_paths = {session_jsonl[s.pid] for s in sessions if matched_by_title.get(s.pid) and session_jsonl[s.pid]}
-        for s in sessions:
-            jpath = session_jsonl.get(s.pid)
-            if jpath and not matched_by_title.get(s.pid) and jpath in claimed_paths:
-                # The most-recent unclaimed file is usually the unmatched
-                # session's own brand-new log — reading it keeps ATTENTION
-                # detection working (e.g. a first permission prompt) instead
-                # of going dark until an aiTitle appears.
-                replacement = next(
-                    (p for p in self._session_log_service.list_in_cwd(s.cwd) if p not in claimed_paths),
-                    None,
-                )
-                session_jsonl[s.pid] = replacement
-                s.session_id = self._get_session_id(s.cwd, replacement) if replacement else ""
-                s.ai_title = self._ai_title_by_path.get(replacement, "") if replacement else ""
+        # Pair unmatched sessions with logs they could actually own. A session's
+        # JSONL is created when the session starts, so files born before the
+        # process belong to someone else — including dead sessions whose
+        # unresolved tool_use would otherwise read as phantom ATTENTION on
+        # every unmatched session. Each file is claimed at most once; newest
+        # sessions pick first so fresh sessions pair with fresh logs.
+        claimed_paths = {p for p in session_jsonl.values() if p}
+        unmatched = [s for s in sessions if not session_jsonl.get(s.pid)]
+        starts = {s.pid: self._process_service.get_start_time(s.pid) for s in unmatched}
+        for s in sorted(unmatched, key=lambda x: starts[x.pid], reverse=True):
+            candidate = None
+            for path in self._session_log_service.list_in_cwd(s.cwd):
+                if path in claimed_paths:
+                    continue
+                if starts[s.pid] and _file_birthtime(path) < starts[s.pid] - _BIRTHTIME_SLACK:
+                    continue
+                candidate = path
+                break
+            if candidate:
+                claimed_paths.add(candidate)
+                session_jsonl[s.pid] = candidate
+                s.session_id = self._get_session_id(s.cwd, candidate)
+                s.ai_title = self._ai_title_by_path.get(candidate, "")
 
         self._get_ide_tab_indices(sessions, all_ps)
 
@@ -553,6 +550,15 @@ class DetectionService(BaseService):
             # else: title confirms IDLE or WORKING — trust it
 
         return sessions
+
+
+def _file_birthtime(path: str) -> float:
+    """File creation time (mtime fallback). Returns 0.0 when unreadable."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return 0.0
+    return getattr(st, "st_birthtime", st.st_mtime)
 
 
 def _is_claude_cli(comm: str) -> bool:
