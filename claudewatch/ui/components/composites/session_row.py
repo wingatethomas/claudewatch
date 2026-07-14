@@ -8,6 +8,7 @@ from __future__ import annotations
 from AppKit import NSButton, NSFont, NSView
 from Foundation import NSMakeRect
 
+from claudewatch.ui.components.formatting import SUMMARY_TITLE_LIMIT, truncate
 from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.labels import label, secondary_label
 from claudewatch.ui.icons import sf_icon
@@ -97,7 +98,7 @@ def build_session_row(  # noqa: PLR0913
     # Line 3: summary one-liner
     if summary_title:
         summary_y = meta_y - 16
-        summary_label = label(summary_title[:50], size=Font.SMALL, color=theme.tertiary)
+        summary_label = label(truncate(summary_title, SUMMARY_TITLE_LIMIT), size=Font.SMALL, color=theme.tertiary)
         summary_label.setFrame_(NSMakeRect(_NAME_COL, summary_y, usable_w - _NAME_COL - 10, 14))
         view.addSubview_(summary_label)
 

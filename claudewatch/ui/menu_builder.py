@@ -18,6 +18,12 @@ from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.models import ClaudeSession, SessionStatus
 from claudewatch.backend.core.paths import is_homebrew_install
 from claudewatch.backend.usage.service import format_tokens_breakdown, model_display_name
+from claudewatch.ui.components.formatting import (
+    BOOKMARK_NOTE_LIMIT,
+    SESSION_DETAIL_LIMIT,
+    relative_time,
+    truncate,
+)
 from claudewatch.ui.icons import (
     get_app_icon,
     get_status_colors,
@@ -187,11 +193,9 @@ class MenuBuilder:
             bm_menu_item.setImage_(sf_icon("bookmark.fill"))
             bm_submenu = NSMenu.alloc().init()
             for pin in inactive_pins:
-                _max_note = 25
                 label = pin.project
                 if pin.note:
-                    short_note = pin.note[:_max_note] + "…" if len(pin.note) > _max_note else pin.note
-                    label += f" — {short_note}"
+                    label += f" — {truncate(pin.note, BOOKMARK_NOTE_LIMIT)}"
                 item = make_menu_item(label, self._app._make_resume_handler(pin.session_id, pin.cwd), d)
                 token_data = self._app._usage_service.get_tokens(pin.cwd, pin.session_id)
                 actions = SessionActions(
@@ -243,7 +247,7 @@ class MenuBuilder:
             for entry in recent_entries:
                 model = model_display_name(entry.model)
 
-                detail_parts = [p for p in [entry.ended_at[:10] if entry.ended_at else "", model] if p]
+                detail_parts = [p for p in [relative_time(entry.ended_at), model] if p]
                 label = entry.project
                 if detail_parts:
                     label += f"  ({' · '.join(detail_parts)})"
@@ -355,16 +359,8 @@ class MenuBuilder:
         # Detail line: model + summary (or status as fallback)
         model = model_display_name(self._app._usage_service.get_model(s.cwd, s.session_id))
         cached = self._get_summary(s.cwd, s.session_id)
-        _max_detail_total = 55
         oneliner = cached.replace("\n", " ").strip() if cached else s.detail_line
         detail_parts = [p for p in [model, oneliner] if p]
         if detail_parts:
-            detail_text = " · ".join(detail_parts)
-            if len(detail_text) > _max_detail_total:
-                # Truncate at word boundary
-                truncated = detail_text[: _max_detail_total - 1]
-                last_space = truncated.rfind(" ")
-                if last_space > _max_detail_total // 2:
-                    truncated = truncated[:last_space]
-                detail_text = truncated + "…"
+            detail_text = truncate(" · ".join(detail_parts), SESSION_DETAIL_LIMIT, word_boundary=True)
             self._menu.addItem_(disabled_item(f"      {detail_text}"))
