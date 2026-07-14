@@ -14,7 +14,7 @@ from claudewatch.backend.core.models import (
 from claudewatch.backend.core.process.models import ProcessInfo
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.service import BaseService
-from claudewatch.backend.core.session_log.schema import BlockType, EntryType
+from claudewatch.backend.core.session_log.schema import BOOKKEEPING_TYPES, BlockType, EntryType
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.core.worktree import WorktreeInfo, resolve_worktree
 from claudewatch.backend.detection.constants import HOST_PROCESS_NAMES, IDLE_INDICATOR
@@ -374,13 +374,15 @@ class DetectionService(BaseService):
                 d = json.loads(line)
                 dtype = d.get("type")
 
-                if dtype in (EntryType.SYSTEM, "last-prompt", "pr-link", "queue-operation", "file-history-snapshot"):
+                if dtype == EntryType.SYSTEM or dtype in BOOKKEEPING_TYPES:
                     continue
 
                 if dtype == EntryType.USER:
                     content = d.get("message", {}).get("content", [])
                     if isinstance(content, list):
-                        has_tool_result = any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+                        has_tool_result = any(
+                            isinstance(b, dict) and b.get("type") == BlockType.TOOL_RESULT for b in content
+                        )
                         if has_tool_result:
                             seen_tool_result = True
                             continue
