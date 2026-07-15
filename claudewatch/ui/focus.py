@@ -17,6 +17,12 @@ from claudewatch.backend.core.models import ClaudeSession, HostApp
 
 log = logging.getLogger("claudewatch")
 
+# UI settle time between focus steps — load-bearing, do not remove.
+_UI_SETTLE_SECONDS = 0.3
+# Sentinel returned by tab-switching scripts when no window title matches the
+# project (diff viewers, detached editors) — expected, not an error.
+_NO_WINDOW = "no-window"
+
 
 def _click_at(x: float, y: float) -> None:
     """Click at screen coordinates using CGEvent (works for PyCharm tabs)."""
@@ -28,7 +34,12 @@ def _click_at(x: float, y: float) -> None:
 
 
 def _focus_ide_tab(process_name: str, project: str, tab_index: int | None) -> None:
-    """Focus an IDE window and switch to the right terminal tab."""
+    """Focus an IDE window and switch to the right terminal tab.
+
+    Contract: app activation is guaranteed; window raise and tab switch are
+    best-effort and silently skipped when window titles don't expose the
+    project (diff viewers, detached editors).
+    """
     if not is_accessibility_trusted():
         log.warning("focus: skipping System Events — Accessibility permission not granted")
         return
@@ -53,14 +64,18 @@ def _focus_ide_tab(process_name: str, project: str, tab_index: int | None) -> No
     ''')
     # Step 2: If we know the tab index, click the terminal tab via AX position
     if tab_index is not None:
-        time.sleep(0.3)
+        time.sleep(_UI_SETTLE_SECONDS)
         # Ensure terminal panel is open (Option+F12 for JetBrains, Ctrl+` for VS Code)
         if "pycharm" in process_name.lower() or "idea" in process_name.lower():
             # Check if terminal panel is already visible before toggling
             check = run_applescript(f'''
                 tell application "System Events"
                     tell process "{escape_applescript(process_name)}"
-                        set w to first window whose name contains "{escape_applescript(project)}"
+                        try
+                            set w to first window whose name contains "{escape_applescript(project)}"
+                        on error
+                            return "{_NO_WINDOW}"
+                        end try
                         set rootPane to first UI element of w whose role is "AXGroup"
                         set panels to every UI element of rootPane whose role is "AXGroup"
                         repeat with p in panels
@@ -75,20 +90,26 @@ def _focus_ide_tab(process_name: str, project: str, tab_index: int | None) -> No
                     end tell
                 end tell
             ''')
+            if check.strip() == _NO_WINDOW:
+                return
             if check.strip() == "hidden":
                 run_applescript("""
                     tell application "System Events"
                         key code 111 using {option down}
                     end tell
                 """)
-                time.sleep(0.3)
+                time.sleep(_UI_SETTLE_SECONDS)
         # Get terminal tab positions from AX tree
         # For JetBrains IDEs, the terminal tool window description is like "Local (N) Tool Window"
         # and contains AXStaticText tabs named "Terminal", "Local (2)", etc.
         result = run_applescript(f'''
             tell application "System Events"
                 tell process "{escape_applescript(process_name)}"
-                    set w to first window whose name contains "{escape_applescript(project)}"
+                    try
+                        set w to first window whose name contains "{escape_applescript(project)}"
+                    on error
+                        return "{_NO_WINDOW}"
+                    end try
                     set rootPane to first UI element of w whose role is "AXGroup"
                     set panels to every UI element of rootPane whose role is "AXGroup"
                     set output to ""
@@ -120,6 +141,8 @@ def _focus_ide_tab(process_name: str, project: str, tab_index: int | None) -> No
                 end tell
             end tell
         ''')
+        if result.strip() == _NO_WINDOW:
+            return
         if result:
             tabs = []
             _tab_fields = 4

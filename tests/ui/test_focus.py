@@ -59,6 +59,57 @@ class TestFocusIdeTabAccessibilityGuard:
         assert any("AXRaise" in s and "try" in s for s in scripts[1:])
 
 
+class TestFocusIdeTabNoWindowSentinel:
+    """Tab switching skips cleanly when no window title exposes the project."""
+
+    def test_panel_check_sentinel_skips_tab_click_path(self) -> None:
+        """JetBrains path: sentinel from the panel check stops before the
+        panel toggle and the tab-position enumeration."""
+        with (
+            patch(f"{_MOD}.is_accessibility_trusted", return_value=True),
+            patch(f"{_MOD}.run_applescript", side_effect=["", "", "no-window"]) as mock_run,
+            patch(f"{_MOD}._click_at") as mock_click,
+            patch(f"{_MOD}.time"),
+        ):
+            from claudewatch.ui.focus import _focus_ide_tab
+
+            _focus_ide_tab("pycharm", "myproject", 0)
+        assert mock_run.call_count == 3  # activate, raise, panel check — nothing after
+        mock_click.assert_not_called()
+
+    def test_enumeration_sentinel_skips_tab_click(self) -> None:
+        """VS Code path (no panel check): sentinel from the tab-position
+        enumeration skips the click."""
+        with (
+            patch(f"{_MOD}.is_accessibility_trusted", return_value=True),
+            patch(f"{_MOD}.run_applescript", side_effect=["", "", "no-window"]) as mock_run,
+            patch(f"{_MOD}._click_at") as mock_click,
+            patch(f"{_MOD}.time"),
+        ):
+            from claudewatch.ui.focus import _focus_ide_tab
+
+            _focus_ide_tab("Code", "myproject", 0)
+        assert mock_run.call_count == 3  # activate, raise, tab enumeration
+        mock_click.assert_not_called()
+
+    def test_window_lookups_are_try_guarded_in_scripts(self) -> None:
+        """Both tab-switching scripts guard the whose-clause with a try that
+        returns the sentinel instead of throwing."""
+        with (
+            patch(f"{_MOD}.is_accessibility_trusted", return_value=True),
+            patch(f"{_MOD}.run_applescript", return_value="") as mock_run,
+            patch(f"{_MOD}._click_at"),
+            patch(f"{_MOD}.time"),
+        ):
+            from claudewatch.ui.focus import _focus_ide_tab
+
+            _focus_ide_tab("pycharm", "myproject", 0)
+        scripts = [c.args[0] for c in mock_run.call_args_list]
+        lookups = [s for s in scripts if "whose name contains" in s and "rootPane" in s]
+        assert len(lookups) == 2  # panel check + tab enumeration
+        assert all('return "no-window"' in s for s in lookups)
+
+
 class TestFindJetbrainsProcessAccessibilityGuard:
     """_find_jetbrains_process returns default when Accessibility is not trusted."""
 
