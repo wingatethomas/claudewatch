@@ -18,3 +18,7 @@ paths:
 - Pair `NSImage.lockFocus()` with `unlockFocus()` in try/finally.
 - Thread-safety: use `threading.Event` or similar guards when background threads update UI objects that may be deallocated (e.g. modal text fields).
 - Check `AXIsProcessTrusted()` on launch and show a menu item if permission is missing.
+- **AppleScript: one action per script.** Never chain find/raise/activate steps in a single script — a thrown step silently kills everything after it. Activate first in its own call; treat window matching as best-effort.
+- **Iterating Terminal windows requires a per-window `try`** — ghost windows throw on any property access. Prefer addressing by `window id`, which skips ghosts entirely.
+- **Inline reference chains only** (`contents of tab i of window id W`). Reading properties off a stored tab/window variable fails to dereference.
+- **No positional or stored window refs** (`front window`, saved references) after opening a window. Use `ui/session_actions.open_terminal_and_run` for open-Terminal-and-run flows; it uses a bare `do script`, which opens its own window.

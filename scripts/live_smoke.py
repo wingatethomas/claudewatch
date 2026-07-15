@@ -34,6 +34,7 @@ import claudewatch.backend.detection.service as detection_service
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.detection.service import DetectionService
+from claudewatch.backend.history.service import HistoryService
 
 _PASS = 0
 _FAIL = 0
@@ -68,13 +69,24 @@ def _strip_ansi(text: str) -> str:
 def check_detection() -> list:
     """detect() against live processes: sessions found, identities distinct."""
     detection_service.run_applescript = _osascript
-    svc = DetectionService(ProcessService(), SessionLogService())
+    session_log = SessionLogService()
+    svc = DetectionService(ProcessService(), session_log)
     sessions = svc.detect()
 
     _report(len(sessions) > 0, "detection finds live sessions", f"{len(sessions)} found")
     sids = [s.session_id for s in sessions if s.session_id]
     dupes = len(sids) - len(set(sids))
     _report(dupes == 0, "session identities are distinct", f"{dupes} duplicated" if dupes else "")
+
+    mismatched = [
+        s.pid
+        for s in sessions
+        if s.session_id
+        and not (session_log.resolve_jsonl(s.cwd, s.session_id) or "").endswith(f"/{s.session_id}.jsonl")
+    ]
+    _report(
+        not mismatched, "session ids resolve to their own logs", f"mismatched pids: {mismatched}" if mismatched else ""
+    )
 
     terminal = [s for s in sessions if s.host_app.value == "Terminal"]
     titled = [s for s in terminal if s.window_id]
@@ -100,6 +112,24 @@ def check_detection() -> list:
     for s in attention:
         print(f"      note: ATTENTION on pid {s.pid}: {s.prompt_text[:60]}")
     return sessions
+
+
+def check_history() -> None:
+    """History integrity: per-session records with no duplicate session ids.
+
+    Judged only on entries whose logs still exist — legacy pre-migration rows
+    whose logs are gone are cleanup candidates (the pane's Clear-stale button),
+    not integrity failures.
+    """
+    history = HistoryService()
+    entries = history.get_all()
+    live = [e for e in entries if e.session_id and history.logs_exist(e.cwd, e.session_id)]
+    sids = [e.session_id for e in live]
+    dupes = len(sids) - len(set(sids))
+    stale = len(entries) - len(live)
+    _report(
+        dupes == 0, "history records are per-session", f"{len(entries)} entries ({stale} stale), {dupes} duplicate ids"
+    )
 
 
 def _jsonl_has_tool_use(proj_dir: str) -> bool:
@@ -212,6 +242,7 @@ def check_pty_probe() -> None:
 def main() -> int:
     print("== ClaudeWatch live smoke checks ==")
     check_detection()
+    check_history()
     if "--pty" in sys.argv:
         check_pty_probe()
     else:
