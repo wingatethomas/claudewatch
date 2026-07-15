@@ -332,7 +332,9 @@ class DetectionService(BaseService):
     def _check_jsonl_for_idle(self, tail: str) -> SessionStatus:
         """Determine idle/working status from a pre-read JSONL tail."""
         if not tail:
-            return SessionStatus.WORKING
+            # Empty or unreadable log is absence of evidence — idle. Actively
+            # streaming files never reach here (the <5s branch catches them).
+            return SessionStatus.IDLE
 
         last_type = ""
         for line in tail.strip().splitlines():
@@ -748,6 +750,8 @@ def _determine_status(window_title: str) -> SessionStatus:
     """Determine session status from window title indicators."""
     if IDLE_INDICATOR in window_title:
         return SessionStatus.IDLE
+    # For indicator-less titles this default never survives refinement
+    # (pending → ATTENTION, otherwise the JSONL status replaces it).
     return SessionStatus.WORKING
 
 
