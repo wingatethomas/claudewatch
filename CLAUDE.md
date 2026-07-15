@@ -21,6 +21,7 @@ Path-scoped rules in `.claude/rules/` — only loaded when touching relevant fil
 | `architecture.md` | `backend/**`, `ui/**` | Import rules, DTOs, threading |
 | `testing.md` | `tests/**`, `backend/**` | Coverage, mocking, fixtures |
 | `macos.md` | `ui/**`, detection, notifications | AppKit patterns, PyObjC, window focus |
+| `sessions.md` | `backend/**`, `ui/**` | Session identity keying, JSONL pairing, CLI contract |
 | `packaging.md` | `pyproject.toml`, icons, release workflow | Briefcase builds, Homebrew tap |
 | `dependencies.md` | `pyproject.toml`, `uv.lock` | Dependency policy, ARM compat, `uv` usage |
 | `ci.md` | `.github/**`, `pyproject.toml` | Actions pinning, release process |
