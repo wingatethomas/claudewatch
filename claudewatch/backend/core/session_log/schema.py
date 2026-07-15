@@ -22,6 +22,27 @@ class EntryType(StrEnum):
     SYSTEM = "system"
     AI_TITLE = "ai-title"
     PROGRESS = "progress"
+    LAST_PROMPT = "last-prompt"
+    PR_LINK = "pr-link"
+    QUEUE_OPERATION = "queue-operation"
+    FILE_HISTORY_SNAPSHOT = "file-history-snapshot"
+    MODE = "mode"
+    PERMISSION_MODE = "permission-mode"
+    ATTACHMENT = "attachment"
+
+
+# Entries that never affect session state — skip in scans.
+BOOKKEEPING_TYPES: frozenset[EntryType] = frozenset(
+    {
+        EntryType.LAST_PROMPT,
+        EntryType.PR_LINK,
+        EntryType.QUEUE_OPERATION,
+        EntryType.FILE_HISTORY_SNAPSHOT,
+        EntryType.MODE,
+        EntryType.PERMISSION_MODE,
+        EntryType.ATTACHMENT,
+    }
+)
 
 
 class Subtype(StrEnum):
@@ -34,6 +55,7 @@ class BlockType(StrEnum):
     """Content-block ``type`` values inside an assistant message."""
 
     TOOL_USE = "tool_use"
+    TOOL_RESULT = "tool_result"
     TEXT = "text"
 
 
