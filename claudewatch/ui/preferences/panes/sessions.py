@@ -28,6 +28,7 @@ from claudewatch.backend.summary.dependencies import get_summary_service
 from claudewatch.backend.usage.dependencies import get_usage_service
 from claudewatch.backend.usage.service import format_tokens_compact, model_display_name
 from claudewatch.ui.components.composites.session_row import build_session_row
+from claudewatch.ui.components.formatting import relative_time
 from claudewatch.ui.components.tokens import Font, Spacing
 from claudewatch.ui.components.widgets.labels import secondary_label
 from claudewatch.ui.icons import sf_icon
@@ -323,7 +324,7 @@ def _add_row(  # noqa: PLR0912, PLR0913, PLR0915, ARG001
         project=project,
         cwd=cwd,
         model=model,
-        ended_at=_relative_time(ended_at),
+        ended_at=relative_time(ended_at),
         bookmarked=is_pinned,
         stale=stale,
         width=w,
@@ -399,26 +400,3 @@ def _build_row_menu(  # noqa: PLR0913, ARG001
     _add_action("Delete", delegate.deleteHistoryEntry_, f"{session_id}|{cwd}")
 
     return menu
-
-
-def _relative_time(iso_str: str) -> str:  # noqa: PLR0911
-    """Format a timestamp as relative time."""
-    try:
-        dt = datetime.fromisoformat(iso_str)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        now = datetime.now(tz=UTC)
-        delta = now - dt
-        if delta < timedelta(minutes=1):
-            return "just now"
-        if delta < timedelta(hours=1):
-            return f"{int(delta.total_seconds() / 60)}m ago"
-        if delta < timedelta(hours=24):
-            return f"{int(delta.total_seconds() / 3600)}h ago"
-        if delta < timedelta(days=2):
-            return "yesterday"
-        if delta < timedelta(days=7):
-            return f"{int(delta.days)}d ago"
-        return dt.strftime("%b %-d")
-    except (ValueError, TypeError):
-        return ""
