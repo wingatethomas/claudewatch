@@ -65,10 +65,11 @@ class TestCheckJsonlForIdle:
         result = svc._check_jsonl_for_idle(tail)
         assert result == SessionStatus.WORKING
 
-    def test_returns_working_when_empty(self):
+    def test_returns_idle_when_empty(self):
+        """Absence of evidence is idle — empty/unreadable tail must not read WORKING."""
         svc = _make_detection_service()
         result = svc._check_jsonl_for_idle("")
-        assert result == SessionStatus.WORKING
+        assert result == SessionStatus.IDLE
 
     def test_skips_non_user_assistant_types(self, tmp_path):
         jsonl = tmp_path / "session.jsonl"
