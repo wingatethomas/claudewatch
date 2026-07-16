@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import time
+from collections.abc import Callable
 
 from claudewatch.backend.core.helpers import run_applescript
 from claudewatch.backend.core.models import (
@@ -32,6 +33,7 @@ _WORKTREE_CACHE_TTL = 30  # seconds between per-CWD worktree re-resolution
 _JSONL_STREAMING_THRESHOLD = 5  # JSONL modified within this → actively streaming
 _BIRTHTIME_SLACK = 5.0  # clock slack when comparing file birth to process start
 _JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
+_AI_TITLE_PATH_CACHE_MAX = 512  # _ai_title_by_path size that triggers dead-path pruning
 
 
 class DetectionService(BaseService):
@@ -63,7 +65,9 @@ class DetectionService(BaseService):
         self._ai_title_cache: dict[str, tuple[dict[str, str], float]] = {}
         # path → last known aiTitle. Long sessions push their ai-title entry out
         # of the tail window; this remembers it so the full-file scan runs at
-        # most once per path. Tail scans still pick up newer titles.
+        # most once per path. Tail scans still pick up newer titles. Bounded:
+        # past _AI_TITLE_PATH_CACHE_MAX entries, _evict_stale_caches drops
+        # paths whose file no longer exists.
         self._ai_title_by_path: dict[str, str] = {}
         # cwd → (WorktreeInfo | None, timestamp). Branch switches are rare, so
         # a longer TTL than the title caches.
@@ -420,8 +424,51 @@ class DetectionService(BaseService):
 
     # -- Main detection entry point -----------------------------------------
 
-    def detect(self) -> list[ClaudeSession]:  # noqa: PLR0912, PLR0915
+    def detect(self) -> list[ClaudeSession]:
         """Detect all running Claude Code sessions."""
+        pids = self._find_candidate_pids()
+        log.debug("detect: found %d claude processes", len(pids))
+        if not pids:
+            self._host_app_cache.clear()
+            self._ai_title_cache.clear()
+            return []
+
+        all_ps = self._batch_ps_info(pids)
+        cwds = self._batch_lsof_cwds(pids)
+        self._evict_stale_caches(set(pids), set(cwds.values()))
+
+        # Memo so the AppleScript window scan runs at most once per poll,
+        # and only when a terminal-hosted session needs it.
+        terminal_windows: dict[str, tuple[str, int]] | None = None
+
+        def get_windows() -> dict[str, tuple[str, int]]:
+            nonlocal terminal_windows
+            if terminal_windows is None:
+                terminal_windows = self._get_terminal_windows()
+            return terminal_windows
+
+        # Per-session JSONL path — keyed by PID. With shared-CWD setups the
+        # most-recent file in the project dir often belongs to a sibling
+        # session, so we match on aiTitle from the window title first and
+        # pair the rest by process start time vs file birth time next.
+        session_jsonl: dict[int, str | None] = {}
+        sessions: list[ClaudeSession] = []
+        for pid in pids:
+            built = self._build_session(pid, all_ps, cwds, get_windows)
+            if built is None:
+                continue
+            session, jpath = built
+            session_jsonl[pid] = jpath
+            sessions.append(session)
+
+        self._pair_unmatched_sessions(sessions, session_jsonl)
+        self._get_ide_tab_indices(sessions, all_ps)
+        self._refine_statuses(sessions, session_jsonl)
+        self._apply_buffer_attention(sessions)
+        return sessions
+
+    def _find_candidate_pids(self) -> list[int]:
+        """Candidate CLI pids: pgrep ∪ libproc path scan, minus registered children, capped."""
         try:
             r = subprocess.run(  # noqa: S603, S607
                 ["pgrep", "-x", "claude"],
@@ -443,108 +490,105 @@ class DetectionService(BaseService):
             if proc.pid not in pgrep_pids and _is_claude_cli(proc.comm):
                 raw_pids.append(proc.pid)
         child_pids = self._process_service.get_child_pids()
-        pids = [p for p in raw_pids if p not in child_pids][:_MAX_SESSIONS]
-        log.debug("detect: found %d claude processes", len(pids))
-        if not pids:
-            self._host_app_cache.clear()
-            self._ai_title_cache.clear()
-            return []
+        return [p for p in raw_pids if p not in child_pids][:_MAX_SESSIONS]
 
-        all_ps = self._batch_ps_info(pids)
-        cwds = self._batch_lsof_cwds(pids)
-        terminal_windows: dict[str, tuple[str, int]] | None = None
-
-        # Evict stale cache entries
-        live_pids = set(pids)
+    def _evict_stale_caches(self, live_pids: set[int], live_cwds: set[str]) -> None:
+        """Caches only hold entries for live pids/cwds; _ai_title_by_path stays bounded."""
         for stale in list(self._host_app_cache.keys()):
             if stale not in live_pids:
                 del self._host_app_cache[stale]
-        live_cwds = set(cwds.values())
         for stale_cwd in list(self._ai_title_cache.keys()):
             if stale_cwd not in live_cwds:
                 del self._ai_title_cache[stale_cwd]
         for stale_cwd in list(self._worktree_cache.keys()):
             if stale_cwd not in live_cwds:
                 del self._worktree_cache[stale_cwd]
+        # Path-keyed, so cwd liveness can't scope it — prune deleted files
+        # once it outgrows the bound.
+        if len(self._ai_title_by_path) > _AI_TITLE_PATH_CACHE_MAX:
+            for path in list(self._ai_title_by_path.keys()):
+                if not os.path.exists(path):
+                    del self._ai_title_by_path[path]
 
-        # Per-session JSONL path — keyed by PID. With shared-CWD setups the
-        # most-recent file in the project dir often belongs to a sibling
-        # session, so we match on aiTitle from the window title first and
-        # pair the rest by process start time vs file birth time below.
-        session_jsonl: dict[int, str | None] = {}
+    def _resolve_tty(self, info: ProcessInfo) -> str:
+        """A tty-less process borrows the nearest ancestor's tty (5 hops max)."""
+        tty = info.tty
+        if tty != "??":
+            return tty
+        walk_pid = info.ppid
+        for _ in range(5):
+            if walk_pid <= 1:
+                break
+            parent = self._process_service.get_single_info(walk_pid)
+            if not parent:
+                break
+            if parent.tty != "??":
+                return parent.tty
+            walk_pid = parent.ppid
+        return tty
 
-        sessions = []
-        for pid in pids:
-            info = all_ps.get(pid)
-            if not info:
-                continue
-            tty = info.tty
-            if tty == "??":
-                walk_pid = info.ppid
-                for _ in range(5):
-                    if walk_pid <= 1:
-                        break
-                    parent = self._process_service.get_single_info(walk_pid)
-                    if not parent:
-                        break
-                    if parent.tty != "??":
-                        tty = parent.tty
-                        break
-                    walk_pid = parent.ppid
-            cwd = cwds.get(pid, "")
-            project = os.path.basename(cwd) if cwd else ""
-            if not project:
-                continue
+    def _build_session(
+        self,
+        pid: int,
+        all_ps: dict[int, ProcessInfo],
+        cwds: dict[int, str],
+        get_windows: Callable[[], dict[str, tuple[str, int]]],
+    ) -> tuple[ClaudeSession, str | None] | None:
+        """One session per pid; identity (session_id, ai_title) only from a title-matched JSONL."""
+        info = all_ps.get(pid)
+        if not info:
+            return None
+        tty = self._resolve_tty(info)
+        cwd = cwds.get(pid, "")
+        project = os.path.basename(cwd) if cwd else ""
+        if not project:
+            return None
 
-            host_app = self._detect_host_app(pid, all_ps)
+        host_app = self._detect_host_app(pid, all_ps)
 
-            if (not tty or tty == "??") and host_app not in (HostApp.VSCODE, HostApp.PYCHARM):
-                continue
-            window_title = host_app.value
-            window_id = None
+        if (not tty or tty == "??") and host_app not in (HostApp.VSCODE, HostApp.PYCHARM):
+            return None
+        window_title = host_app.value
+        window_id = None
 
-            if host_app in (HostApp.TERMINAL, HostApp.TMUX, HostApp.OTHER):
-                if terminal_windows is None:
-                    terminal_windows = self._get_terminal_windows()
-                match = _match_terminal_window(
-                    tty,
-                    project,
-                    host_app,
-                    terminal_windows,
-                )
-                window_title = match.window_title
-                window_id = match.window_id
-                host_app = match.host_app
+        if host_app in (HostApp.TERMINAL, HostApp.TMUX, HostApp.OTHER):
+            match = _match_terminal_window(tty, project, host_app, get_windows())
+            window_title = match.window_title
+            window_id = match.window_id
+            host_app = match.host_app
 
-            status = _determine_status(window_title)
+        jpath, title_matched = _match_jsonl_by_title(window_title, self._get_ai_title_map(cwd), None)
+        worktree = self._get_worktree(cwd)
 
-            jpath, title_matched = _match_jsonl_by_title(window_title, self._get_ai_title_map(cwd), None)
-            session_jsonl[pid] = jpath if title_matched else None
-            worktree = self._get_worktree(cwd)
+        session = ClaudeSession(
+            pid=pid,
+            tty=tty,
+            project=project,
+            cwd=cwd,
+            host_app=host_app,
+            window_title=window_title,
+            window_id=window_id,
+            status=_determine_status(window_title),
+            session_id=self._get_session_id(cwd, jpath) if title_matched and jpath else "",
+            ai_title=self._ai_title_by_path.get(jpath, "") if title_matched and jpath else "",
+            worktree_repo=worktree.repo if worktree else "",
+            worktree_branch=worktree.branch if worktree else "",
+        )
+        return (session, jpath if title_matched else None)
 
-            sessions.append(
-                ClaudeSession(
-                    pid=pid,
-                    tty=tty,
-                    project=project,
-                    cwd=cwd,
-                    host_app=host_app,
-                    window_title=window_title,
-                    window_id=window_id,
-                    status=status,
-                    session_id=self._get_session_id(cwd, jpath) if title_matched and jpath else "",
-                    ai_title=self._ai_title_by_path.get(jpath, "") if title_matched and jpath else "",
-                    worktree_repo=worktree.repo if worktree else "",
-                    worktree_branch=worktree.branch if worktree else "",
-                )
-            )
+    def _pair_unmatched_sessions(
+        self,
+        sessions: list[ClaudeSession],
+        session_jsonl: dict[int, str | None],
+    ) -> None:
+        """Each file claimed at most once; newest sessions pick first; unpaired stays plain.
 
-        # Pair unmatched sessions with logs they could actually own. A session's
-        # JSONL is created when the session starts, so files born before the
-        # process belong to someone else — including dead sessions whose
-        # unresolved tool_use would otherwise read as phantom ATTENTION on
-        # every unmatched session. Each file is claimed at most once; newest
-        # sessions pick first so fresh sessions pair with fresh logs.
+        Pairs title-unmatched sessions with logs they could actually own. A
+        session's JSONL is created when the session starts, so files born
+        before the process belong to someone else — including dead sessions
+        whose unresolved tool_use would otherwise read as phantom ATTENTION
+        on every unmatched session.
+        """
         claimed_paths = {p for p in session_jsonl.values() if p}
         unmatched = [s for s in sessions if not session_jsonl.get(s.pid)]
         starts = {s.pid: self._process_service.get_start_time(s.pid) for s in unmatched}
@@ -567,13 +611,19 @@ class DetectionService(BaseService):
                 s.session_id = self._get_session_id(s.cwd, candidate)
                 s.ai_title = self._ai_title_by_path.get(candidate, "")
 
-        self._get_ide_tab_indices(sessions, all_ps)
+    def _refine_statuses(
+        self,
+        sessions: list[ClaudeSession],
+        session_jsonl: dict[int, str | None],
+    ) -> None:
+        """Title indicators override JSONL status in both directions; no evidence reads idle.
 
-        # JSONL-based status refinement. Each session reads its own JSONL
-        # (matched by aiTitle); two sessions in the same CWD won't share state.
-        # The window title is the real-time signal — if it shows a working
-        # indicator (braille spinner) we trust it over JSONL. For IDE sessions
-        # (no title indicators) JSONL is the only signal.
+        Each session reads its own JSONL (matched by aiTitle); two sessions in
+        the same CWD won't share state. The window title is the real-time
+        signal — if it shows a working indicator (braille spinner) we trust it
+        over JSONL. For IDE sessions (no title indicators) JSONL is the only
+        signal.
+        """
         path_status_cache: dict[str, tuple[PendingToolResult, SessionStatus]] = {}
         for s in sessions:
             if not s.cwd:
@@ -620,24 +670,27 @@ class DetectionService(BaseService):
                 s.status = jsonl_status
             # else: title confirms IDLE or WORKING — trust it
 
-        # Claude Code no longer writes the pending tool_use to the JSONL until
-        # the permission decision is made, so the JSONL alone can't see a
-        # waiting dialog. For Terminal sessions the dialog is on the visible
-        # screen — read it and upgrade to ATTENTION.
+    def _apply_buffer_attention(self, sessions: list[ClaudeSession]) -> None:
+        """Only non-WORKING Terminal tabs are screen-read; a visible dialog upgrades to ATTENTION.
+
+        Claude Code no longer writes the pending tool_use to the JSONL until
+        the permission decision is made, so the JSONL alone can't see a
+        waiting dialog. For Terminal sessions the dialog is on the visible
+        screen.
+        """
         idle_terminal = [
             s
             for s in sessions
             if s.host_app == HostApp.TERMINAL and s.status != SessionStatus.WORKING and s.tty and s.window_id
         ]
-        if idle_terminal:
-            buffers = self._get_terminal_buffers([(s.tty, s.window_id) for s in idle_terminal])
-            for s in idle_terminal:
-                prompt = _buffer_prompt_line(buffers.get(s.tty, ""))
-                if prompt:
-                    s.status = SessionStatus.ATTENTION
-                    s.prompt_text = prompt
-
-        return sessions
+        if not idle_terminal:
+            return
+        buffers = self._get_terminal_buffers([(s.tty, s.window_id) for s in idle_terminal])
+        for s in idle_terminal:
+            prompt = _buffer_prompt_line(buffers.get(s.tty, ""))
+            if prompt:
+                s.status = SessionStatus.ATTENTION
+                s.prompt_text = prompt
 
 
 _DIALOG_QUESTION_RE = re.compile(r"(?m)^\s*(.*Do you (?:want|trust).*?)\s*$")
