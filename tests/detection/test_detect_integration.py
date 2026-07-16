@@ -319,6 +319,27 @@ class TestDetectSingleSession:
             for p in svc._test_patchers:
                 p.stop()
 
+    def test_paired_empty_jsonl_is_idle(self, tmp_path):
+        """Paired session with an empty JSONL aged >5s and no title indicator → IDLE."""
+        cwd = "/Users/dev/myapp"
+        proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+        _write_jsonl(os.path.join(proj_dir, "empty.jsonl"), [], age_seconds=30)
+        svc = _build_service(
+            str(tmp_path),
+            [100],
+            pid_info={100: ProcessInfo(tty="ttys001", ppid=1, comm="claude")},
+            pid_cwds={100: cwd},
+            terminal_titles={"/dev/ttys001": ("myapp — no indicator", 1)},
+        )
+        try:
+            sessions = svc.detect()
+            assert len(sessions) == 1
+            assert sessions[0].session_id == "empty"
+            assert sessions[0].status == SessionStatus.IDLE
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
     def test_fresh_jsonl_is_working(self, tmp_path):
         """Fresh JSONL (< 5s) means actively streaming — WORKING."""
         cwd = "/Users/dev/myapp"
