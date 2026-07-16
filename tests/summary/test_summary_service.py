@@ -7,6 +7,7 @@ from unittest.mock import patch
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.summary.models import SummaryEntry
 from claudewatch.backend.summary.service import (
+    _NO_RECAP_MAX,
     SummaryService,
     _find_last_ai_title,
     _find_last_recap,
@@ -492,3 +493,81 @@ class TestInvalidateCache:
         svc._no_recap_mtimes["/test"] = 123.0
         svc.invalidate_cache("/test")
         assert "/test" not in svc._no_recap_mtimes
+
+
+def _write_no_recap_jsonl(tmp_path, dir_name: str) -> str:
+    """Create a projects/<dir_name>/s.jsonl with no recap or title; return its path."""
+    proj_dir = tmp_path / "projects" / dir_name
+    proj_dir.mkdir(parents=True)
+    path = proj_dir / "s.jsonl"
+    _write_jsonl(path, [{"type": "user", "message": {"content": "hi"}, "timestamp": ""}])
+    return str(path)
+
+
+class TestNoRecapBound:
+    def test_insert_past_cap_drops_dead_entries(self, tmp_path):
+        svc = _make_service(tmp_path)
+        _write_no_recap_jsonl(tmp_path, "-live")
+        half = _NO_RECAP_MAX // 2
+        svc._no_recap_mtimes = {f"/gone-{i}": 1.0 for i in range(half)}
+        svc._no_recap_mtimes.update({f"/gone-s{i}::sid-{i}": 1.0 for i in range(half)})
+
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            svc.generate_and_cache("/live")
+        assert svc._no_recap_mtimes.keys() == {"/live"}
+
+    def test_insert_past_cap_clears_all_when_still_over(self, tmp_path):
+        svc = _make_service(tmp_path)
+        path = _write_no_recap_jsonl(tmp_path, "-live")
+        svc._no_recap_mtimes = {f"/alive-{i}": 1.0 for i in range(_NO_RECAP_MAX)}
+
+        with patch.object(svc._session_log_service, "resolve_jsonl", return_value=path):
+            svc.generate_and_cache("/live")
+        assert svc._no_recap_mtimes == {}
+
+    def test_insert_under_cap_keeps_existing_entries(self, tmp_path):
+        svc = _make_service(tmp_path)
+        _write_no_recap_jsonl(tmp_path, "-live")
+        svc._no_recap_mtimes = {f"/gone-{i}": 1.0 for i in range(10)}
+
+        with patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")):
+            svc.generate_and_cache("/live")
+        assert len(svc._no_recap_mtimes) == 11
+
+
+class TestUntrackOnGoneFile:
+    def test_generate_and_cache_untracks_gone_session(self, tmp_path):
+        svc = _make_service(tmp_path)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch.object(svc, "_ensure_bg_thread"),
+        ):
+            svc.track_session("/gone", session_id="abc")
+            assert "/gone::abc" in svc._tracked_cwds
+            assert svc.generate_and_cache("/gone", "abc") == ""
+        assert "/gone::abc" not in svc._tracked_cwds
+
+    def test_generate_and_cache_untracks_gone_bare_cwd(self, tmp_path):
+        svc = _make_service(tmp_path)
+        with (
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(tmp_path / "projects")),
+            patch.object(svc, "_ensure_bg_thread"),
+        ):
+            svc.track_session("/gone")
+            assert "/gone" in svc._tracked_cwds
+            assert svc.generate_and_cache("/gone") == ""
+        assert "/gone" not in svc._tracked_cwds
+
+
+class TestUntrackSession:
+    def test_untrack_with_session_id_removes_cache_key(self, tmp_path):
+        svc = _make_service(tmp_path)
+        svc._tracked_cwds = {"/cwd::sid", "/cwd"}
+        svc.untrack_session("/cwd", session_id="sid")
+        assert svc._tracked_cwds == {"/cwd"}
+
+    def test_untrack_without_session_id_removes_bare_key(self, tmp_path):
+        svc = _make_service(tmp_path)
+        svc._tracked_cwds = {"/cwd::sid", "/cwd"}
+        svc.untrack_session("/cwd")
+        assert svc._tracked_cwds == {"/cwd::sid"}
