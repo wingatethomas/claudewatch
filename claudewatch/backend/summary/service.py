@@ -26,6 +26,7 @@ log = logging.getLogger("claudewatch")
 _REFRESH_INTERVAL = 60  # seconds between background refresh cycles
 _MAX_TITLE_LEN = 30
 _TAIL_BYTES = 200000
+_NO_RECAP_MAX = 512  # prune the no-recap skip cache past this size
 
 
 def _truncate_title(title: str) -> str:
@@ -96,6 +97,14 @@ class SummaryService(BaseService):
     @staticmethod
     def _cache_key(cwd: str, session_id: str = "") -> str:
         return SummaryRepository.cache_key(cwd, session_id)
+
+    @staticmethod
+    def _split_key(key: str) -> tuple[str, str]:
+        """Invert _cache_key: return (cwd, session_id)."""
+        if "::" in key:
+            cwd, sid = key.split("::", 1)
+            return cwd, sid
+        return key, ""
 
     # -- Cache access -------------------------------------------------------
 
@@ -190,6 +199,8 @@ class SummaryService(BaseService):
 
         path = self._session_log_service.resolve_jsonl(cwd, session_id)
         if not path:
+            # Session's JSONL is gone — stop the background loop rescanning it.
+            self._untrack_key(key)
             return ""
 
         # Skip if we already checked and found no recap, and the JSONL hasn't changed.
@@ -213,12 +224,29 @@ class SummaryService(BaseService):
                 return title
             with self._no_recap_lock:
                 self._no_recap_mtimes[key] = current_mtime
+                over_cap = len(self._no_recap_mtimes) > _NO_RECAP_MAX
+            if over_cap:
+                self._prune_no_recap_cache()
             return ""
 
         title = _truncate_title(self._extract_ai_title(path) or recap)
         self.cache_full(cwd, title, recap, session_id)
         log.debug("summarize: cached recap for %s", os.path.basename(cwd))
         return title
+
+    def _prune_no_recap_cache(self) -> None:
+        """Drop skip-cache entries whose JSONL is gone; clear all if still over cap.
+
+        Losing entries only costs a re-scan, never correctness.
+        """
+        with self._no_recap_lock:
+            keys = list(self._no_recap_mtimes)
+        dead = [key for key in keys if self._session_log_service.resolve_jsonl(*self._split_key(key)) is None]
+        with self._no_recap_lock:
+            for key in dead:
+                self._no_recap_mtimes.pop(key, None)
+            if len(self._no_recap_mtimes) > _NO_RECAP_MAX:
+                self._no_recap_mtimes.clear()
 
     # -- Background refresh -------------------------------------------------
 
@@ -242,10 +270,13 @@ class SummaryService(BaseService):
         with self._priority_lock:
             return len(self._priority_queue)
 
-    def untrack_session(self, cwd: str) -> None:
-        """Stop refreshing summaries for a CWD."""
+    def untrack_session(self, cwd: str, session_id: str = "") -> None:
+        """Stop refreshing summaries for a session."""
+        self._untrack_key(self._cache_key(cwd, session_id))
+
+    def _untrack_key(self, key: str) -> None:
         with self._tracked_lock:
-            self._tracked_cwds.discard(cwd)
+            self._tracked_cwds.discard(key)
 
     def _ensure_bg_thread(self) -> None:
         if self._bg_thread is not None and self._bg_thread.is_alive():
@@ -272,10 +303,7 @@ class SummaryService(BaseService):
                 with self._tracked_lock:
                     keys = list(self._tracked_cwds)
                 for key in keys:
-                    if "::" in key:
-                        cwd, sid = key.split("::", 1)
-                    else:
-                        cwd, sid = key, ""
+                    cwd, sid = self._split_key(key)
                     if self.get_cached(cwd, sid) is None:
                         log.debug("bg_refresh: re-extracting for %s", cwd)
                         self.generate_and_cache(cwd, sid)
