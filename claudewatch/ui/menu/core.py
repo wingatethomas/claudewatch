@@ -13,6 +13,7 @@ from AppKit import (
     NSMenuItem,
     NSMutableAttributedString,
     NSObject,
+    NSSearchField,
 )
 from Foundation import NSRange
 
@@ -50,6 +51,21 @@ class AppDelegate(NSObject):
     def pollTick_(self, timer: object) -> None:  # noqa: N802, ARG002
         if self._app:
             self._app.poll()
+
+    @objc_callback
+    def sessionSearchChanged_(self, sender: NSSearchField) -> None:  # noqa: N802
+        if self._app:
+            self._app.on_session_search(sender)
+
+    @objc_callback
+    def menuWillOpen_(self, menu: NSMenu) -> None:  # noqa: N802, ARG002
+        if self._app:
+            self._app.on_menu_open()
+
+    @objc_callback
+    def menuDidClose_(self, menu: NSMenu) -> None:  # noqa: N802, ARG002
+        if self._app:
+            self._app.on_menu_close()
 
 
 def noop(_: NSMenuItem) -> None:

@@ -19,6 +19,7 @@ from AppKit import (
     NSMenuItem,
     NSPasteboard,
     NSPasteboardTypeString,
+    NSSearchField,
     NSStatusBar,
     NSTextField,
     NSTimer,
@@ -59,6 +60,7 @@ from claudewatch.ui.focus import focus_session
 from claudewatch.ui.menu.core import AppDelegate, MenuCallback, make_menu_item
 from claudewatch.ui.menu_builder import MenuBuilder
 from claudewatch.ui.preferences import show_preferences
+from claudewatch.ui.safety import dispatch_to_main_thread
 from claudewatch.ui.session_actions import (
     clean_exit_session,
     is_accessibility_trusted,
@@ -131,6 +133,7 @@ class ClaudeWatchApp:
         self._scan_lock = threading.Lock()
         self._scan_running = False
         self._modal_active = False
+        self._menu_open = False
         self._prev_pids: set[int] = set()
         self._prev_status: dict[int, str] = {}
         self._prev_sessions: dict[int, ClaudeSession] = {}
@@ -138,6 +141,7 @@ class ClaudeWatchApp:
         self._has_polled = False
         self._check_accessibility()
         self._menu_builder = MenuBuilder(self, self._menu, delegate)
+        self._menu.setDelegate_(delegate)
         # Show placeholder immediately, first detection runs async via poll loop
         self.update_display()
         # Kick off background update check
@@ -341,6 +345,22 @@ class ClaudeWatchApp:
 
     def update_display(self) -> None:
         self._menu_builder.build(self.sessions)
+
+    def on_menu_open(self) -> None:
+        self._menu_open = True
+
+    def on_menu_close(self) -> None:
+        self._menu_open = False
+        # NSMenuDelegate forbids mutating the menu inside menuDidClose — defer the reset.
+        dispatch_to_main_thread(self._reset_session_filter)
+
+    def _reset_session_filter(self) -> None:
+        self._menu_builder.clear_filter()
+        self._last_menu_key = ""
+        self.update_display()
+
+    def on_session_search(self, sender: NSSearchField) -> None:
+        self._menu_builder.set_query(str(sender.stringValue()))
 
     def _make_activity_handler(self, session: ClaudeSession) -> MenuCallback:
         project = session.project
