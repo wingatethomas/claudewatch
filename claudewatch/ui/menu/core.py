@@ -15,7 +15,7 @@ from AppKit import (
     NSObject,
     NSSearchField,
 )
-from Foundation import NSRange
+from Foundation import NSNotification, NSRange, NSTimer
 
 from claudewatch.ui.safety import objc_callback
 
@@ -56,6 +56,16 @@ class AppDelegate(NSObject):
     def sessionSearchChanged_(self, sender: NSSearchField) -> None:  # noqa: N802
         if self._app:
             self._app.on_session_search(sender)
+
+    @objc_callback
+    def controlTextDidChange_(self, notification: NSNotification) -> None:  # noqa: N802
+        if self._app:
+            self._app.on_session_search(notification.object())
+
+    @objc_callback
+    def searchDebounceFired_(self, timer: NSTimer) -> None:  # noqa: N802
+        if self._app:
+            self._app.on_search_debounce(timer)
 
     @objc_callback
     def menuWillOpen_(self, menu: NSMenu) -> None:  # noqa: N802, ARG002

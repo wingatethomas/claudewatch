@@ -58,6 +58,7 @@ from claudewatch.backend.usage.service import UsageService
 from claudewatch.ui.activity import show_activity
 from claudewatch.ui.focus import focus_session
 from claudewatch.ui.menu.core import AppDelegate, MenuCallback, make_menu_item
+from claudewatch.ui.menu.search_item import schedule_search_debounce
 from claudewatch.ui.menu_builder import MenuBuilder
 from claudewatch.ui.preferences import show_preferences
 from claudewatch.ui.safety import dispatch_to_main_thread
@@ -134,6 +135,7 @@ class ClaudeWatchApp:
         self._scan_running = False
         self._modal_active = False
         self._menu_open = False
+        self._search_debounce: NSTimer | None = None
         self._prev_pids: set[int] = set()
         self._prev_status: dict[int, str] = {}
         self._prev_sessions: dict[int, ClaudeSession] = {}
@@ -351,6 +353,7 @@ class ClaudeWatchApp:
 
     def on_menu_close(self) -> None:
         self._menu_open = False
+        self._cancel_search_debounce()
         # NSMenuDelegate forbids mutating the menu inside menuDidClose — defer the reset.
         dispatch_to_main_thread(self._reset_session_filter)
 
@@ -359,8 +362,18 @@ class ClaudeWatchApp:
         self._last_menu_key = ""
         self.update_display()
 
+    def _cancel_search_debounce(self) -> None:
+        if self._search_debounce is not None:
+            self._search_debounce.invalidate()
+            self._search_debounce = None
+
     def on_session_search(self, sender: NSSearchField) -> None:
-        self._menu_builder.set_query(str(sender.stringValue()))
+        self._cancel_search_debounce()
+        self._search_debounce = schedule_search_debounce(self._delegate, str(sender.stringValue()))
+
+    def on_search_debounce(self, timer: NSTimer) -> None:
+        self._search_debounce = None
+        self._menu_builder.set_query(str(timer.userInfo() or ""))
 
     def _make_activity_handler(self, session: ClaudeSession) -> MenuCallback:
         project = session.project
