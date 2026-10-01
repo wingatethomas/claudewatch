@@ -1,15 +1,31 @@
 """Integration tests for MenuBuilder's session search filter."""
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 from AppKit import NSMenu
 
-from claudewatch.backend.core.dto import TokenUsageDTO
+from claudewatch.backend.core.dto import HistoryEntryDTO, TokenUsageDTO
 from claudewatch.backend.core.models import ClaudeSession, HostApp, SessionStatus
 from claudewatch.ui.menu.core import AppDelegate
 from claudewatch.ui.menu_builder import MenuBuilder
 
-_SUMMARIES = {"/tmp/alpha": "rewrote the tokenizer", "/tmp/beta": None}
+_SUMMARIES = {
+    "/tmp/alpha": "rewrote the tokenizer",
+    "/tmp/beta": None,
+    "/tmp/gamma": "built the gamma dashboard",
+}
+
+
+def _make_history_entry(project: str = "gamma", cwd: str = "/tmp/gamma") -> HistoryEntryDTO:
+    return HistoryEntryDTO(
+        session_id="s9",
+        project=project,
+        cwd=cwd,
+        model="",
+        host_app="Terminal",
+        ended_at=datetime.now(tz=UTC).isoformat(),
+    )
 
 
 def _make_app() -> MagicMock:
@@ -149,3 +165,65 @@ class TestMenuBuilderFilter:
         assert app._last_menu_key == "key-2"
         assert menu.itemArray()[0] is not None
         assert first_item_before is not None
+
+
+class TestRecentsSection:
+    def _build_with_recents(self) -> tuple[MenuBuilder, NSMenu, MagicMock]:
+        builder, menu, app = _make_builder()
+        app._history_service.get_all.return_value = [_make_history_entry()]
+        with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
+            builder.build(_make_sessions())
+        return builder, menu, app
+
+    def _recents_section(self, builder: MenuBuilder):  # noqa: ANN202
+        return builder._sections[-1]
+
+    def test_recents_section_registered_and_hidden(self) -> None:
+        builder, _, _ = self._build_with_recents()
+        recents = self._recents_section(builder)
+        assert recents.only_when_searching
+        assert recents.header.isHidden()
+        assert all(row.item.isHidden() for row in recents.rows)
+        assert recents.leading_separator.isHidden()
+
+    def test_search_reveals_matching_recent_by_project(self) -> None:
+        builder, _, _ = self._build_with_recents()
+        builder.set_query("gamma")
+        recents = self._recents_section(builder)
+        assert not recents.header.isHidden()
+        assert not recents.rows[0].item.isHidden()
+
+    def test_search_reveals_matching_recent_by_summary(self) -> None:
+        builder, _, _ = self._build_with_recents()
+        builder.set_query("dashboard")
+        recents = self._recents_section(builder)
+        assert not recents.rows[0].item.isHidden()
+
+    def test_matching_recent_suppresses_no_match(self) -> None:
+        builder, _, _ = self._build_with_recents()
+        builder.set_query("gamma")
+        assert builder._no_match_item.isHidden()
+
+    def test_separator_shown_when_actives_also_match(self) -> None:
+        builder, _, app = self._build_with_recents()
+        app._history_service.get_all.return_value = [_make_history_entry(project="parser-archive")]
+        app._menu_key.return_value = "key-2"
+        with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
+            builder.build(_make_sessions())
+        builder.set_query("parser")
+        recents = self._recents_section(builder)
+        assert not recents.rows[0].item.isHidden()
+        assert not recents.leading_separator.isHidden()
+
+    def test_clear_filter_hides_recents_again(self) -> None:
+        builder, _, _ = self._build_with_recents()
+        builder.set_query("gamma")
+        builder.clear_filter()
+        recents = self._recents_section(builder)
+        assert recents.header.isHidden()
+        assert all(row.item.isHidden() for row in recents.rows)
+
+    def test_recent_submenu_item_still_present(self) -> None:
+        _, menu, _ = self._build_with_recents()
+        titles = [str(item.title()) for item in menu.itemArray()]
+        assert "Recent (1)" in titles

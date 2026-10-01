@@ -137,3 +137,58 @@ class TestApplyFilter:
         section = FilterSection(header=_item(), rows=[row])
         apply_filter([section], None, "docs")
         assert row.item.isHidden()
+
+
+class TestSearchOnlySections:
+    def _sections(self) -> tuple[FilterSection, FilterSection]:
+        active = FilterSection(header=_item(), rows=[_row("alpha parser")])
+        recents = FilterSection(
+            header=_item(),
+            rows=[_row("gamma dashboard"), _row("delta parser archive")],
+            leading_separator=NSMenuItem.separatorItem(),
+            only_when_searching=True,
+        )
+        return active, recents
+
+    def test_hidden_on_empty_query_even_when_matching(self) -> None:
+        active, recents = self._sections()
+        apply_filter([active, recents], None, "")
+        assert recents.header.isHidden()
+        assert all(row.item.isHidden() for row in recents.rows)
+        assert recents.leading_separator.isHidden()
+        assert not active.header.isHidden()
+
+    def test_search_reveals_matching_rows_only(self) -> None:
+        active, recents = self._sections()
+        apply_filter([active, recents], None, "dashboard")
+        assert not recents.header.isHidden()
+        assert not recents.rows[0].item.isHidden()
+        assert recents.rows[1].item.isHidden()
+
+    def test_leading_separator_shown_only_with_visible_earlier_section(self) -> None:
+        active, recents = self._sections()
+        apply_filter([active, recents], None, "parser")
+        assert not active.header.isHidden()
+        assert not recents.rows[1].item.isHidden()
+        assert not recents.leading_separator.isHidden()
+        apply_filter([active, recents], None, "dashboard")
+        assert active.header.isHidden()
+        assert not recents.header.isHidden()
+        assert recents.leading_separator.isHidden()
+
+    def test_visible_search_only_section_suppresses_no_match(self) -> None:
+        active, recents = self._sections()
+        no_match = _item()
+        apply_filter([active, recents], no_match, "dashboard")
+        assert no_match.isHidden()
+        apply_filter([active, recents], no_match, "zzz")
+        assert not no_match.isHidden()
+
+    def test_trailing_separator_ignores_search_only_sections(self) -> None:
+        separator = NSMenuItem.separatorItem()
+        first = FilterSection(header=_item(), rows=[_row("alpha parser")], trailing_separator=separator)
+        second = FilterSection(header=_item(), rows=[_row("beta docs")])
+        recents = FilterSection(header=_item(), rows=[_row("parser archive")], only_when_searching=True)
+        apply_filter([first, second, recents], None, "parser")
+        assert second.header.isHidden()
+        assert separator.isHidden()

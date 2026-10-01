@@ -12,6 +12,8 @@ Checklist (interact with the ✦ status item that appears):
   5. Keep the menu open >3s while typing — watch stdout: rebuilds must be
      SKIPPED while the field is focused or has text, and focus must survive.
   6. Close + reopen the menu — field is cleared, all rows visible.
+  7. Type "archive" — a "⏱ Recent" section pops up with the matching recent
+     row; it disappears when the field is cleared.
 
 Ctrl+C in the terminal to quit.
 """
@@ -39,6 +41,11 @@ FAKE_SESSIONS = [
     ("alpha", "fix the parser", "rewrote tokenizer error recovery"),
     ("beta", "write docs", "drafted the install guide"),
     ("gamma", "refactor ui with a deliberately long title to stretch the menu wide", None),
+]
+
+FAKE_RECENTS = [
+    ("parser-archive", "old parser spike", "archived the parser experiments"),
+    ("docs-site", "docs revamp", None),
 ]
 
 
@@ -77,6 +84,28 @@ class FakeApp:
         self.no_match_item = disabled_item("No matching sessions")
         self.no_match_item.setHidden_(True)
         self.menu.addItem_(self.no_match_item)
+        recents_separator = NSMenuItem.separatorItem()
+        recents_separator.setHidden_(True)
+        self.menu.addItem_(recents_separator)
+        recents_header = disabled_item("⏱ Recent")
+        recents_header.setHidden_(True)
+        self.menu.addItem_(recents_header)
+        recent_rows: list[FilterRow] = []
+        for project, title, summary in FAKE_RECENTS:
+            recent_item = disabled_item(f"{project}  (2h ago)")
+            recent_item.setHidden_(True)
+            self.menu.addItem_(recent_item)
+            recent_rows.append(
+                FilterRow(item=recent_item, detail_item=None, haystack=build_haystack(project, title, summary))
+            )
+        self.sections.append(
+            FilterSection(
+                header=recents_header,
+                rows=recent_rows,
+                leading_separator=recents_separator,
+                only_when_searching=True,
+            )
+        )
         apply_filter(self.sections, self.no_match_item, self.query)
         print(f"rebuild #{self.rebuilds}")
 

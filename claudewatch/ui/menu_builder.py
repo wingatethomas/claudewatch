@@ -48,6 +48,7 @@ from claudewatch.ui.menu.session_submenu import SessionActions, build_session_su
 from claudewatch.ui.theme import theme
 
 if TYPE_CHECKING:
+    from claudewatch.backend.core.dto import HistoryEntryDTO
     from claudewatch.ui.menubar import ClaudeWatchApp
 
 
@@ -139,6 +140,26 @@ class MenuBuilder:
         active_cwds = {s.cwd for s in sessions}
         active_sids = {s.session_id for s in sessions if s.session_id}
 
+        # Recent sessions (last 3 days, not active, not pinned)
+        _recent_days = 3
+        _recent_limit = 10
+        cutoff = datetime.now(tz=UTC) - timedelta(days=_recent_days)
+        history = self._app._history_service.get_all()  # newest-first
+        recent_entries = []
+        for entry in history:
+            if len(recent_entries) >= _recent_limit:
+                break
+            is_active = entry.session_id in active_sids if entry.session_id else entry.cwd in active_cwds
+            if is_active or bookmark_service.is_bookmarked(entry.session_id, entry.cwd):
+                continue
+            try:
+                ended_dt = datetime.fromisoformat(entry.ended_at)
+                if ended_dt < cutoff:
+                    continue
+            except (ValueError, TypeError):
+                continue
+            recent_entries.append(entry)
+
         if not sessions:
             if self._app._has_polled:
                 self._menu.addItem_(disabled_item("No running Claude sessions"))
@@ -211,6 +232,29 @@ class MenuBuilder:
             self._no_match_item.setHidden_(True)
             self._menu.addItem_(self._no_match_item)
 
+            # Hidden recents section — revealed by the filter when a search matches them
+            if recent_entries:
+                recents_separator = NSMenuItem.separatorItem()
+                recents_separator.setHidden_(True)
+                self._menu.addItem_(recents_separator)
+                recents_header = disabled_item("⏱ Recent")
+                recents_header.setHidden_(True)
+                self._menu.addItem_(recents_header)
+                recent_rows = []
+                for entry in recent_entries:
+                    recent_item, haystack = self._make_recent_item(entry)
+                    recent_item.setHidden_(True)
+                    self._menu.addItem_(recent_item)
+                    recent_rows.append(FilterRow(item=recent_item, detail_item=None, haystack=haystack))
+                self._sections.append(
+                    FilterSection(
+                        header=recents_header,
+                        rows=recent_rows,
+                        leading_separator=recents_separator,
+                        only_when_searching=True,
+                    )
+                )
+
         # Bookmarked sessions that are NOT currently active (respects feature toggle)
         pins = self._app._bookmark_service.get_all() if features.is_enabled(FeatureKey.BOOKMARKS) else []
         inactive_pins = [
@@ -250,61 +294,14 @@ class MenuBuilder:
             bm_menu_item.setSubmenu_(bm_submenu)
             self._menu.addItem_(bm_menu_item)
 
-        # Recent sessions (last 3 days, not active, not pinned)
-        _recent_days = 3
-        _recent_limit = 10
-        cutoff = datetime.now(tz=UTC) - timedelta(days=_recent_days)
-        history = self._app._history_service.get_all()  # newest-first
-        recent_entries = []
-        for entry in history:
-            if len(recent_entries) >= _recent_limit:
-                break
-            is_active = entry.session_id in active_sids if entry.session_id else entry.cwd in active_cwds
-            if is_active or bookmark_service.is_bookmarked(entry.session_id, entry.cwd):
-                continue
-            try:
-                ended_dt = datetime.fromisoformat(entry.ended_at)
-                if ended_dt < cutoff:
-                    continue
-            except (ValueError, TypeError):
-                continue
-            recent_entries.append(entry)
-
         if recent_entries:
             self._menu.addItem_(NSMenuItem.separatorItem())
             recent_menu_item = make_menu_item(f"Recent ({len(recent_entries)})", None, d)
             recent_menu_item.setImage_(sf_icon("clock.arrow.circlepath"))
             recent_submenu = NSMenu.alloc().init()
             for entry in recent_entries:
-                model = model_display_name(entry.model)
-
-                detail_parts = [p for p in [relative_time(entry.ended_at), model] if p]
-                label = entry.project
-                if detail_parts:
-                    label += f"  ({' · '.join(detail_parts)})"
-                click_action = self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else noop
-                item = make_menu_item(label, click_action, d)
-                token_data = self._app._usage_service.get_tokens(entry.cwd, entry.session_id)
-                actions = SessionActions(
-                    activity=self._app._make_history_activity_handler(entry.project, entry.cwd, entry.session_id or ""),
-                    resume=self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else None,
-                    remove=self._app._make_remove_history_handler(entry.session_id, entry.cwd),
-                    track_summary=lambda cwd=entry.cwd, sid=entry.session_id: self._app._summary_service.track_session(
-                        cwd, session_id=sid or ""
-                    ),
-                    usage_lines=format_tokens_breakdown(token_data),
-                )
-                entry_agents = (
-                    self._app._analytics_service.agents_for_session(entry.session_id) if entry.session_id else []
-                )
-                item_sub = build_session_submenu(
-                    delegate=d,
-                    summary=self._get_summary(entry.cwd, entry.session_id or ""),
-                    actions=actions,
-                    agents=entry_agents,
-                )
-                item.setSubmenu_(item_sub)
-                recent_submenu.addItem_(item)
+                recent_item, _ = self._make_recent_item(entry)
+                recent_submenu.addItem_(recent_item)
                 self._app._summary_service.track_session(entry.cwd, session_id=entry.session_id or "")
             recent_menu_item.setSubmenu_(recent_submenu)
             self._menu.addItem_(recent_menu_item)
@@ -367,6 +364,37 @@ class MenuBuilder:
 
     def _filter_active(self) -> bool:
         return bool(self._query.strip()) or self._search_field.currentEditor() is not None
+
+    def _make_recent_item(self, entry: HistoryEntryDTO) -> tuple[NSMenuItem, str]:
+        """Build a recent-session item with its submenu; returns the item and its search haystack."""
+        d = self._delegate
+        model = model_display_name(entry.model)
+        detail_parts = [p for p in [relative_time(entry.ended_at), model] if p]
+        label = entry.project
+        if detail_parts:
+            label += f"  ({' · '.join(detail_parts)})"
+        click_action = self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else noop
+        item = make_menu_item(label, click_action, d)
+        token_data = self._app._usage_service.get_tokens(entry.cwd, entry.session_id)
+        actions = SessionActions(
+            activity=self._app._make_history_activity_handler(entry.project, entry.cwd, entry.session_id or ""),
+            resume=self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else None,
+            remove=self._app._make_remove_history_handler(entry.session_id, entry.cwd),
+            track_summary=lambda cwd=entry.cwd, sid=entry.session_id: self._app._summary_service.track_session(
+                cwd, session_id=sid or ""
+            ),
+            usage_lines=format_tokens_breakdown(token_data),
+        )
+        entry_agents = self._app._analytics_service.agents_for_session(entry.session_id) if entry.session_id else []
+        cached = self._get_summary(entry.cwd, entry.session_id or "")
+        item_sub = build_session_submenu(
+            delegate=d,
+            summary=cached,
+            actions=actions,
+            agents=entry_agents,
+        )
+        item.setSubmenu_(item_sub)
+        return item, build_haystack(entry.project, "", cached)
 
     def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> FilterRow:  # noqa: PLR0912, PLR0915
         """Add a session entry + detail line to the menu."""
