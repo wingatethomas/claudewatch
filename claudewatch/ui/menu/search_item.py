@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import objc
 from AppKit import (
+    NSControlSizeLarge,
     NSEventTrackingRunLoopMode,
     NSMakeRect,
     NSMenuItem,
@@ -21,8 +22,8 @@ if TYPE_CHECKING:
     from claudewatch.ui.menu.core import AppDelegate
 
 _ITEM_WIDTH = 260
-_ITEM_HEIGHT = 30
-_FIELD_HEIGHT = 22
+_ITEM_HEIGHT = 38
+_FIELD_HEIGHT = 28
 
 SEARCH_DEBOUNCE_SECONDS = 0.25
 
@@ -35,6 +36,7 @@ def build_search_item(delegate: AppDelegate) -> tuple[NSMenuItem, NSSearchField]
     field_y = (_ITEM_HEIGHT - _FIELD_HEIGHT) / 2
     search_field = NSSearchField.alloc().initWithFrame_(NSMakeRect(Spacing.MD, field_y, field_width, _FIELD_HEIGHT))
     search_field.setPlaceholderString_("Filter sessions…")
+    search_field.setControlSize_(NSControlSizeLarge)
     search_field.setFont_(Font.body())
     search_field.setTarget_(delegate)
     search_field.setAction_(objc.selector(delegate.sessionSearchChanged_, signature=b"v@:@"))
