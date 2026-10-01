@@ -16,6 +16,8 @@ _SUMMARIES = {
     "/tmp/gamma": "built the gamma dashboard",
 }
 
+_TITLES = {"/tmp/gamma": "dashboard revamp"}
+
 
 def _make_history_entry(project: str = "gamma", cwd: str = "/tmp/gamma") -> HistoryEntryDTO:
     return HistoryEntryDTO(
@@ -39,6 +41,7 @@ def _make_app() -> MagicMock:
     app._update_service.get_cached.return_value = None
     app._onboarding_service.is_tip_shown.return_value = True
     app._summary_service.get_cached_summary.side_effect = lambda cwd, session_id="": _SUMMARIES.get(cwd)
+    app._summary_service.get_cached.side_effect = lambda cwd, session_id="": _TITLES.get(cwd)
     app._bookmark_service.is_bookmarked.return_value = False
     app._bookmark_service.get_all.return_value = []
     app._history_service.get_all.return_value = []
@@ -227,3 +230,18 @@ class TestRecentsSection:
         _, menu, _ = self._build_with_recents()
         titles = [str(item.title()) for item in menu.itemArray()]
         assert "Recent (1)" in titles
+
+    def test_recent_row_styled_like_active_rows(self) -> None:
+        builder, _, _ = self._build_with_recents()
+        row = self._recents_section(builder).rows[0]
+        label = str(row.item.title())
+        assert label.startswith("⏱ gamma — dashboard revamp")
+        assert row.item.image() is not None
+        assert row.detail_item is not None
+        assert "built the gamma dashboard" in str(row.detail_item.title())
+
+    def test_search_matches_recent_cached_title(self) -> None:
+        builder, _, _ = self._build_with_recents()
+        builder.set_query("revamp")
+        recents = self._recents_section(builder)
+        assert not recents.rows[0].item.isHidden()

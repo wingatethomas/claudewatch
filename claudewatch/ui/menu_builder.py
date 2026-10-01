@@ -15,7 +15,7 @@ from Foundation import NSRange
 
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import FeatureKey
-from claudewatch.backend.core.models import ClaudeSession, SessionStatus
+from claudewatch.backend.core.models import ClaudeSession, HostApp, SessionStatus
 from claudewatch.backend.core.paths import is_homebrew_install
 from claudewatch.backend.usage.service import format_tokens_breakdown, model_display_name
 from claudewatch.ui.components.formatting import (
@@ -50,6 +50,8 @@ from claudewatch.ui.theme import theme
 if TYPE_CHECKING:
     from claudewatch.backend.core.dto import HistoryEntryDTO
     from claudewatch.ui.menubar import ClaudeWatchApp
+
+_RECENT_LABEL_LIMIT = 50
 
 
 class MenuBuilder:
@@ -242,10 +244,7 @@ class MenuBuilder:
                 self._menu.addItem_(recents_header)
                 recent_rows = []
                 for entry in recent_entries:
-                    recent_item, haystack = self._make_recent_item(entry)
-                    recent_item.setHidden_(True)
-                    self._menu.addItem_(recent_item)
-                    recent_rows.append(FilterRow(item=recent_item, detail_item=None, haystack=haystack))
+                    recent_rows.append(self._add_recent_session_items(entry))
                 self._sections.append(
                     FilterSection(
                         header=recents_header,
@@ -300,8 +299,7 @@ class MenuBuilder:
             recent_menu_item.setImage_(sf_icon("clock.arrow.circlepath"))
             recent_submenu = NSMenu.alloc().init()
             for entry in recent_entries:
-                recent_item, _ = self._make_recent_item(entry)
-                recent_submenu.addItem_(recent_item)
+                recent_submenu.addItem_(self._make_recent_item(entry))
                 self._app._summary_service.track_session(entry.cwd, session_id=entry.session_id or "")
             recent_menu_item.setSubmenu_(recent_submenu)
             self._menu.addItem_(recent_menu_item)
@@ -365,16 +363,8 @@ class MenuBuilder:
     def _filter_active(self) -> bool:
         return bool(self._query.strip()) or self._search_field.currentEditor() is not None
 
-    def _make_recent_item(self, entry: HistoryEntryDTO) -> tuple[NSMenuItem, str]:
-        """Build a recent-session item with its submenu; returns the item and its search haystack."""
-        d = self._delegate
-        model = model_display_name(entry.model)
-        detail_parts = [p for p in [relative_time(entry.ended_at), model] if p]
-        label = entry.project
-        if detail_parts:
-            label += f"  ({' · '.join(detail_parts)})"
-        click_action = self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else noop
-        item = make_menu_item(label, click_action, d)
+    def _recent_submenu_and_summary(self, entry: HistoryEntryDTO) -> tuple[NSMenu, str | None]:
+        """Build the shared actions submenu for a recent session, plus its cached recap."""
         token_data = self._app._usage_service.get_tokens(entry.cwd, entry.session_id)
         actions = SessionActions(
             activity=self._app._make_history_activity_handler(entry.project, entry.cwd, entry.session_id or ""),
@@ -388,13 +378,57 @@ class MenuBuilder:
         entry_agents = self._app._analytics_service.agents_for_session(entry.session_id) if entry.session_id else []
         cached = self._get_summary(entry.cwd, entry.session_id or "")
         item_sub = build_session_submenu(
-            delegate=d,
+            delegate=self._delegate,
             summary=cached,
             actions=actions,
             agents=entry_agents,
         )
+        return item_sub, cached
+
+    def _make_recent_item(self, entry: HistoryEntryDTO) -> NSMenuItem:
+        """Compact one-line row for the Recent submenu."""
+        model = model_display_name(entry.model)
+        detail_parts = [p for p in [relative_time(entry.ended_at), model] if p]
+        label = entry.project
+        if detail_parts:
+            label += f"  ({' · '.join(detail_parts)})"
+        click_action = self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else noop
+        item = make_menu_item(label, click_action, self._delegate)
+        item_sub, _ = self._recent_submenu_and_summary(entry)
         item.setSubmenu_(item_sub)
-        return item, build_haystack(entry.project, "", cached)
+        return item
+
+    def _add_recent_session_items(self, entry: HistoryEntryDTO) -> FilterRow:
+        """Add a recent session styled like an active row; hidden until a search matches it."""
+        item_sub, cached = self._recent_submenu_and_summary(entry)
+        cached_title = self._app._summary_service.get_cached(entry.cwd, entry.session_id or "") or ""
+        title = cached_title.splitlines()[0].strip() if cached_title else ""
+        label = f"⏱ {entry.project} — {title}" if title else f"⏱ {entry.project}"
+        click_action = self._app._make_resume_handler(entry.session_id, entry.cwd) if entry.session_id else noop
+        item = make_menu_item(truncate(label, _RECENT_LABEL_LIMIT), click_action, self._delegate)
+        try:
+            icon = get_app_icon(HostApp(entry.host_app))
+        except ValueError:
+            icon = None
+        if icon:
+            item.setImage_(icon)
+        item.setSubmenu_(item_sub)
+        item.setHidden_(True)
+        self._menu.addItem_(item)
+        model = model_display_name(entry.model)
+        oneliner = cached.replace("\n", " ").strip() if cached else ""
+        detail_parts = [p for p in [relative_time(entry.ended_at), model, oneliner] if p]
+        detail_item: NSMenuItem | None = None
+        if detail_parts:
+            detail_text = truncate(" · ".join(detail_parts), SESSION_DETAIL_LIMIT, word_boundary=True)
+            detail_item = disabled_item(f"      {detail_text}")
+            detail_item.setHidden_(True)
+            self._menu.addItem_(detail_item)
+        return FilterRow(
+            item=item,
+            detail_item=detail_item,
+            haystack=build_haystack(entry.project, title, cached),
+        )
 
     def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> FilterRow:  # noqa: PLR0912, PLR0915
         """Add a session entry + detail line to the menu."""
