@@ -1,0 +1,25 @@
+name: Security Audit
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+      - name: Audit dependencies for known vulnerabilities
+        run: |
+          uv export --no-hashes --no-emit-project | grep -vi 'pyobjc' > requirements.txt
+          uvx pip-audit -r requirements.txt --no-deps
+      - name: Static security analysis (bandit)
+        run: uvx bandit -r claudewatch/ --severity-level medium --confidence-level medium
