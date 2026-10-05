@@ -85,9 +85,8 @@ jobs:
         run: |
           VERSION="${TAG#v}"
           SHA256=$(awk '{print $1}' checksums.txt)
-          git clone https://github.com/wingatethomas/homebrew-brews.git tap
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/wingatethomas/homebrew-brews.git" tap
           cd tap
-          git remote set-url origin "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/wingatethomas/homebrew-brews.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           BRANCH="bump-${VERSION}"
