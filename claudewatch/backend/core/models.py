@@ -70,6 +70,7 @@ class ClaudeSession:
     session_id: str = ""  # Claude Code session UUID from JSONL filename
     agent_count: int = 0  # populated by analytics.enrich_sessions()
     ai_title: str = ""  # Claude-generated session title from the matched JSONL
+    last_activity: float = 0.0  # mtime of the matched JSONL; 0.0 when unpaired
     worktree_repo: str = ""  # main repo name when cwd is a linked git worktree
     worktree_branch: str = ""  # branch checked out in that worktree
 

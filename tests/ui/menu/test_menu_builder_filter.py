@@ -99,6 +99,15 @@ class TestMenuBuilderFilter:
         self._build(builder, [])
         assert builder._search_item not in list(menu.itemArray())
 
+    def test_build_renders_sessions_in_given_order(self) -> None:
+        first, second = _make_sessions()
+        second.status = first.status
+        builder, _, _ = _make_builder()
+        self._build(builder, [second, first])
+        section = builder._sections[0]
+        assert "beta" in section.rows[0].haystack
+        assert "alpha" in section.rows[1].haystack
+
     def test_sections_registered(self) -> None:
         builder, _, _ = _make_builder()
         self._build(builder, _make_sessions())

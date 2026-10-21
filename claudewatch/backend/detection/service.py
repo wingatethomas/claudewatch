@@ -34,6 +34,12 @@ _JSONL_STREAMING_THRESHOLD = 5  # JSONL modified within this → actively stream
 _BIRTHTIME_SLACK = 5.0  # clock slack when comparing file birth to process start
 _JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
 _AI_TITLE_PATH_CACHE_MAX = 512  # _ai_title_by_path size that triggers dead-path pruning
+_ACTIVITY_BUCKET_SECONDS = 30  # recency-sort granularity — damps row flip-flop between streaming sessions
+
+
+def sort_by_last_activity(sessions: list[ClaudeSession]) -> None:
+    """Order sessions newest-activity-first; pid breaks ties within a bucket."""
+    sessions.sort(key=lambda s: (-(s.last_activity // _ACTIVITY_BUCKET_SECONDS), s.pid))
 
 
 class DetectionService(BaseService):
@@ -465,6 +471,14 @@ class DetectionService(BaseService):
         self._get_ide_tab_indices(sessions, all_ps)
         self._refine_statuses(sessions, session_jsonl)
         self._apply_buffer_attention(sessions)
+        for session in sessions:
+            jpath = session_jsonl.get(session.pid)
+            if jpath:
+                try:
+                    session.last_activity = os.path.getmtime(jpath)
+                except OSError:
+                    session.last_activity = 0.0
+        sort_by_last_activity(sessions)
         return sessions
 
     def _find_candidate_pids(self) -> list[int]:
