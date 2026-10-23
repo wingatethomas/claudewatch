@@ -31,6 +31,10 @@ class SessionLogService(BaseService):
                 return path
         return None
 
+    def read_permission_mode_head(self, path: str) -> str:
+        """Return the permissionMode recorded near the top of a JSONL, or ""."""
+        return jsonl.read_permission_mode_head(path)
+
     def read_ai_title(self, path: str) -> str:
         """Return the latest aiTitle recorded in a JSONL's tail, or "" if none."""
         return jsonl.read_ai_title(path)

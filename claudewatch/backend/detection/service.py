@@ -15,7 +15,8 @@ from claudewatch.backend.core.models import (
 from claudewatch.backend.core.process.models import ProcessInfo
 from claudewatch.backend.core.process.service import ProcessService
 from claudewatch.backend.core.service import BaseService
-from claudewatch.backend.core.session_log.schema import BOOKKEEPING_TYPES, BlockType, EntryType
+from claudewatch.backend.core.session_log.jsonl import latest_permission_mode
+from claudewatch.backend.core.session_log.schema import BOOKKEEPING_TYPES, BlockType, EntryType, PermissionMode
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.core.worktree import WorktreeInfo, resolve_worktree
 from claudewatch.backend.detection.constants import HOST_PROCESS_NAMES, IDLE_INDICATOR
@@ -35,6 +36,7 @@ _BIRTHTIME_SLACK = 5.0  # clock slack when comparing file birth to process start
 _JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
 _AI_TITLE_PATH_CACHE_MAX = 512  # _ai_title_by_path size that triggers dead-path pruning
 _ACTIVITY_BUCKET_SECONDS = 30  # recency-sort granularity — damps row flip-flop between streaming sessions
+_JUST_FINISHED_WINDOW = 600  # seconds an auto-mode session counts as just finished after going idle
 
 
 def sort_by_last_activity(sessions: list[ClaudeSession]) -> None:
@@ -75,6 +77,9 @@ class DetectionService(BaseService):
         # past _AI_TITLE_PATH_CACHE_MAX entries, _evict_stale_caches drops
         # paths whose file no longer exists.
         self._ai_title_by_path: dict[str, str] = {}
+        # path → last known permissionMode. Mode set at session start scrolls out
+        # of the tail window; tail scans still pick up mid-session toggles.
+        self._permission_mode_by_path: dict[str, str] = {}
         # cwd → (WorktreeInfo | None, timestamp). Branch switches are rare, so
         # a longer TTL than the title caches.
         self._worktree_cache: dict[str, tuple[WorktreeInfo | None, float]] = {}
@@ -339,6 +344,22 @@ class DetectionService(BaseService):
         tail = self._session_log_service.read_tail(jsonl_path)
         return (tail, age)
 
+    def _get_permission_mode(self, jpath: str, tail: str) -> str:
+        """Latest permissionMode for a session's JSONL — tail wins, else cache, else head scan."""
+        mode = latest_permission_mode(tail.splitlines()) if tail else ""
+        if mode:
+            self._permission_mode_by_path[jpath] = mode
+            return mode
+        cached = self._permission_mode_by_path.get(jpath)
+        if cached:
+            return cached
+        head_mode = self._session_log_service.read_permission_mode_head(jpath)
+        if head_mode:
+            # Empty results are not cached — a newborn file may not have
+            # written its head lines yet.
+            self._permission_mode_by_path[jpath] = head_mode
+        return head_mode
+
     def _check_jsonl_for_idle(self, tail: str) -> SessionStatus:
         """Determine idle/working status from a pre-read JSONL tail."""
         if not tail:
@@ -478,6 +499,14 @@ class DetectionService(BaseService):
                     session.last_activity = os.path.getmtime(jpath)
                 except OSError:
                     session.last_activity = 0.0
+        now = time.time()
+        for session in sessions:
+            session.just_finished = (
+                session.status == SessionStatus.IDLE
+                and session.permission_mode == PermissionMode.AUTO
+                and session.last_activity > 0
+                and now - session.last_activity < _JUST_FINISHED_WINDOW
+            )
         sort_by_last_activity(sessions)
         return sessions
 
@@ -523,6 +552,10 @@ class DetectionService(BaseService):
             for path in list(self._ai_title_by_path.keys()):
                 if not os.path.exists(path):
                     del self._ai_title_by_path[path]
+        if len(self._permission_mode_by_path) > _AI_TITLE_PATH_CACHE_MAX:
+            for path in list(self._permission_mode_by_path.keys()):
+                if not os.path.exists(path):
+                    del self._permission_mode_by_path[path]
 
     def _resolve_tty(self, info: ProcessInfo) -> str:
         """A tty-less process borrows the nearest ancestor's tty (5 hops max)."""
@@ -638,7 +671,7 @@ class DetectionService(BaseService):
         over JSONL. For IDE sessions (no title indicators) JSONL is the only
         signal.
         """
-        path_status_cache: dict[str, tuple[PendingToolResult, SessionStatus]] = {}
+        path_status_cache: dict[str, tuple[PendingToolResult, SessionStatus, str]] = {}
         for s in sessions:
             if not s.cwd:
                 continue
@@ -649,10 +682,11 @@ class DetectionService(BaseService):
                 # not working. Title indicators still override below.
                 path_status_cache.setdefault(
                     cache_key,
-                    (PendingToolResult(has_pending=False, one_line="", context=""), SessionStatus.IDLE),
+                    (PendingToolResult(has_pending=False, one_line="", context=""), SessionStatus.IDLE, ""),
                 )
             if cache_key not in path_status_cache:
                 tail, age = self._read_jsonl_tail(jpath)
+                mode = self._get_permission_mode(jpath, tail)
                 if 0 <= age < _JSONL_STREAMING_THRESHOLD:
                     # JSONL modified < 5s ago — Claude is actively streaming
                     tool_result = PendingToolResult(has_pending=False, one_line="", context="")
@@ -667,9 +701,10 @@ class DetectionService(BaseService):
                         jsonl_status = SessionStatus.IDLE
                     else:
                         jsonl_status = self._check_jsonl_for_idle(tail)
-                path_status_cache[cache_key] = (tool_result, jsonl_status)
+                path_status_cache[cache_key] = (tool_result, jsonl_status, mode)
 
-            tool_result, jsonl_status = path_status_cache[cache_key]
+            tool_result, jsonl_status, mode = path_status_cache[cache_key]
+            s.permission_mode = mode
             title_confirms_working = _has_working_indicator(s.window_title)
             title_confirms_idle = IDLE_INDICATOR in s.window_title
 
