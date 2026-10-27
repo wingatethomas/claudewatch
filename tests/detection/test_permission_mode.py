@@ -122,11 +122,11 @@ class TestJustFinishedFlag:
         assert sessions[0].just_finished is True
 
     def test_auto_idle_old_is_not_just_finished(self, tmp_path) -> None:
-        sessions = self._detect(tmp_path, [_mode_entry("auto"), _ASSISTANT], age_seconds=610)
+        sessions = self._detect(tmp_path, [_mode_entry("auto"), _ASSISTANT], age_seconds=3610)
         assert sessions[0].just_finished is False
 
     def test_auto_idle_inside_window_boundary(self, tmp_path) -> None:
-        sessions = self._detect(tmp_path, [_mode_entry("auto"), _ASSISTANT], age_seconds=590)
+        sessions = self._detect(tmp_path, [_mode_entry("auto"), _ASSISTANT], age_seconds=3590)
         assert sessions[0].just_finished is True
 
     def test_default_mode_never_just_finished(self, tmp_path) -> None:

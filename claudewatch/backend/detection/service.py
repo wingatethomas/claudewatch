@@ -36,7 +36,7 @@ _BIRTHTIME_SLACK = 5.0  # clock slack when comparing file birth to process start
 _JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
 _AI_TITLE_PATH_CACHE_MAX = 512  # _ai_title_by_path size that triggers dead-path pruning
 _ACTIVITY_BUCKET_SECONDS = 30  # recency-sort granularity — damps row flip-flop between streaming sessions
-_JUST_FINISHED_WINDOW = 600  # seconds an auto-mode session counts as just finished after going idle
+_JUST_FINISHED_WINDOW = 3600  # seconds an auto-mode session counts as just finished after going idle
 
 
 def sort_by_last_activity(sessions: list[ClaudeSession]) -> None:
