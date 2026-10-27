@@ -355,3 +355,104 @@ class TestGetFrontmostWindowAccessibilityGuard:
         ):
             result = _get_frontmost_window()
         assert result == FrontmostWindow(app_name="Finder", window_title="Desktop")
+
+
+class TestNotifyFinished:
+    """notify_if_needed() notifies once when an auto session completes a WORKING→IDLE edge."""
+
+    def _svc(self):
+        svc = NotificationService()
+        svc.last_notification_time = 0.0
+        svc._center = _mock_center()
+        return svc
+
+    def _poll(self, svc, sessions):
+        mock_cls, mock_notif = _mock_notification_class()
+        with (
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
+            patch(f"{_MOD}.features.get_facet", return_value="Glass"),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
+        ):
+            svc.notify_if_needed(sessions)
+        return mock_notif
+
+    def test_notifies_on_working_to_finished_edge(self):
+        svc = self._svc()
+        working = _make_session(status=SessionStatus.WORKING, permission_mode="auto")
+        self._poll(svc, [working])
+        finished = _make_session(status=SessionStatus.IDLE, permission_mode="auto", just_finished=True)
+        notif = self._poll(svc, [finished])
+        notif.setTitle_.assert_called_once_with("Claude finished")
+        notif.setSubtitle_.assert_called_once_with("testproject")
+        notif.setInformativeText_.assert_called_once_with("Task complete")
+        assert svc._center.deliverNotification_.call_count == 1
+
+    def test_no_renotify_while_still_finished(self):
+        svc = self._svc()
+        self._poll(svc, [_make_session(status=SessionStatus.WORKING)])
+        finished = _make_session(status=SessionStatus.IDLE, just_finished=True)
+        self._poll(svc, [finished])
+        svc.last_notification_time = 0.0
+        self._poll(svc, [finished])
+        assert svc._center.deliverNotification_.call_count == 1
+
+    def test_renotifies_after_working_again(self):
+        svc = self._svc()
+        self._poll(svc, [_make_session(status=SessionStatus.WORKING)])
+        finished = _make_session(status=SessionStatus.IDLE, just_finished=True)
+        self._poll(svc, [finished])
+        svc.last_notification_time = 0.0
+        self._poll(svc, [_make_session(status=SessionStatus.WORKING)])
+        self._poll(svc, [finished])
+        assert svc._center.deliverNotification_.call_count == 2
+
+    def test_no_notify_without_prior_working(self):
+        svc = self._svc()
+        finished = _make_session(status=SessionStatus.IDLE, just_finished=True)
+        self._poll(svc, [finished])
+        svc._center.deliverNotification_.assert_not_called()
+
+    def test_cooldown_defers_then_fires(self):
+        svc = self._svc()
+        self._poll(svc, [_make_session(status=SessionStatus.WORKING)])
+        svc.last_notification_time = time.time()
+        finished = _make_session(status=SessionStatus.IDLE, just_finished=True)
+        self._poll(svc, [finished])
+        svc._center.deliverNotification_.assert_not_called()
+        svc.last_notification_time = 0.0
+        self._poll(svc, [finished])
+        assert svc._center.deliverNotification_.call_count == 1
+
+    def test_disabled_feature_sends_nothing(self):
+        svc = self._svc()
+        with patch(f"{_MOD}.features.is_enabled", return_value=False):
+            svc.notify_if_needed([_make_session(status=SessionStatus.WORKING)])
+            svc.notify_if_needed([_make_session(status=SessionStatus.IDLE, just_finished=True)])
+        svc._center.deliverNotification_.assert_not_called()
+
+    def test_no_session_content_in_notification(self):
+        svc = self._svc()
+        self._poll(svc, [_make_session(status=SessionStatus.WORKING)])
+        finished = _make_session(
+            status=SessionStatus.IDLE,
+            just_finished=True,
+            prompt_text="Bash: rm -rf /secret",
+            last_output="secret output line",
+        )
+        notif = self._poll(svc, [finished])
+        delivered_texts = [
+            str(call.args[0])
+            for call in (
+                notif.setTitle_.call_args_list
+                + notif.setSubtitle_.call_args_list
+                + notif.setInformativeText_.call_args_list
+            )
+        ]
+        assert all("secret" not in text for text in delivered_texts)
+
+    def test_dead_pid_evicted(self):
+        svc = self._svc()
+        self._poll(svc, [_make_session(pid=42, status=SessionStatus.WORKING)])
+        assert 42 in svc._working_seen_pids
+        self._poll(svc, [])
+        assert 42 not in svc._working_seen_pids

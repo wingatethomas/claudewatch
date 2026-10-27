@@ -342,7 +342,9 @@ class ClaudeWatchApp:
         parts = [f"scheme:{theme.scheme.name}"]
         for s in self.sessions:
             cached = self._summary_service.get_cached(s.cwd) or ""
-            parts.append(f"{s.pid}:{s.status.value}:{s.project}:{s.task_summary}:{s.last_output}:{cached}")
+            parts.append(
+                f"{s.pid}:{s.status.value}:{int(s.just_finished)}:{s.project}:{s.task_summary}:{s.last_output}:{cached}"
+            )
         return "|".join(parts)
 
     def update_display(self) -> None:

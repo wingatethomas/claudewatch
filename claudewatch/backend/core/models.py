@@ -71,6 +71,8 @@ class ClaudeSession:
     agent_count: int = 0  # populated by analytics.enrich_sessions()
     ai_title: str = ""  # Claude-generated session title from the matched JSONL
     last_activity: float = 0.0  # mtime of the matched JSONL; 0.0 when unpaired
+    permission_mode: str = ""  # latest permissionMode from this session's JSONL
+    just_finished: bool = False  # auto-mode session gone idle within the finish window
     worktree_repo: str = ""  # main repo name when cwd is a linked git worktree
     worktree_branch: str = ""  # branch checked out in that worktree
 
