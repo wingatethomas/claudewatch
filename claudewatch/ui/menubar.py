@@ -211,11 +211,11 @@ class ClaudeWatchApp:
         if new_pids and not self._onboarding_service.is_tip_shown("hover"):
             self._onboarding_service.increment_session_count(len(new_pids))
 
-        # Ended sessions — record to history
+        # Ended sessions — record to history (teammate agents are not user sessions)
         for pid in self._prev_pids - current_pids:
             log.info("session.ended pid=%d", pid)
             prev = self._prev_sessions.get(pid)
-            if prev:
+            if prev and prev.agent_of_pid is None:
                 self._history_service.record(
                     session_id=prev.session_id,
                     project=prev.project,
@@ -343,7 +343,8 @@ class ClaudeWatchApp:
         for s in self.sessions:
             cached = self._summary_service.get_cached(s.cwd) or ""
             parts.append(
-                f"{s.pid}:{s.status.value}:{int(s.just_finished)}:{s.project}:{s.task_summary}:{s.last_output}:{cached}"
+                f"{s.pid}:{s.status.value}:{int(s.just_finished)}:{s.agent_of_pid or 0}:"
+                f"{s.project}:{s.task_summary}:{s.last_output}:{cached}"
             )
         return "|".join(parts)
 

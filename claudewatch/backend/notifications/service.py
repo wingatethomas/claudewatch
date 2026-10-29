@@ -119,8 +119,9 @@ class NotificationService(BaseService):
         """Send notifications for sessions that need attention or just finished."""
         if not features.is_enabled(FeatureKey.NOTIFICATIONS):
             return
-        self._notify_attention(sessions)
-        self._notify_finished(sessions)
+        principals = [s for s in sessions if s.agent_of_pid is None]
+        self._notify_attention(principals)
+        self._notify_finished(principals)
 
     def _notify_attention(self, sessions: list[ClaudeSession]) -> None:  # noqa: PLR0912
         attention = [s for s in sessions if s.needs_attention]

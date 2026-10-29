@@ -24,6 +24,7 @@ class FilterRow:
     item: NSMenuItem
     detail_item: NSMenuItem | None
     haystack: str
+    extra_items: list[NSMenuItem] = field(default_factory=list)
 
 
 @dataclass
@@ -46,6 +47,8 @@ def apply_filter(sections: list[FilterSection], no_match_item: NSMenuItem | None
             row.item.setHidden_(hidden)
             if row.detail_item is not None:
                 row.detail_item.setHidden_(hidden)
+            for extra in row.extra_items:
+                extra.setHidden_(hidden)
             any_visible = any_visible or not hidden
         section.header.setHidden_(not any_visible)
         section_visible.append(any_visible)

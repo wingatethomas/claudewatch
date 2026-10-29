@@ -138,6 +138,15 @@ class TestApplyFilter:
         apply_filter([section], None, "docs")
         assert row.item.isHidden()
 
+    def test_extra_items_toggle_with_row(self) -> None:
+        extras = [_item(), _item()]
+        row = FilterRow(item=_item(), detail_item=None, haystack="alpha parser", extra_items=extras)
+        section = FilterSection(header=_item(), rows=[row])
+        apply_filter([section], None, "docs")
+        assert all(extra.isHidden() for extra in extras)
+        apply_filter([section], None, "parser")
+        assert all(not extra.isHidden() for extra in extras)
+
 
 class TestSearchOnlySections:
     def _sections(self) -> tuple[FilterSection, FilterSection]:
