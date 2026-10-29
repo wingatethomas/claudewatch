@@ -134,3 +134,13 @@ def style_summary_item(item: NSMenuItem) -> None:
     attr.addAttribute_value_range_("NSFont", NSFont.systemFontOfSize_(12.0), r)
     attr.addAttribute_value_range_("NSColor", NSColor.labelColor(), r)
     item.setAttributedTitle_(attr)
+
+
+def style_agent_item(item: NSMenuItem) -> None:
+    """Secondary-colored but still clickable styling for nested agent rows."""
+    text = str(item.title())
+    attr = NSMutableAttributedString.alloc().initWithString_(text)
+    r = NSRange(0, len(text))
+    attr.addAttribute_value_range_("NSFont", NSFont.menuFontOfSize_(12.0), r)
+    attr.addAttribute_value_range_("NSColor", NSColor.secondaryLabelColor(), r)
+    item.setAttributedTitle_(attr)
