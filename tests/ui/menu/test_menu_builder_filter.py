@@ -99,6 +99,15 @@ class TestMenuBuilderFilter:
         self._build(builder, [])
         assert builder._search_item not in list(menu.itemArray())
 
+    def test_build_renders_sessions_in_given_order(self) -> None:
+        first, second = _make_sessions()
+        second.status = first.status
+        builder, _, _ = _make_builder()
+        self._build(builder, [second, first])
+        section = builder._sections[0]
+        assert "beta" in section.rows[0].haystack
+        assert "alpha" in section.rows[1].haystack
+
     def test_sections_registered(self) -> None:
         builder, _, _ = _make_builder()
         self._build(builder, _make_sessions())
@@ -170,6 +179,63 @@ class TestMenuBuilderFilter:
         assert first_item_before is not None
 
 
+class TestJustFinishedSection:
+    def _sessions(self) -> list[ClaudeSession]:
+        sessions = _make_sessions()
+        finished = ClaudeSession(
+            pid=3,
+            tty="ttys003",
+            project="gamma",
+            cwd="/tmp/gamma",
+            host_app=HostApp.TERMINAL,
+            status=SessionStatus.IDLE,
+            ai_title="rotate keys",
+            session_id="s3",
+            just_finished=True,
+        )
+        return [*sessions, finished]
+
+    def _build(self, builder: MenuBuilder, sessions: list[ClaudeSession]) -> None:
+        with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
+            builder.build(sessions)
+
+    def test_section_present_between_attention_and_working(self) -> None:
+        builder, menu, _ = _make_builder()
+        self._build(builder, self._sessions())
+        titles = [str(item.title()) for item in menu.itemArray()]
+        finished_index = next(i for i, t in enumerate(titles) if t.startswith("✓ Just Finished"))
+        working_index = next(i for i, t in enumerate(titles) if t.startswith("✦ Working"))
+        assert finished_index < working_index
+
+    def test_finished_session_excluded_from_idle(self) -> None:
+        builder, _, _ = _make_builder()
+        self._build(builder, self._sessions())
+        section_headers = [str(section.header.title()) for section in builder._sections]
+        assert section_headers[0].startswith("✓ Just Finished")
+        assert section_headers[1].startswith("✦ Working")
+        assert section_headers[2].startswith("⏸ Idle")
+        finished_section = builder._sections[0]
+        idle_section = builder._sections[2]
+        assert "rotate keys" in finished_section.rows[0].haystack
+        assert all("rotate keys" not in row.haystack for row in idle_section.rows)
+
+    def test_section_absent_without_finished_sessions(self) -> None:
+        builder, menu, _ = _make_builder()
+        self._build(builder, _make_sessions())
+        titles = [str(item.title()) for item in menu.itemArray()]
+        assert not any(t.startswith("✓ Just Finished") for t in titles)
+
+    def test_search_filter_hides_section(self) -> None:
+        builder, _, _ = _make_builder()
+        self._build(builder, self._sessions())
+        builder.set_query("parser")
+        finished_section = builder._sections[0]
+        assert finished_section.header.isHidden()
+        builder.set_query("rotate")
+        assert not finished_section.header.isHidden()
+        assert not finished_section.rows[0].item.isHidden()
+
+
 class TestRecentsSection:
     def _build_with_recents(self) -> tuple[MenuBuilder, NSMenu, MagicMock]:
         builder, menu, app = _make_builder()
@@ -225,6 +291,30 @@ class TestRecentsSection:
         recents = self._recents_section(builder)
         assert recents.header.isHidden()
         assert all(row.item.isHidden() for row in recents.rows)
+
+    def test_search_available_with_no_sessions_but_recents(self) -> None:
+        builder, menu, app = _make_builder()
+        app._history_service.get_all.return_value = [_make_history_entry()]
+        with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
+            builder.build([])
+        assert builder._search_item in list(menu.itemArray())
+        titles = [str(item.title()) for item in menu.itemArray()]
+        assert any("No running Claude sessions" in t for t in titles)
+        builder.set_query("gamma")
+        recents = builder._sections[-1]
+        assert not recents.header.isHidden()
+        assert not recents.rows[0].item.isHidden()
+
+    def test_no_match_shown_with_no_sessions(self) -> None:
+        builder, _, app = _make_builder()
+        app._history_service.get_all.return_value = [_make_history_entry()]
+        with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
+            builder.build([])
+        builder.set_query("zzz-no-match")
+        assert builder._no_match_item is not None
+        assert not builder._no_match_item.isHidden()
+        builder.clear_filter()
+        assert builder._no_match_item.isHidden()
 
     def test_recent_submenu_item_still_present(self) -> None:
         _, menu, _ = self._build_with_recents()

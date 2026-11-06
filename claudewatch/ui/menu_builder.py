@@ -36,6 +36,7 @@ from claudewatch.ui.menu.core import (
     disabled_item,
     make_menu_item,
     noop,
+    style_agent_item,
 )
 from claudewatch.ui.menu.filtering import (
     FilterRow,
@@ -71,12 +72,19 @@ class MenuBuilder:
         return self._app._summary_service.get_cached_summary(cwd, session_id)
 
     def build(self, sessions: list[ClaudeSession]) -> None:  # noqa: PLR0912, PLR0915
-        attention = [s for s in sessions if s.status == SessionStatus.ATTENTION]
-        working = [s for s in sessions if s.status == SessionStatus.WORKING]
-        idle = [s for s in sessions if s.status == SessionStatus.IDLE]
+        agents_by_parent: dict[int, list[ClaudeSession]] = {}
+        for s in sessions:
+            if s.agent_of_pid is not None:
+                agents_by_parent.setdefault(s.agent_of_pid, []).append(s)
+        top_level = [s for s in sessions if s.agent_of_pid is None]
+
+        attention = [s for s in top_level if s.status == SessionStatus.ATTENTION]
+        finished = [s for s in top_level if s.status == SessionStatus.IDLE and s.just_finished]
+        working = [s for s in top_level if s.status == SessionStatus.WORKING]
+        idle = [s for s in top_level if s.status == SessionStatus.IDLE and not s.just_finished]
 
         # Menu bar icon — ✦ with colored dots for each state
-        status_icon = render_status_icon(attention, working, idle)
+        status_icon = render_status_icon(attention, working, finished + idle)
         if self._app._status_item is not None:
             self._app._status_item.setImage_(status_icon)
             self._app._status_item.setTitle_("")
@@ -162,21 +170,25 @@ class MenuBuilder:
                 continue
             recent_entries.append(entry)
 
-        if not sessions:
+        # Search covers active sessions and recents, so it stays even with no sessions.
+        searchable = bool(top_level or recent_entries)
+        if searchable:
+            self._menu.addItem_(self._search_item)
+
+        if not top_level:
             if self._app._has_polled:
                 self._menu.addItem_(disabled_item("No running Claude sessions"))
             else:
                 self._menu.addItem_(disabled_item("Scanning for Claude sessions…"))
         else:
-            self._menu.addItem_(self._search_item)
             # Build suffix map to disambiguate duplicate labels
             seen_labels: dict[str, int] = {}
             suffixes: dict[int, str] = {}
-            for s in sessions:
+            for s in top_level:
                 label = s.menu_label
                 seen_labels[label] = seen_labels.get(label, 0) + 1
             label_counters: dict[str, int] = {}
-            for s in sessions:
+            for s in top_level:
                 label = s.menu_label
                 if seen_labels[label] > 1:
                     label_counters[label] = label_counters.get(label, 0) + 1
@@ -193,10 +205,41 @@ class MenuBuilder:
                 rows = []
                 for s in attention:
                     is_pinned = bookmark_service.is_bookmarked(s.session_id, s.cwd)
-                    rows.append(self._add_session_items(s, suffixes[s.pid], pinned=is_pinned))
+                    rows.append(
+                        self._add_session_items(
+                            s,
+                            suffixes[s.pid],
+                            pinned=is_pinned,
+                            agents=agents_by_parent.get(s.pid, []),
+                        )
+                    )
                 self._sections.append(FilterSection(header=header, rows=rows))
 
-            if attention and (working or idle):
+            if attention and (finished or working or idle):
+                separator = NSMenuItem.separatorItem()
+                self._menu.addItem_(separator)
+                self._sections[-1].trailing_separator = separator
+
+            if finished:
+                header = disabled_item("✓ Just Finished")
+                header.setAttributedTitle_(
+                    make_header_title("✓ Just Finished", SessionStatus.IDLE, len(finished)),
+                )
+                self._menu.addItem_(header)
+                rows = []
+                for s in finished:
+                    is_pinned = bookmark_service.is_bookmarked(s.session_id, s.cwd)
+                    rows.append(
+                        self._add_session_items(
+                            s,
+                            suffixes[s.pid],
+                            pinned=is_pinned,
+                            agents=agents_by_parent.get(s.pid, []),
+                        )
+                    )
+                self._sections.append(FilterSection(header=header, rows=rows))
+
+            if finished and (working or idle):
                 separator = NSMenuItem.separatorItem()
                 self._menu.addItem_(separator)
                 self._sections[-1].trailing_separator = separator
@@ -210,7 +253,14 @@ class MenuBuilder:
                 rows = []
                 for s in working:
                     is_pinned = bookmark_service.is_bookmarked(s.session_id, s.cwd)
-                    rows.append(self._add_session_items(s, suffixes[s.pid], pinned=is_pinned))
+                    rows.append(
+                        self._add_session_items(
+                            s,
+                            suffixes[s.pid],
+                            pinned=is_pinned,
+                            agents=agents_by_parent.get(s.pid, []),
+                        )
+                    )
                 self._sections.append(FilterSection(header=header, rows=rows))
 
             if working and idle:
@@ -227,32 +277,40 @@ class MenuBuilder:
                 rows = []
                 for s in idle:
                     is_pinned = bookmark_service.is_bookmarked(s.session_id, s.cwd)
-                    rows.append(self._add_session_items(s, suffixes[s.pid], pinned=is_pinned))
+                    rows.append(
+                        self._add_session_items(
+                            s,
+                            suffixes[s.pid],
+                            pinned=is_pinned,
+                            agents=agents_by_parent.get(s.pid, []),
+                        )
+                    )
                 self._sections.append(FilterSection(header=header, rows=rows))
 
+        if searchable:
             self._no_match_item = disabled_item("No matching sessions")
             self._no_match_item.setHidden_(True)
             self._menu.addItem_(self._no_match_item)
 
-            # Hidden recents section — revealed by the filter when a search matches them
-            if recent_entries:
-                recents_separator = NSMenuItem.separatorItem()
-                recents_separator.setHidden_(True)
-                self._menu.addItem_(recents_separator)
-                recents_header = disabled_item("⏱ Recent")
-                recents_header.setHidden_(True)
-                self._menu.addItem_(recents_header)
-                recent_rows = []
-                for entry in recent_entries:
-                    recent_rows.append(self._add_recent_session_items(entry))
-                self._sections.append(
-                    FilterSection(
-                        header=recents_header,
-                        rows=recent_rows,
-                        leading_separator=recents_separator,
-                        only_when_searching=True,
-                    )
+        # Hidden recents section — revealed by the filter when a search matches them
+        if recent_entries:
+            recents_separator = NSMenuItem.separatorItem()
+            recents_separator.setHidden_(True)
+            self._menu.addItem_(recents_separator)
+            recents_header = disabled_item("⏱ Recent")
+            recents_header.setHidden_(True)
+            self._menu.addItem_(recents_header)
+            recent_rows = []
+            for entry in recent_entries:
+                recent_rows.append(self._add_recent_session_items(entry))
+            self._sections.append(
+                FilterSection(
+                    header=recents_header,
+                    rows=recent_rows,
+                    leading_separator=recents_separator,
+                    only_when_searching=True,
                 )
+            )
 
         # Bookmarked sessions that are NOT currently active (respects feature toggle)
         pins = self._app._bookmark_service.get_all() if features.is_enabled(FeatureKey.BOOKMARKS) else []
@@ -430,8 +488,15 @@ class MenuBuilder:
             haystack=build_haystack(entry.project, title, cached),
         )
 
-    def _add_session_items(self, s: ClaudeSession, suffix: str = "", *, pinned: bool = False) -> FilterRow:  # noqa: PLR0912, PLR0915
-        """Add a session entry + detail line to the menu."""
+    def _add_session_items(  # noqa: PLR0912, PLR0915
+        self,
+        s: ClaudeSession,
+        suffix: str = "",
+        *,
+        pinned: bool = False,
+        agents: list[ClaudeSession] | None = None,
+    ) -> FilterRow:
+        """Add a session entry + detail line + nested agent rows to the menu."""
         d = self._delegate
         bm_mark = " ▸" if pinned else ""
         label = s.menu_label + suffix + bm_mark
@@ -453,13 +518,13 @@ class MenuBuilder:
             ),
             usage_lines=format_tokens_breakdown(token_data),
         )
-        agents = self._app._analytics_service.agents_for_session(s.session_id) if s.session_id else []
+        subagents = self._app._analytics_service.agents_for_session(s.session_id) if s.session_id else []
         sub = build_session_submenu(
             delegate=d,
             summary=cached,
             generating=False,
             actions=actions,
-            agents=agents,
+            agents=subagents,
         )
         self._app._summary_service.track_session(s.cwd, urgent=is_active, session_id=s.session_id)
         item.setSubmenu_(sub)
@@ -473,8 +538,19 @@ class MenuBuilder:
             detail_text = truncate(" · ".join(detail_parts), SESSION_DETAIL_LIMIT, word_boundary=True)
             detail_item = disabled_item(f"      {detail_text}")
             self._menu.addItem_(detail_item)
+        agent_items: list[NSMenuItem] = []
+        for agent in agents or []:
+            agent_item = make_menu_item(f"      {agent.agent_label}", self._app._make_click_handler(agent), d)
+            style_agent_item(agent_item)
+            self._menu.addItem_(agent_item)
+            agent_items.append(agent_item)
         return FilterRow(
             item=item,
             detail_item=detail_item,
-            haystack=build_haystack(s.display_project, s.task_summary, cached),
+            haystack=build_haystack(
+                " ".join([s.display_project, *(a.display_project for a in agents or [])]),
+                s.task_summary,
+                cached,
+            ),
+            extra_items=agent_items,
         )

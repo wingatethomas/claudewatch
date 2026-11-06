@@ -934,3 +934,64 @@ class TestDetectIdeSession:
         finally:
             for p in svc._test_patchers:
                 p.stop()
+
+
+class TestDetectRecencyOrder:
+    def test_sessions_ordered_by_jsonl_recency(self, tmp_path):
+        """detect() returns sessions newest-activity-first based on paired JSONL mtime."""
+        entries = [{"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}]
+        setups = [
+            (100, "/Users/dev/alpha", "ttys001", 600),
+            (200, "/Users/dev/beta", "ttys002", 120),
+            (300, "/Users/dev/gamma", "ttys003", 300),
+        ]
+        for pid, cwd, _tty, age in setups:
+            proj_dir = _cwd_to_proj_dir(str(tmp_path), cwd)
+            _write_jsonl(os.path.join(proj_dir, f"s{pid}.jsonl"), entries, age_seconds=age)
+        svc = _build_service(
+            str(tmp_path),
+            [pid for pid, _, _, _ in setups],
+            pid_info={pid: ProcessInfo(tty=tty, ppid=1, comm="claude") for pid, _, tty, _ in setups},
+            pid_cwds={pid: cwd for pid, cwd, _, _ in setups},
+            terminal_titles={
+                f"/dev/{tty}": (f"{cwd.rsplit('/', 1)[1]} — ✳ claude", index + 1)
+                for index, (_, cwd, tty, _) in enumerate(setups)
+            },
+        )
+        try:
+            sessions = svc.detect()
+            assert [s.pid for s in sessions] == [200, 300, 100]
+            assert all(s.last_activity > 0 for s in sessions)
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
+
+    def test_unpaired_session_sorts_last(self, tmp_path):
+        """A session with no JSONL in its project dir keeps last_activity 0 and sinks."""
+        entries = [{"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}]
+        paired_cwd = "/Users/dev/alpha"
+        _write_jsonl(
+            os.path.join(_cwd_to_proj_dir(str(tmp_path), paired_cwd), "s1.jsonl"),
+            entries,
+            age_seconds=120,
+        )
+        svc = _build_service(
+            str(tmp_path),
+            [100, 200],
+            pid_info={
+                100: ProcessInfo(tty="ttys001", ppid=1, comm="claude"),
+                200: ProcessInfo(tty="ttys002", ppid=1, comm="claude"),
+            },
+            pid_cwds={100: "/Users/dev/empty", 200: paired_cwd},
+            terminal_titles={
+                "/dev/ttys001": ("empty — ✳ claude", 1),
+                "/dev/ttys002": ("alpha — ✳ claude", 2),
+            },
+        )
+        try:
+            sessions = svc.detect()
+            assert [s.pid for s in sessions] == [200, 100]
+            assert sessions[1].last_activity == 0.0
+        finally:
+            for p in svc._test_patchers:
+                p.stop()
