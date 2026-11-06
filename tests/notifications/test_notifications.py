@@ -456,3 +456,43 @@ class TestNotifyFinished:
         assert 42 in svc._working_seen_pids
         self._poll(svc, [])
         assert 42 not in svc._working_seen_pids
+
+
+class TestAgentExclusion:
+    """Agent-team teammate sessions never notify."""
+
+    def _svc(self):
+        svc = NotificationService()
+        svc.last_notification_time = 0.0
+        svc._center = _mock_center()
+        return svc
+
+    def _poll(self, svc, sessions):
+        mock_cls, _ = _mock_notification_class()
+        with (
+            patch(f"{_MOD}.features.is_enabled", return_value=True),
+            patch(f"{_MOD}.features.get_facet", return_value="Glass"),
+            patch(f"{_MOD}.NSUserNotification", mock_cls),
+        ):
+            svc.notify_if_needed(sessions)
+
+    def test_agent_attention_never_notifies(self):
+        svc = self._svc()
+        agent = _make_session(status=SessionStatus.ATTENTION, agent_of_pid=1, prompt_text="Bash: ls")
+        self._poll(svc, [agent])
+        svc._center.deliverNotification_.assert_not_called()
+
+    def test_agent_just_finished_never_notifies(self):
+        svc = self._svc()
+        agent_working = _make_session(status=SessionStatus.WORKING, agent_of_pid=1)
+        self._poll(svc, [agent_working])
+        agent_finished = _make_session(status=SessionStatus.IDLE, agent_of_pid=1, just_finished=True)
+        self._poll(svc, [agent_finished])
+        svc._center.deliverNotification_.assert_not_called()
+
+    def test_principal_still_notifies_alongside_agent(self):
+        svc = self._svc()
+        agent = _make_session(pid=9, status=SessionStatus.ATTENTION, agent_of_pid=1, prompt_text="Bash: ls")
+        principal = _make_session(pid=1, status=SessionStatus.ATTENTION, prompt_text="Bash: ls")
+        self._poll(svc, [principal, agent])
+        assert svc._center.deliverNotification_.call_count == 1

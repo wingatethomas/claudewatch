@@ -73,6 +73,7 @@ class ClaudeSession:
     last_activity: float = 0.0  # mtime of the matched JSONL; 0.0 when unpaired
     permission_mode: str = ""  # latest permissionMode from this session's JSONL
     just_finished: bool = False  # auto-mode session gone idle within the finish window
+    agent_of_pid: int | None = None  # pid of the paired session this teammate works for
     worktree_repo: str = ""  # main repo name when cwd is a linked git worktree
     worktree_branch: str = ""  # branch checked out in that worktree
 
@@ -93,6 +94,19 @@ class ClaudeSession:
     @property
     def needs_attention(self) -> bool:
         return self.status == SessionStatus.ATTENTION
+
+    @property
+    def is_agent(self) -> bool:
+        return self.agent_of_pid is not None
+
+    @property
+    def agent_label(self) -> str:
+        """Nested teammate row: project + status word — the parent row carries the task text."""
+        _max_label = 50
+        label = f"⤷ {self.display_project} — {self.status.value}"
+        if len(label) > _max_label:
+            return label[: _max_label - 1] + "…"
+        return label
 
     @property
     def display_project(self) -> str:

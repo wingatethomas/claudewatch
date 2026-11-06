@@ -44,6 +44,32 @@ def sort_by_last_activity(sessions: list[ClaudeSession]) -> None:
     sessions.sort(key=lambda s: (-(s.last_activity // _ACTIVITY_BUCKET_SECONDS), s.pid))
 
 
+def link_agent_sessions(sessions: list[ClaudeSession], starts: dict[int, float]) -> None:
+    """Link teammate sessions to the parent session sharing their task.
+
+    Agent-team teammates are real CLI processes in their own Terminal tabs
+    carrying the parent's task text; depending on the Claude Code version they
+    may or may not have a JSONL of their own. The parent is the earliest-started
+    paired session in a same-task group — teammates always spawn after it.
+    """
+    groups: dict[str, list[ClaudeSession]] = {}
+    for s in sessions:
+        task = s.task_summary
+        if not task or task == "Claude Code":
+            continue
+        groups.setdefault(task, []).append(s)
+    for group in groups.values():
+        if len(group) == 1:
+            continue
+        paired = [t for t in group if t.session_id]
+        if not paired:
+            continue
+        parent = min(paired, key=lambda t: (starts.get(t.pid) or float("inf"), t.pid))
+        for s in group:
+            if s.pid != parent.pid:
+                s.agent_of_pid = parent.pid
+
+
 class DetectionService(BaseService):
     """Finds running Claude Code processes and builds session objects.
 
@@ -499,6 +525,8 @@ class DetectionService(BaseService):
                     session.last_activity = os.path.getmtime(jpath)
                 except OSError:
                     session.last_activity = 0.0
+        starts = {s.pid: self._process_service.get_start_time(s.pid) for s in sessions}
+        link_agent_sessions(sessions, starts)
         now = time.time()
         for session in sessions:
             session.just_finished = (
