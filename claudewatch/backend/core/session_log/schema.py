@@ -45,6 +45,15 @@ BOOKKEEPING_TYPES: frozenset[EntryType] = frozenset(
 )
 
 
+class PermissionMode(StrEnum):
+    """``permissionMode`` values on a permission-mode entry. Only AUTO never prompts."""
+
+    AUTO = "auto"
+    DEFAULT = "default"
+    PLAN = "plan"
+    ACCEPT_EDITS = "acceptEdits"
+
+
 class Subtype(StrEnum):
     """``system`` entry subtypes."""
 
@@ -59,5 +68,6 @@ class BlockType(StrEnum):
     TEXT = "text"
 
 
-# Single-value field name — no enum needed.
+# Single-value field names — no enum needed.
 FIELD_AI_TITLE = "aiTitle"
+FIELD_PERMISSION_MODE = "permissionMode"

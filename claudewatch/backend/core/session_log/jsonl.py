@@ -4,7 +4,7 @@ import json
 import os
 
 from claudewatch.backend.core.paths import CLAUDE_PROJECTS_DIR, cwd_to_proj_key
-from claudewatch.backend.core.session_log.schema import FIELD_AI_TITLE, EntryType
+from claudewatch.backend.core.session_log.schema import FIELD_AI_TITLE, FIELD_PERMISSION_MODE, EntryType
 
 
 def list_jsonls_in_cwd(cwd: str) -> list[str]:
@@ -135,3 +135,34 @@ def _latest_ai_title(lines: list[str]) -> str:
             if isinstance(title, str) and title:
                 return title
     return ""
+
+
+def latest_permission_mode(lines: list[str]) -> str:
+    """Return the most recent permissionMode among the given JSONL lines, or ""."""
+    needle = f'"{EntryType.PERMISSION_MODE}"'
+    for line in reversed(lines):
+        if needle not in line:
+            continue
+        try:
+            d = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if d.get("type") == EntryType.PERMISSION_MODE:
+            mode = d.get(FIELD_PERMISSION_MODE, "")
+            if isinstance(mode, str) and mode:
+                return mode
+    return ""
+
+
+def read_permission_mode_head(path: str, max_lines: int = 10) -> str:
+    """Return the permissionMode recorded near the top of the JSONL, or ""."""
+    head: list[str] = []
+    try:
+        with _open_nofollow(path, "r") as f:
+            for index, line in enumerate(f):
+                if index >= max_lines:
+                    break
+                head.append(line)
+    except OSError:
+        return ""
+    return latest_permission_mode(head)

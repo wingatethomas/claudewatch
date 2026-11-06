@@ -72,11 +72,12 @@ class MenuBuilder:
 
     def build(self, sessions: list[ClaudeSession]) -> None:  # noqa: PLR0912, PLR0915
         attention = [s for s in sessions if s.status == SessionStatus.ATTENTION]
+        finished = [s for s in sessions if s.status == SessionStatus.IDLE and s.just_finished]
         working = [s for s in sessions if s.status == SessionStatus.WORKING]
-        idle = [s for s in sessions if s.status == SessionStatus.IDLE]
+        idle = [s for s in sessions if s.status == SessionStatus.IDLE and not s.just_finished]
 
         # Menu bar icon — ✦ with colored dots for each state
-        status_icon = render_status_icon(attention, working, idle)
+        status_icon = render_status_icon(attention, working, finished + idle)
         if self._app._status_item is not None:
             self._app._status_item.setImage_(status_icon)
             self._app._status_item.setTitle_("")
@@ -196,7 +197,24 @@ class MenuBuilder:
                     rows.append(self._add_session_items(s, suffixes[s.pid], pinned=is_pinned))
                 self._sections.append(FilterSection(header=header, rows=rows))
 
-            if attention and (working or idle):
+            if attention and (finished or working or idle):
+                separator = NSMenuItem.separatorItem()
+                self._menu.addItem_(separator)
+                self._sections[-1].trailing_separator = separator
+
+            if finished:
+                header = disabled_item("✓ Just Finished")
+                header.setAttributedTitle_(
+                    make_header_title("✓ Just Finished", SessionStatus.IDLE, len(finished)),
+                )
+                self._menu.addItem_(header)
+                rows = []
+                for s in finished:
+                    is_pinned = bookmark_service.is_bookmarked(s.session_id, s.cwd)
+                    rows.append(self._add_session_items(s, suffixes[s.pid], pinned=is_pinned))
+                self._sections.append(FilterSection(header=header, rows=rows))
+
+            if finished and (working or idle):
                 separator = NSMenuItem.separatorItem()
                 self._menu.addItem_(separator)
                 self._sections[-1].trailing_separator = separator
