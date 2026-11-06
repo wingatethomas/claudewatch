@@ -152,6 +152,8 @@ class ClaudeWatchApp:
         # Pre-populate caches off the main thread so menu builds do no JSON I/O.
         _safe_bg(self._bookmark_service.warm)
         _safe_bg(self._history_service.warm)
+        # Sessions that ended while ClaudeWatch wasn't running never fired record().
+        _safe_bg(self._history_service.backfill_recent)
         # Prune old analytics rows once per launch — keeps the SQLite DB bounded.
         _safe_bg(self._analytics_service.prune_old_data)
 
@@ -222,6 +224,7 @@ class ClaudeWatchApp:
                     cwd=prev.cwd,
                     model=self._usage_service.get_model(prev.cwd, prev.session_id),
                     host_app=prev.host_app.value,
+                    permission_mode=prev.permission_mode,
                 )
 
         # No status transition logging — it's polling noise.
@@ -346,6 +349,7 @@ class ClaudeWatchApp:
                 f"{s.pid}:{s.status.value}:{int(s.just_finished)}:{s.agent_of_pid or 0}:"
                 f"{s.project}:{s.task_summary}:{s.last_output}:{cached}"
             )
+        parts.append("ended:" + ",".join(e.session_id for e in self._history_service.recently_finished()))
         return "|".join(parts)
 
     def update_display(self) -> None:

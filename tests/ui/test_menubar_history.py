@@ -45,3 +45,38 @@ class TestHistoryRecording:
         app = _make_app({1: _session(1, "mainproj", session_id="s1")})
         ClaudeWatchApp._log_changes(app)
         app._history_service.record.assert_called_once()
+
+
+class TestHistoryPermissionMode:
+    def test_ended_session_records_permission_mode(self) -> None:
+        session = _session(1, "mainproj", session_id="s1")
+        session.permission_mode = "auto"
+        app = _make_app({1: session})
+        ClaudeWatchApp._log_changes(app)
+        assert app._history_service.record.call_args.kwargs["permission_mode"] == "auto"
+
+
+class TestMenuKeyEndedSet:
+    def _key(self, ended_sids: list[str]) -> str:
+        from claudewatch.backend.core.dto import HistoryEntryDTO
+
+        app = MagicMock()
+        app.sessions = []
+        app._summary_service.get_cached.return_value = ""
+        app._history_service.recently_finished.return_value = [
+            HistoryEntryDTO(
+                session_id=sid,
+                project="p",
+                cwd="/tmp/p",
+                model="",
+                host_app="Terminal",
+                ended_at="2026-11-06T12:00:00+00:00",
+                permission_mode="auto",
+            )
+            for sid in ended_sids
+        ]
+        return ClaudeWatchApp._menu_key(app)
+
+    def test_key_changes_with_ended_set(self) -> None:
+        assert self._key(["a"]) != self._key(["a", "b"])
+        assert self._key(["a"]) == self._key(["a"])

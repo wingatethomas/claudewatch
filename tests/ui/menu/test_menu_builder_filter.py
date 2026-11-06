@@ -45,6 +45,7 @@ def _make_app() -> MagicMock:
     app._bookmark_service.is_bookmarked.return_value = False
     app._bookmark_service.get_all.return_value = []
     app._history_service.get_all.return_value = []
+    app._history_service.recently_finished.return_value = []
     app._analytics_service.agents_for_session.return_value = []
     app._usage_service.get_tokens.return_value = TokenUsageDTO(input=0, output=0, cache_create=0, cache_read=0)
     app._usage_service.get_model.return_value = ""
@@ -335,3 +336,70 @@ class TestRecentsSection:
         builder.set_query("revamp")
         recents = self._recents_section(builder)
         assert not recents.rows[0].item.isHidden()
+
+
+class TestEndedJustFinished:
+    """Ended auto-mode sessions render in the Just Finished section from history."""
+
+    def _ended_entry(self, sid: str = "e1", project: str = "autoproj") -> HistoryEntryDTO:
+        return HistoryEntryDTO(
+            session_id=sid,
+            project=project,
+            cwd=f"/tmp/{project}",
+            model="",
+            host_app="Terminal",
+            ended_at=datetime.now(tz=UTC).isoformat(),
+            permission_mode="auto",
+        )
+
+    def _build(self, sessions, ended):
+        builder, menu, app = _make_builder()
+        app._history_service.recently_finished.return_value = ended
+        with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
+            builder.build(sessions)
+        return builder, menu, app
+
+    def test_ended_entry_renders_visible_in_just_finished(self) -> None:
+        builder, menu, _ = self._build(_make_sessions(), [self._ended_entry()])
+        titles = [str(item.title()) for item in menu.itemArray()]
+        assert any(t.startswith("✓ Just Finished") for t in titles)
+        header_title = next(
+            str(s.header.attributedTitle().string())
+            for s in builder._sections
+            if str(s.header.title()).startswith("✓ Just Finished")
+        )
+        assert "(1)" in header_title
+        row = next(s.rows[0] for s in builder._sections if str(s.header.title()).startswith("✓ Just Finished"))
+        assert not row.item.isHidden()
+        assert "⏱ autoproj" in str(row.item.title())
+
+    def test_section_renders_with_zero_live_sessions(self) -> None:
+        _, menu, _ = self._build([], [self._ended_entry()])
+        titles = [str(item.title()) for item in menu.itemArray()]
+        assert any(t.startswith("✓ Just Finished") for t in titles)
+        assert not any("No running Claude sessions" in t for t in titles)
+
+    def test_active_session_excluded_from_ended(self) -> None:
+        sessions = _make_sessions()
+        ended = [self._ended_entry(sid=sessions[0].session_id)]
+        builder, menu, _ = self._build(sessions, ended)
+        titles = [str(item.title()) for item in menu.itemArray()]
+        assert not any(t.startswith("✓ Just Finished") for t in titles)
+
+    def test_ended_rows_participate_in_search(self) -> None:
+        builder, _, _ = self._build(_make_sessions(), [self._ended_entry()])
+        finished_section = next(s for s in builder._sections if str(s.header.title()).startswith("✓ Just Finished"))
+        builder.set_query("zzz-no-match")
+        assert finished_section.rows[0].item.isHidden()
+        builder.set_query("autoproj")
+        assert not finished_section.rows[0].item.isHidden()
+
+    def test_no_duplicate_in_hidden_recents(self) -> None:
+        entry = self._ended_entry()
+        builder, _, app = self._build(_make_sessions(), [entry])
+        app._history_service.get_all.return_value = [entry]
+        app._menu_key.return_value = "key-2"
+        with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
+            builder.build(_make_sessions())
+        recents_sections = [s for s in builder._sections if s.only_when_searching]
+        assert recents_sections == []

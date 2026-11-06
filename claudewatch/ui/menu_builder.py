@@ -170,12 +170,17 @@ class MenuBuilder:
                 continue
             recent_entries.append(entry)
 
+        # Ended auto sessions still inside the just-finished window — survive restarts
+        # and closed terminals via history, rendered as resumable rows.
+        ended_finished = [e for e in self._app._history_service.recently_finished() if e.session_id not in active_sids]
+        ended_sids = {e.session_id for e in ended_finished}
+
         # Search covers active sessions and recents, so it stays even with no sessions.
-        searchable = bool(top_level or recent_entries)
+        searchable = bool(top_level or recent_entries or ended_finished)
         if searchable:
             self._menu.addItem_(self._search_item)
 
-        if not top_level:
+        if not top_level and not ended_finished:
             if self._app._has_polled:
                 self._menu.addItem_(disabled_item("No running Claude sessions"))
             else:
@@ -215,15 +220,15 @@ class MenuBuilder:
                     )
                 self._sections.append(FilterSection(header=header, rows=rows))
 
-            if attention and (finished or working or idle):
+            if attention and (finished or ended_finished or working or idle):
                 separator = NSMenuItem.separatorItem()
                 self._menu.addItem_(separator)
                 self._sections[-1].trailing_separator = separator
 
-            if finished:
+            if finished or ended_finished:
                 header = disabled_item("✓ Just Finished")
                 header.setAttributedTitle_(
-                    make_header_title("✓ Just Finished", SessionStatus.IDLE, len(finished)),
+                    make_header_title("✓ Just Finished", SessionStatus.IDLE, len(finished) + len(ended_finished)),
                 )
                 self._menu.addItem_(header)
                 rows = []
@@ -237,9 +242,11 @@ class MenuBuilder:
                             agents=agents_by_parent.get(s.pid, []),
                         )
                     )
+                for entry in ended_finished:
+                    rows.append(self._add_recent_session_items(entry, hidden=False))
                 self._sections.append(FilterSection(header=header, rows=rows))
 
-            if finished and (working or idle):
+            if (finished or ended_finished) and (working or idle):
                 separator = NSMenuItem.separatorItem()
                 self._menu.addItem_(separator)
                 self._sections[-1].trailing_separator = separator
@@ -293,7 +300,8 @@ class MenuBuilder:
             self._menu.addItem_(self._no_match_item)
 
         # Hidden recents section — revealed by the filter when a search matches them
-        if recent_entries:
+        searchable_recents = [e for e in recent_entries if e.session_id not in ended_sids]
+        if searchable_recents:
             recents_separator = NSMenuItem.separatorItem()
             recents_separator.setHidden_(True)
             self._menu.addItem_(recents_separator)
@@ -301,7 +309,7 @@ class MenuBuilder:
             recents_header.setHidden_(True)
             self._menu.addItem_(recents_header)
             recent_rows = []
-            for entry in recent_entries:
+            for entry in searchable_recents:
                 recent_rows.append(self._add_recent_session_items(entry))
             self._sections.append(
                 FilterSection(
@@ -456,8 +464,8 @@ class MenuBuilder:
         item.setSubmenu_(item_sub)
         return item
 
-    def _add_recent_session_items(self, entry: HistoryEntryDTO) -> FilterRow:
-        """Add a recent session styled like an active row; hidden until a search matches it."""
+    def _add_recent_session_items(self, entry: HistoryEntryDTO, *, hidden: bool = True) -> FilterRow:
+        """Add an ended session styled like an active row; hidden rows wait for a search match."""
         item_sub, cached = self._recent_submenu_and_summary(entry)
         cached_title = self._app._summary_service.get_cached(entry.cwd, entry.session_id or "") or ""
         title = cached_title.splitlines()[0].strip() if cached_title else ""
@@ -471,7 +479,7 @@ class MenuBuilder:
         if icon:
             item.setImage_(icon)
         item.setSubmenu_(item_sub)
-        item.setHidden_(True)
+        item.setHidden_(hidden)
         self._menu.addItem_(item)
         model = model_display_name(entry.model)
         oneliner = cached.replace("\n", " ").strip() if cached else ""
@@ -480,7 +488,7 @@ class MenuBuilder:
         if detail_parts:
             detail_text = truncate(" · ".join(detail_parts), SESSION_DETAIL_LIMIT, word_boundary=True)
             detail_item = disabled_item(f"      {detail_text}")
-            detail_item.setHidden_(True)
+            detail_item.setHidden_(hidden)
             self._menu.addItem_(detail_item)
         return FilterRow(
             item=item,

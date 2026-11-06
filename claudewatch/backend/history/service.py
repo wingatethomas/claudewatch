@@ -1,9 +1,12 @@
 """HistoryService — facade over the history repository for UI consumption."""
 
 import threading
+from datetime import UTC, datetime, timedelta
 
 from claudewatch.backend.core.dto import HistoryEntryDTO
+from claudewatch.backend.core.models import JUST_FINISHED_WINDOW
 from claudewatch.backend.core.service import BaseService
+from claudewatch.backend.core.session_log.schema import PermissionMode
 from claudewatch.backend.core.session_log.service import SessionLogService
 from claudewatch.backend.history import repository as history_repo
 
@@ -39,10 +42,41 @@ class HistoryService(BaseService):
             self._invalidate()
         return len(stale)
 
-    def record(self, session_id: str, project: str, cwd: str, model: str, host_app: str) -> None:
+    def record(  # noqa: PLR0913
+        self,
+        session_id: str,
+        project: str,
+        cwd: str,
+        model: str,
+        host_app: str,
+        permission_mode: str = "",
+    ) -> None:
         """Record a session when it ends."""
-        history_repo.record_session(session_id, project, cwd, model, host_app)
+        history_repo.record_session(session_id, project, cwd, model, host_app, permission_mode)
         self._invalidate()
+
+    def backfill_recent(self, window_seconds: float = JUST_FINISHED_WINDOW) -> None:
+        """Pick up sessions that ended while ClaudeWatch wasn't running."""
+        if history_repo.backfill_recent(window_seconds):
+            self._invalidate()
+
+    def recently_finished(self, now: datetime | None = None) -> list[HistoryEntryDTO]:
+        """Ended auto-mode sessions within the just-finished window, newest first."""
+        current = now or datetime.now(tz=UTC)
+        cutoff = current - timedelta(seconds=JUST_FINISHED_WINDOW)
+        finished: list[HistoryEntryDTO] = []
+        for entry in self.get_all():
+            if entry.permission_mode != PermissionMode.AUTO or not entry.session_id:
+                continue
+            try:
+                ended = datetime.fromisoformat(entry.ended_at)
+            except (ValueError, TypeError):
+                continue
+            if ended.tzinfo is None:
+                ended = ended.replace(tzinfo=UTC)
+            if ended >= cutoff:
+                finished.append(entry)
+        return finished
 
     def get_all(self) -> list[HistoryEntryDTO]:
         """Return all history entries as DTOs, newest first."""
