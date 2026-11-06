@@ -38,6 +38,7 @@ class HistoryEntryDTO(BaseDTO):
     model: str
     host_app: str
     ended_at: str
+    permission_mode: str = ""
 
 
 @dataclass(frozen=True)

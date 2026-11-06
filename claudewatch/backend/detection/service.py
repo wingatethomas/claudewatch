@@ -8,6 +8,7 @@ from collections.abc import Callable
 
 from claudewatch.backend.core.helpers import run_applescript
 from claudewatch.backend.core.models import (
+    JUST_FINISHED_WINDOW,
     ClaudeSession,
     HostApp,
     SessionStatus,
@@ -36,7 +37,6 @@ _BIRTHTIME_SLACK = 5.0  # clock slack when comparing file birth to process start
 _JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
 _AI_TITLE_PATH_CACHE_MAX = 512  # _ai_title_by_path size that triggers dead-path pruning
 _ACTIVITY_BUCKET_SECONDS = 30  # recency-sort granularity — damps row flip-flop between streaming sessions
-_JUST_FINISHED_WINDOW = 3600  # seconds an auto-mode session counts as just finished after going idle
 
 
 def sort_by_last_activity(sessions: list[ClaudeSession]) -> None:
@@ -44,13 +44,16 @@ def sort_by_last_activity(sessions: list[ClaudeSession]) -> None:
     sessions.sort(key=lambda s: (-(s.last_activity // _ACTIVITY_BUCKET_SECONDS), s.pid))
 
 
-def link_agent_sessions(sessions: list[ClaudeSession], starts: dict[int, float]) -> None:
+def link_agent_sessions(sessions: list[ClaudeSession], starts: dict[int, float], now: float) -> None:
     """Link teammate sessions to the parent session sharing their task.
 
     Agent-team teammates are real CLI processes in their own Terminal tabs
     carrying the parent's task text; depending on the Claude Code version they
     may or may not have a JSONL of their own. The parent is the earliest-started
     paired session in a same-task group — teammates always spawn after it.
+    Nesting represents live coordination: only hot members link (working, or
+    active within the just-finished window), so cold leftovers and independent
+    sessions that reuse a task title stay plain top-level rows.
     """
     groups: dict[str, list[ClaudeSession]] = {}
     for s in sessions:
@@ -66,7 +69,12 @@ def link_agent_sessions(sessions: list[ClaudeSession], starts: dict[int, float])
             continue
         parent = min(paired, key=lambda t: (starts.get(t.pid) or float("inf"), t.pid))
         for s in group:
-            if s.pid != parent.pid:
+            if s.pid == parent.pid:
+                continue
+            hot = s.status == SessionStatus.WORKING or (
+                s.last_activity > 0 and now - s.last_activity < JUST_FINISHED_WINDOW
+            )
+            if hot:
                 s.agent_of_pid = parent.pid
 
 
@@ -525,15 +533,15 @@ class DetectionService(BaseService):
                     session.last_activity = os.path.getmtime(jpath)
                 except OSError:
                     session.last_activity = 0.0
-        starts = {s.pid: self._process_service.get_start_time(s.pid) for s in sessions}
-        link_agent_sessions(sessions, starts)
         now = time.time()
+        starts = {s.pid: self._process_service.get_start_time(s.pid) for s in sessions}
+        link_agent_sessions(sessions, starts, now)
         for session in sessions:
             session.just_finished = (
                 session.status == SessionStatus.IDLE
                 and session.permission_mode == PermissionMode.AUTO
                 and session.last_activity > 0
-                and now - session.last_activity < _JUST_FINISHED_WINDOW
+                and now - session.last_activity < JUST_FINISHED_WINDOW
             )
         sort_by_last_activity(sessions)
         return sessions
