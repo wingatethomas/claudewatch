@@ -44,24 +44,30 @@ def sort_by_last_activity(sessions: list[ClaudeSession]) -> None:
     sessions.sort(key=lambda s: (-(s.last_activity // _ACTIVITY_BUCKET_SECONDS), s.pid))
 
 
-def link_agent_sessions(sessions: list[ClaudeSession]) -> None:
-    """Link unpaired teammate sessions to the paired session sharing their task.
+def link_agent_sessions(sessions: list[ClaudeSession], starts: dict[int, float]) -> None:
+    """Link teammate sessions to the parent session sharing their task.
 
-    Agent-team teammates are real CLI processes in their own Terminal tabs with
-    no JSONL of their own; the only tie to the parent is the task text in the
-    window title.
+    Agent-team teammates are real CLI processes in their own Terminal tabs
+    carrying the parent's task text; depending on the Claude Code version they
+    may or may not have a JSONL of their own. The parent is the earliest-started
+    paired session in a same-task group — teammates always spawn after it.
     """
-    paired = [t for t in sessions if t.session_id]
+    groups: dict[str, list[ClaudeSession]] = {}
     for s in sessions:
-        if s.session_id:
-            continue
         task = s.task_summary
         if not task or task == "Claude Code":
             continue
-        candidates = [t for t in paired if t.pid != s.pid and t.task_summary == task]
-        if candidates:
-            parent = max(candidates, key=lambda t: (t.last_activity, -t.pid))
-            s.agent_of_pid = parent.pid
+        groups.setdefault(task, []).append(s)
+    for group in groups.values():
+        if len(group) == 1:
+            continue
+        paired = [t for t in group if t.session_id]
+        if not paired:
+            continue
+        parent = min(paired, key=lambda t: (starts.get(t.pid) or float("inf"), t.pid))
+        for s in group:
+            if s.pid != parent.pid:
+                s.agent_of_pid = parent.pid
 
 
 class DetectionService(BaseService):
@@ -519,7 +525,8 @@ class DetectionService(BaseService):
                     session.last_activity = os.path.getmtime(jpath)
                 except OSError:
                     session.last_activity = 0.0
-        link_agent_sessions(sessions)
+        starts = {s.pid: self._process_service.get_start_time(s.pid) for s in sessions}
+        link_agent_sessions(sessions, starts)
         now = time.time()
         for session in sessions:
             session.just_finished = (

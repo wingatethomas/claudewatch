@@ -37,55 +37,73 @@ class TestLinkAgentSessions:
     def test_unpaired_title_match_links_to_parent(self) -> None:
         parent = _parent()
         agent = _teammate()
-        link_agent_sessions([parent, agent])
+        link_agent_sessions([parent, agent], {parent.pid: 100.0, agent.pid: 200.0})
         assert agent.agent_of_pid == parent.pid
         assert agent.is_agent
         assert parent.agent_of_pid is None
 
-    def test_paired_sessions_never_marked(self) -> None:
-        first = _parent(pid=1)
-        second = _parent(pid=2)
-        link_agent_sessions([first, second])
+    def test_paired_teammate_nests_under_earlier_started(self) -> None:
+        parent = _parent(pid=1)
+        teammate = _parent(pid=2)
+        link_agent_sessions([parent, teammate], {1: 100.0, 2: 500.0})
+        assert parent.agent_of_pid is None
+        assert teammate.agent_of_pid == parent.pid
+
+    def test_paired_sessions_with_distinct_tasks_never_marked(self) -> None:
+        first = _parent(pid=1, task="task one")
+        second = _parent(pid=2, task="task two")
+        link_agent_sessions([first, second], {1: 100.0, 2: 200.0})
         assert first.agent_of_pid is None
         assert second.agent_of_pid is None
 
     def test_different_task_not_linked(self) -> None:
         parent = _parent()
         agent = _teammate(task="a completely different task")
-        link_agent_sessions([parent, agent])
+        link_agent_sessions([parent, agent], {parent.pid: 100.0, agent.pid: 200.0})
         assert agent.agent_of_pid is None
 
     def test_no_paired_candidate_stays_plain(self) -> None:
         agent = _teammate()
-        link_agent_sessions([agent])
+        other = _teammate(pid=10)
+        link_agent_sessions([agent, other], {agent.pid: 100.0, other.pid: 200.0})
         assert agent.agent_of_pid is None
+        assert other.agent_of_pid is None
 
     def test_generic_title_never_links(self) -> None:
         parent = _parent(task="Claude Code")
         agent = _teammate(task="Claude Code")
-        link_agent_sessions([parent, agent])
+        link_agent_sessions([parent, agent], {parent.pid: 100.0, agent.pid: 200.0})
         assert agent.agent_of_pid is None
 
     def test_empty_title_never_links(self) -> None:
         parent = _parent()
         agent = _teammate()
         agent.window_title = ""
-        link_agent_sessions([parent, agent])
+        link_agent_sessions([parent, agent], {parent.pid: 100.0, agent.pid: 200.0})
         assert agent.agent_of_pid is None
 
-    def test_most_recent_parent_wins(self) -> None:
-        stale = _parent(pid=1, last_activity=100.0)
-        fresh = _parent(pid=2, last_activity=500.0)
+    def test_earliest_started_parent_wins(self) -> None:
+        late = _parent(pid=1)
+        early = _parent(pid=2)
         agent = _teammate()
-        link_agent_sessions([stale, fresh, agent])
-        assert agent.agent_of_pid == fresh.pid
+        link_agent_sessions([late, early, agent], {1: 500.0, 2: 100.0, agent.pid: 600.0})
+        assert agent.agent_of_pid == early.pid
+        assert late.agent_of_pid == early.pid
+        assert early.agent_of_pid is None
 
-    def test_pid_breaks_activity_tie(self) -> None:
-        low = _parent(pid=1, last_activity=100.0)
-        high = _parent(pid=2, last_activity=100.0)
+    def test_pid_breaks_start_tie(self) -> None:
+        low = _parent(pid=1)
+        high = _parent(pid=2)
         agent = _teammate()
-        link_agent_sessions([low, high, agent])
+        link_agent_sessions([low, high, agent], {1: 100.0, 2: 100.0, agent.pid: 200.0})
         assert agent.agent_of_pid == low.pid
+
+    def test_unknown_start_times_fall_back_to_pid(self) -> None:
+        low = _parent(pid=1)
+        high = _parent(pid=2)
+        link_agent_sessions([low, high], {1: 0.0, 2: 0.0})
+        assert low.agent_of_pid is None
+        assert high.agent_of_pid == low.pid
 
 
 class TestDetectLinksAgents:
