@@ -35,13 +35,18 @@ class TestTruncateTitle:
     def test_short_title_unchanged(self) -> None:
         assert _truncate_title("Short") == "Short"
 
-    def test_long_title_truncated_at_word_boundary(self) -> None:
-        result = _truncate_title("This is a very long title that should be truncated")
-        assert len(result) <= 30
-        assert not result.endswith(" ")
+    def test_typical_ai_title_not_truncated(self) -> None:
+        title = "Review Jamf logs routing to the archive bucket for compliance"
+        assert _truncate_title(title) == title
+
+    def test_long_title_truncated_at_word_boundary_with_ellipsis(self) -> None:
+        result = _truncate_title("word " * 30)
+        assert len(result) <= 81
+        assert result.endswith("…")
+        assert not result.removesuffix("…").endswith(" ")
 
     def test_title_at_exact_limit(self) -> None:
-        title = "A" * 30
+        title = "A" * 80
         assert _truncate_title(title) == title
 
 
