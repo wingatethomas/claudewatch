@@ -29,6 +29,7 @@ ignore = [
     "E501",    # line too long (handled by formatter)
     "S603",    # subprocess call with untrusted input (PIDs are validated ints)
     "S607",    # partial executable path (we use pgrep, ps, etc.)
+    "PLR0917", # positional-arg budget — builder/repository functions take positional layout args by design
 ]
 
 [lint.per-file-ignores]
