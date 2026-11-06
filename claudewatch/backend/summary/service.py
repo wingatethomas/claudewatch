@@ -24,20 +24,20 @@ from claudewatch.backend.summary.repository import SummaryRepository
 log = logging.getLogger("claudewatch")
 
 _REFRESH_INTERVAL = 60  # seconds between background refresh cycles
-_MAX_TITLE_LEN = 30
+_MAX_TITLE_LEN = 80  # caps recap-derived fallback titles; real aiTitles rarely reach this
 _TAIL_BYTES = 200000
 _NO_RECAP_MAX = 512  # prune the no-recap skip cache past this size
 
 
 def _truncate_title(title: str) -> str:
-    """Truncate a title to _MAX_TITLE_LEN, preferring word boundaries."""
+    """Truncate a title to _MAX_TITLE_LEN, preferring word boundaries, marking the cut."""
     if len(title) <= _MAX_TITLE_LEN:
         return title
     truncated = title[:_MAX_TITLE_LEN]
     last_space = truncated.rfind(" ")
     if last_space > _MAX_TITLE_LEN // 2:
         truncated = truncated[:last_space]
-    return truncated
+    return truncated + "…"
 
 
 def _find_last_recap(lines: list[str]) -> str | None:
