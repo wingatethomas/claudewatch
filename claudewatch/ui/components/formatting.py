@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 BOOKMARK_NOTE_LIMIT = 26  # 25 note chars + ellipsis
 SESSION_DETAIL_LIMIT = 55
-SUMMARY_TITLE_LIMIT = 50
+SUMMARY_TITLE_LIMIT = 80
 
 
 def relative_time(iso_str: str) -> str:  # noqa: PLR0911
