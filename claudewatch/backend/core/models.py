@@ -52,6 +52,8 @@ STATUS_INDICATOR = {
     SessionStatus.ATTENTION: "⚠",
 }
 
+JUST_FINISHED_WINDOW = 3600  # seconds an auto-mode session counts as just finished after going idle
+
 
 @dataclass
 class ClaudeSession:
