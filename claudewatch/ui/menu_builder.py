@@ -170,13 +170,17 @@ class MenuBuilder:
                 continue
             recent_entries.append(entry)
 
+        # Search covers active sessions and recents, so it stays even with no sessions.
+        searchable = bool(top_level or recent_entries)
+        if searchable:
+            self._menu.addItem_(self._search_item)
+
         if not top_level:
             if self._app._has_polled:
                 self._menu.addItem_(disabled_item("No running Claude sessions"))
             else:
                 self._menu.addItem_(disabled_item("Scanning for Claude sessions…"))
         else:
-            self._menu.addItem_(self._search_item)
             # Build suffix map to disambiguate duplicate labels
             seen_labels: dict[str, int] = {}
             suffixes: dict[int, str] = {}
@@ -283,29 +287,30 @@ class MenuBuilder:
                     )
                 self._sections.append(FilterSection(header=header, rows=rows))
 
+        if searchable:
             self._no_match_item = disabled_item("No matching sessions")
             self._no_match_item.setHidden_(True)
             self._menu.addItem_(self._no_match_item)
 
-            # Hidden recents section — revealed by the filter when a search matches them
-            if recent_entries:
-                recents_separator = NSMenuItem.separatorItem()
-                recents_separator.setHidden_(True)
-                self._menu.addItem_(recents_separator)
-                recents_header = disabled_item("⏱ Recent")
-                recents_header.setHidden_(True)
-                self._menu.addItem_(recents_header)
-                recent_rows = []
-                for entry in recent_entries:
-                    recent_rows.append(self._add_recent_session_items(entry))
-                self._sections.append(
-                    FilterSection(
-                        header=recents_header,
-                        rows=recent_rows,
-                        leading_separator=recents_separator,
-                        only_when_searching=True,
-                    )
+        # Hidden recents section — revealed by the filter when a search matches them
+        if recent_entries:
+            recents_separator = NSMenuItem.separatorItem()
+            recents_separator.setHidden_(True)
+            self._menu.addItem_(recents_separator)
+            recents_header = disabled_item("⏱ Recent")
+            recents_header.setHidden_(True)
+            self._menu.addItem_(recents_header)
+            recent_rows = []
+            for entry in recent_entries:
+                recent_rows.append(self._add_recent_session_items(entry))
+            self._sections.append(
+                FilterSection(
+                    header=recents_header,
+                    rows=recent_rows,
+                    leading_separator=recents_separator,
+                    only_when_searching=True,
                 )
+            )
 
         # Bookmarked sessions that are NOT currently active (respects feature toggle)
         pins = self._app._bookmark_service.get_all() if features.is_enabled(FeatureKey.BOOKMARKS) else []

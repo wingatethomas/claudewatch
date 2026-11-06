@@ -292,6 +292,30 @@ class TestRecentsSection:
         assert recents.header.isHidden()
         assert all(row.item.isHidden() for row in recents.rows)
 
+    def test_search_available_with_no_sessions_but_recents(self) -> None:
+        builder, menu, app = _make_builder()
+        app._history_service.get_all.return_value = [_make_history_entry()]
+        with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
+            builder.build([])
+        assert builder._search_item in list(menu.itemArray())
+        titles = [str(item.title()) for item in menu.itemArray()]
+        assert any("No running Claude sessions" in t for t in titles)
+        builder.set_query("gamma")
+        recents = builder._sections[-1]
+        assert not recents.header.isHidden()
+        assert not recents.rows[0].item.isHidden()
+
+    def test_no_match_shown_with_no_sessions(self) -> None:
+        builder, _, app = _make_builder()
+        app._history_service.get_all.return_value = [_make_history_entry()]
+        with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
+            builder.build([])
+        builder.set_query("zzz-no-match")
+        assert builder._no_match_item is not None
+        assert not builder._no_match_item.isHidden()
+        builder.clear_filter()
+        assert builder._no_match_item.isHidden()
+
     def test_recent_submenu_item_still_present(self) -> None:
         _, menu, _ = self._build_with_recents()
         titles = [str(item.title()) for item in menu.itemArray()]
