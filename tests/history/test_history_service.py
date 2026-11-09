@@ -15,7 +15,7 @@ class TestHistoryService:
     @patch("claudewatch.backend.history.service.history_repo")
     def test_record_delegates_to_repo(self, mock_repo):
         self.svc.record("sid-1", "myproject", "/tmp/cwd", "opus-4", "Terminal")
-        mock_repo.record_session.assert_called_once_with("sid-1", "myproject", "/tmp/cwd", "opus-4", "Terminal")
+        mock_repo.record_session.assert_called_once_with("sid-1", "myproject", "/tmp/cwd", "opus-4", "Terminal", "", "")
 
     @patch("claudewatch.backend.history.service.history_repo")
     def test_get_all_returns_history_entry_dtos(self, mock_repo):
@@ -128,3 +128,65 @@ class TestHistoryService:
             raise AssertionError("Expected FrozenInstanceError")
         except AttributeError:
             pass
+
+
+class TestRecentlyFinished:
+    """recently_finished filters ended auto sessions by window."""
+
+    def setup_method(self) -> None:
+        self.svc = HistoryService()
+
+    def _entry(self, sid: str, ended_at: str, mode: str = "auto") -> HistoryEntryDTO:
+        return HistoryEntryDTO(
+            session_id=sid,
+            project="p",
+            cwd="/tmp/p",
+            model="m",
+            host_app="Terminal",
+            ended_at=ended_at,
+            permission_mode=mode,
+        )
+
+    @patch("claudewatch.backend.history.service.history_repo")
+    def test_within_window_included(self, mock_repo):
+        from datetime import UTC, datetime, timedelta
+
+        now = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
+        fresh = self._entry("s1", (now - timedelta(minutes=10)).isoformat())
+        stale = self._entry("s2", (now - timedelta(hours=2)).isoformat())
+        mock_repo.get_history.return_value = [fresh, stale]
+        result = self.svc.recently_finished(now=now)
+        assert [e.session_id for e in result] == ["s1"]
+
+    @patch("claudewatch.backend.history.service.history_repo")
+    def test_non_auto_excluded(self, mock_repo):
+        from datetime import UTC, datetime, timedelta
+
+        now = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
+        default = self._entry("s1", (now - timedelta(minutes=10)).isoformat(), mode="default")
+        legacy = self._entry("s2", (now - timedelta(minutes=10)).isoformat(), mode="")
+        mock_repo.get_history.return_value = [default, legacy]
+        assert self.svc.recently_finished(now=now) == []
+
+    @patch("claudewatch.backend.history.service.history_repo")
+    def test_bad_timestamp_and_missing_sid_tolerated(self, mock_repo):
+        from datetime import UTC, datetime
+
+        now = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
+        bad_ts = self._entry("s1", "not-a-date")
+        no_sid = self._entry("", now.isoformat())
+        mock_repo.get_history.return_value = [bad_ts, no_sid]
+        assert self.svc.recently_finished(now=now) == []
+
+    @patch("claudewatch.backend.history.service.history_repo")
+    def test_backfill_invalidates_cache_only_on_change(self, mock_repo):
+        mock_repo.get_history.return_value = []
+        mock_repo.backfill_recent.return_value = 0
+        self.svc.get_all()
+        self.svc.backfill_recent()
+        self.svc.get_all()
+        assert mock_repo.get_history.call_count == 1
+        mock_repo.backfill_recent.return_value = 2
+        self.svc.backfill_recent()
+        self.svc.get_all()
+        assert mock_repo.get_history.call_count == 2
