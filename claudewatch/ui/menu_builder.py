@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from claudewatch.ui.menubar import ClaudeWatchApp
 
 _RECENT_LABEL_LIMIT = 50
+_ENDED_FINISHED_LIMIT = 5
 
 
 class MenuBuilder:
@@ -172,7 +173,8 @@ class MenuBuilder:
 
         # Ended auto sessions still inside the just-finished window — survive restarts
         # and closed terminals via history, rendered as resumable rows.
-        ended_finished = [e for e in self._app._history_service.recently_finished() if e.session_id not in active_sids]
+        ended_finished = [e for e in self._app._recently_finished if e.session_id not in active_sids]
+        ended_finished = ended_finished[:_ENDED_FINISHED_LIMIT]
         ended_sids = {e.session_id for e in ended_finished}
 
         # Search covers active sessions and recents, so it stays even with no sessions.

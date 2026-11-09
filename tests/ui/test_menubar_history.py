@@ -63,7 +63,7 @@ class TestMenuKeyEndedSet:
         app = MagicMock()
         app.sessions = []
         app._summary_service.get_cached.return_value = ""
-        app._history_service.recently_finished.return_value = [
+        app._recently_finished = [
             HistoryEntryDTO(
                 session_id=sid,
                 project="p",
@@ -80,3 +80,19 @@ class TestMenuKeyEndedSet:
     def test_key_changes_with_ended_set(self) -> None:
         assert self._key(["a"]) != self._key(["a", "b"])
         assert self._key(["a"]) == self._key(["a"])
+
+
+class TestEndedAtFromLastActivity:
+    def test_ended_at_uses_last_activity_when_known(self) -> None:
+        session = _session(1, "mainproj", session_id="s1")
+        session.last_activity = 1_700_000_000.0
+        app = _make_app({1: session})
+        ClaudeWatchApp._log_changes(app)
+        ended_at = app._history_service.record.call_args.kwargs["ended_at"]
+        assert ended_at.startswith("2023-11-14")
+
+    def test_ended_at_empty_when_activity_unknown(self) -> None:
+        session = _session(1, "mainproj", session_id="s1")
+        app = _make_app({1: session})
+        ClaudeWatchApp._log_changes(app)
+        assert app._history_service.record.call_args.kwargs["ended_at"] == ""

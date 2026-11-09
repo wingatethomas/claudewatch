@@ -45,7 +45,7 @@ def _make_app() -> MagicMock:
     app._bookmark_service.is_bookmarked.return_value = False
     app._bookmark_service.get_all.return_value = []
     app._history_service.get_all.return_value = []
-    app._history_service.recently_finished.return_value = []
+    app._recently_finished = []
     app._analytics_service.agents_for_session.return_value = []
     app._usage_service.get_tokens.return_value = TokenUsageDTO(input=0, output=0, cache_create=0, cache_read=0)
     app._usage_service.get_model.return_value = ""
@@ -354,7 +354,7 @@ class TestEndedJustFinished:
 
     def _build(self, sessions, ended):
         builder, menu, app = _make_builder()
-        app._history_service.recently_finished.return_value = ended
+        app._recently_finished = ended
         with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
             builder.build(sessions)
         return builder, menu, app
@@ -403,3 +403,25 @@ class TestEndedJustFinished:
             builder.build(_make_sessions())
         recents_sections = [s for s in builder._sections if s.only_when_searching]
         assert recents_sections == []
+
+
+class TestEndedFinishedCap:
+    def test_section_capped(self) -> None:
+        ended = [
+            HistoryEntryDTO(
+                session_id=f"e{i}",
+                project=f"proj{i}",
+                cwd=f"/tmp/proj{i}",
+                model="",
+                host_app="Terminal",
+                ended_at=datetime.now(tz=UTC).isoformat(),
+                permission_mode="auto",
+            )
+            for i in range(9)
+        ]
+        builder, _, app = _make_builder()
+        app._recently_finished = ended
+        with patch("claudewatch.ui.menu_builder.features.is_enabled", return_value=False):
+            builder.build(_make_sessions())
+        finished_section = next(s for s in builder._sections if str(s.header.title()).startswith("✓ Just Finished"))
+        assert len(finished_section.rows) == 5

@@ -96,11 +96,12 @@ def record_session(  # noqa: PLR0913
     model: str,
     host_app: str,
     permission_mode: str = "",
+    ended_at: str = "",
 ) -> None:
     """Record a session when it ends. Deduplicates by session id (CWD for legacy entries without one)."""
     with _LOCK:
         entries = _load()
-        ts = datetime.now(tz=UTC).isoformat()
+        ts = ended_at or datetime.now(tz=UTC).isoformat()
         if session_id:
             entries = [e for e in entries if e.get("session_id") != session_id]
         else:
@@ -250,6 +251,10 @@ def backfill_recent(window_seconds: float) -> int:
     changed = 0
     with _LOCK:
         entries = _load()
+        if not entries and not os.path.exists(_PATH):
+            # First-ever run: the warm() seed races this thread — seed here too
+            # so creating the file doesn't suppress the one-time full seed.
+            entries = _seed_from_jsonl()
         by_sid = {e.get("session_id", ""): e for e in entries if e.get("session_id")}
         for candidate in candidates:
             existing = by_sid.get(candidate["session_id"])
@@ -257,6 +262,16 @@ def backfill_recent(window_seconds: float) -> int:
                 continue
             if existing is not None:
                 entries.remove(existing)
+                # The live-recorded entry knows the real host app; the scanner
+                # only guesses. Keep the richer fields when replacing.
+                candidate["host_app"] = existing.get("host_app") or candidate["host_app"]
+                candidate["model"] = candidate["model"] or existing.get("model", "")
+            legacy_twin = next(
+                (e for e in entries if not e.get("session_id") and e.get("cwd") == candidate["cwd"]),
+                None,
+            )
+            if legacy_twin is not None and legacy_twin.get("ended_at", "") <= candidate["ended_at"]:
+                entries.remove(legacy_twin)
             entries.append(candidate)
             by_sid[candidate["session_id"]] = candidate
             changed += 1

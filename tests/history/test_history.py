@@ -526,11 +526,17 @@ class TestBackfillRecent:
 
     def test_creates_entry_for_recent_jsonl(self, tmp_path):
         projects = self._projects(tmp_path, age_seconds=120)
-        assert self._run(tmp_path, projects) == 1
+        self._run(tmp_path, projects)
         assert self.entries[0]["session_id"] == "aaaa1111-2222-3333-4444-555566667777"
         assert self.entries[0]["project"] == "myapp"
         assert self.entries[0]["permission_mode"] == "auto"
         assert self.entries[0]["model"] == "claude-opus-4-6"
+
+    def test_creates_entry_when_history_file_exists(self, tmp_path):
+        projects = self._projects(tmp_path, age_seconds=120)
+        (tmp_path / "history.json").write_text("[]")
+        assert self._run(tmp_path, projects) == 1
+        assert self.entries[0]["session_id"] == "aaaa1111-2222-3333-4444-555566667777"
 
     def test_skips_old_jsonl(self, tmp_path):
         projects = self._projects(tmp_path, age_seconds=7200)
@@ -585,7 +591,7 @@ class TestBackfillRecent:
 
     def test_default_mode_recorded_as_is(self, tmp_path):
         projects = self._projects(tmp_path, age_seconds=120, mode="default")
-        assert self._run(tmp_path, projects) == 1
+        self._run(tmp_path, projects)
         assert self.entries[0]["permission_mode"] == "default"
 
     def test_legacy_entries_read_without_permission_mode(self, tmp_path):
@@ -604,3 +610,89 @@ class TestBackfillRecent:
         with patch.object(history, "_PATH", fake_path):
             dtos = history.get_history()
         assert dtos[0].permission_mode == ""
+
+
+class TestRecordSessionEndedAt:
+    def test_ended_at_override_stored(self, tmp_path):
+        fake_path = str(tmp_path / "history.json")
+        with patch.object(history, "_PATH", fake_path):
+            history.record_session("s1", "p", "/cwd", "m", "Terminal", "auto", "2026-11-06T10:00:00+00:00")
+            entries = history._load()
+        assert entries[0]["ended_at"] == "2026-11-06T10:00:00+00:00"
+        assert entries[0]["permission_mode"] == "auto"
+
+
+class TestBackfillInteractions:
+    def test_first_run_still_seeds(self, tmp_path):
+        projects = tmp_path / "projects"
+        recent_dir = projects / "-Users-dev-fresh"
+        recent_dir.mkdir(parents=True)
+        (recent_dir / "aaaa1111-2222-3333-4444-555566667777.jsonl").write_text(
+            json.dumps({"type": "permission-mode", "permissionMode": "auto"}) + "\n"
+        )
+        old_dir = projects / "-Users-dev-ancient"
+        old_dir.mkdir(parents=True)
+        old_jsonl = old_dir / "bbbb1111-2222-3333-4444-555566667777.jsonl"
+        old_jsonl.write_text(json.dumps({"type": "assistant", "message": {"content": []}}) + "\n")
+        import time as _time
+
+        past = _time.time() - 90_000
+        os.utime(old_jsonl, (past, past))
+
+        fake_path = str(tmp_path / "history.json")
+        with (
+            patch.object(history, "_PATH", fake_path),
+            patch.object(history, "CLAUDE_PROJECTS_DIR", str(projects)),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(projects)),
+        ):
+            history.backfill_recent(3600.0)
+            entries = history._load()
+        sids = {e["session_id"] for e in entries}
+        assert "bbbb1111-2222-3333-4444-555566667777" in sids
+        assert "aaaa1111-2222-3333-4444-555566667777" in sids
+
+    def test_replacement_preserves_live_host_app(self, tmp_path):
+        projects = tmp_path / "projects"
+        proj_dir = projects / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        jsonl = proj_dir / "aaaa1111-2222-3333-4444-555566667777.jsonl"
+        jsonl.write_text(json.dumps({"type": "permission-mode", "permissionMode": "auto"}) + "\n")
+
+        fake_path = str(tmp_path / "history.json")
+        with (
+            patch.object(history, "_PATH", fake_path),
+            patch.object(history, "CLAUDE_PROJECTS_DIR", str(projects)),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(projects)),
+        ):
+            history.record_session(
+                "aaaa1111-2222-3333-4444-555566667777",
+                "myapp",
+                "/Users/dev/myapp",
+                "claude-opus-4-8",
+                "VS Code",
+                "auto",
+                "2020-01-01T00:00:00+00:00",
+            )
+            assert history.backfill_recent(3600.0) == 1
+            entries = history._load()
+        assert entries[0]["host_app"] == "VS Code"
+        assert entries[0]["model"] == "claude-opus-4-8"
+
+    def test_legacy_cwd_twin_removed(self, tmp_path):
+        projects = tmp_path / "projects"
+        proj_dir = projects / "-Users-dev-myapp"
+        proj_dir.mkdir(parents=True)
+        jsonl = proj_dir / "aaaa1111-2222-3333-4444-555566667777.jsonl"
+        jsonl.write_text(json.dumps({"type": "assistant", "message": {"content": []}}) + "\n")
+
+        fake_path = str(tmp_path / "history.json")
+        with (
+            patch.object(history, "_PATH", fake_path),
+            patch.object(history, "CLAUDE_PROJECTS_DIR", str(projects)),
+            patch("claudewatch.backend.core.session_log.jsonl.CLAUDE_PROJECTS_DIR", str(projects)),
+        ):
+            history.record_session("", "myapp", "/Users/dev/myapp", "m", "Terminal", "", "2020-01-01T00:00:00+00:00")
+            history.backfill_recent(3600.0)
+            entries = history._load()
+        assert len(entries) == 1
+        assert entries[0]["session_id"] == "aaaa1111-2222-3333-4444-555566667777"

@@ -37,6 +37,7 @@ _BIRTHTIME_SLACK = 5.0  # clock slack when comparing file birth to process start
 _JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
 _AI_TITLE_PATH_CACHE_MAX = 512  # _ai_title_by_path size that triggers dead-path pruning
 _ACTIVITY_BUCKET_SECONDS = 30  # recency-sort granularity — damps row flip-flop between streaming sessions
+_AGENT_HOT_WINDOW = 3600  # independent knob — tuning the finished window must not unlink teammates
 
 
 def sort_by_last_activity(sessions: list[ClaudeSession]) -> None:
@@ -51,9 +52,9 @@ def link_agent_sessions(sessions: list[ClaudeSession], starts: dict[int, float],
     carrying the parent's task text; depending on the Claude Code version they
     may or may not have a JSONL of their own. The parent is the earliest-started
     paired session in a same-task group — teammates always spawn after it.
-    Nesting represents live coordination: only hot members link (working, or
-    active within the just-finished window), so cold leftovers and independent
-    sessions that reuse a task title stay plain top-level rows.
+    Nesting represents live coordination: only hot members link (working,
+    blocked on a prompt, or active within the hot window), so cold leftovers
+    and independent sessions that reuse a task title stay plain top-level rows.
     """
     groups: dict[str, list[ClaudeSession]] = {}
     for s in sessions:
@@ -71,9 +72,7 @@ def link_agent_sessions(sessions: list[ClaudeSession], starts: dict[int, float],
         for s in group:
             if s.pid == parent.pid:
                 continue
-            hot = s.status == SessionStatus.WORKING or (
-                s.last_activity > 0 and now - s.last_activity < JUST_FINISHED_WINDOW
-            )
+            hot = s.status != SessionStatus.IDLE or (s.last_activity > 0 and now - s.last_activity < _AGENT_HOT_WINDOW)
             if hot:
                 s.agent_of_pid = parent.pid
 

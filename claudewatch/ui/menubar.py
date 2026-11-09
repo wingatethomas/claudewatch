@@ -9,6 +9,7 @@ import threading
 import time
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import UTC, datetime
 
 from AppKit import (
     NSAlert,
@@ -31,6 +32,7 @@ from claudewatch.backend.analytics.service import AnalyticsService
 from claudewatch.backend.bookmark.dependencies import get_bookmark_service
 from claudewatch.backend.bookmark.service import BookmarkService
 from claudewatch.backend.core import features
+from claudewatch.backend.core.dto import HistoryEntryDTO
 from claudewatch.backend.core.features import FeatureKey
 from claudewatch.backend.core.login_item import refresh_login_item
 from claudewatch.backend.core.models import ClaudeSession
@@ -136,6 +138,7 @@ class ClaudeWatchApp:
         self._modal_active = False
         self._menu_open = False
         self._search_debounce: NSTimer | None = None
+        self._recently_finished: list[HistoryEntryDTO] = []
         self._prev_pids: set[int] = set()
         self._prev_status: dict[int, str] = {}
         self._prev_sessions: dict[int, ClaudeSession] = {}
@@ -218,6 +221,11 @@ class ClaudeWatchApp:
             log.info("session.ended pid=%d", pid)
             prev = self._prev_sessions.get(pid)
             if prev and prev.agent_of_pid is None:
+                # ended_at means "last did something", not "terminal closed" — a
+                # session idle for hours must not resurface as just finished.
+                ended_at = (
+                    datetime.fromtimestamp(prev.last_activity, tz=UTC).isoformat() if prev.last_activity > 0 else ""
+                )
                 self._history_service.record(
                     session_id=prev.session_id,
                     project=prev.project,
@@ -225,6 +233,7 @@ class ClaudeWatchApp:
                     model=self._usage_service.get_model(prev.cwd, prev.session_id),
                     host_app=prev.host_app.value,
                     permission_mode=prev.permission_mode,
+                    ended_at=ended_at,
                 )
 
         # No status transition logging — it's polling noise.
@@ -346,13 +355,16 @@ class ClaudeWatchApp:
         for s in self.sessions:
             cached = self._summary_service.get_cached(s.cwd) or ""
             parts.append(
-                f"{s.pid}:{s.status.value}:{int(s.just_finished)}:{s.agent_of_pid or 0}:"
+                f"{s.pid}:{s.status.value}:{int(s.just_finished)}:{s.agent_of_pid or 0}:{s.session_id}:"
                 f"{s.project}:{s.task_summary}:{s.last_output}:{cached}"
             )
-        parts.append("ended:" + ",".join(e.session_id for e in self._history_service.recently_finished()))
+        parts.append("ended:" + ",".join(e.session_id for e in self._recently_finished))
         return "|".join(parts)
 
     def update_display(self) -> None:
+        # One snapshot per rebuild cycle — _menu_key and build() must agree on
+        # the ended set or window-edge entries flap between key and render.
+        self._recently_finished = self._history_service.recently_finished()
         self._menu_builder.build(self.sessions)
 
     def on_menu_open(self) -> None:

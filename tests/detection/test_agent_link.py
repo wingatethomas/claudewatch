@@ -188,3 +188,12 @@ class TestDetectLinksAgents:
         by_pid = self._detect(tmp_path, teammate_title=f"otherrepo — ✳ {_TASK} — node ◂ claude")
         assert by_pid[200].status == SessionStatus.IDLE
         assert by_pid[200].agent_of_pid is None
+
+
+class TestAttentionHotness:
+    def test_attention_teammate_stays_linked(self) -> None:
+        parent = _parent(pid=1)
+        teammate = _teammate(pid=9, working=False)
+        teammate.status = SessionStatus.ATTENTION
+        link_agent_sessions([parent, teammate], {1: _NOW - 900, 9: _NOW - 300}, _NOW)
+        assert teammate.agent_of_pid == parent.pid

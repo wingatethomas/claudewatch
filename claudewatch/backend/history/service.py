@@ -50,9 +50,10 @@ class HistoryService(BaseService):
         model: str,
         host_app: str,
         permission_mode: str = "",
+        ended_at: str = "",
     ) -> None:
         """Record a session when it ends."""
-        history_repo.record_session(session_id, project, cwd, model, host_app, permission_mode)
+        history_repo.record_session(session_id, project, cwd, model, host_app, permission_mode, ended_at)
         self._invalidate()
 
     def backfill_recent(self, window_seconds: float = JUST_FINISHED_WINDOW) -> None:
