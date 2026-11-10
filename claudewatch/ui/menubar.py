@@ -367,7 +367,10 @@ class ClaudeWatchApp:
     def update_display(self) -> None:
         # One snapshot per rebuild cycle — _menu_key and build() must agree on
         # the ended set or window-edge entries flap between key and render.
-        self._recently_finished = self._history_service.recently_finished()
+        if features.is_enabled(FeatureKey.JUST_FINISHED):
+            self._recently_finished = self._history_service.recently_finished()
+        else:
+            self._recently_finished = []
         self._menu_builder.build(self.sessions)
 
     def on_menu_open(self) -> None:

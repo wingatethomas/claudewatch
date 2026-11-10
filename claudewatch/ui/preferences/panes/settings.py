@@ -26,6 +26,7 @@ from claudewatch.ui.theme import theme
 
 _FEATURE_DETAILS: dict[str, str] = {
     FeatureKey.BOOKMARKS: "Save sessions to resume later from the menu bar.",
+    FeatureKey.JUST_FINISHED: "List auto-mode sessions that recently completed, even after they exit.",
     FeatureKey.NOTIFICATIONS: "Get alerts when Claude needs your attention.",
     FeatureKey.AUTO_UPDATES: "Check GitHub for new releases periodically.",
     FeatureKey.LAUNCH_AT_LOGIN: "Start ClaudeWatch automatically when you log in.",
@@ -35,7 +36,7 @@ _FEATURE_DETAILS: dict[str, str] = {
 
 # Feature groups — defines section order and which features belong to each
 _FEATURE_GROUPS: list[tuple[str, list[str]]] = [
-    ("Sessions", [FeatureKey.BOOKMARKS]),
+    ("Sessions", [FeatureKey.BOOKMARKS, FeatureKey.JUST_FINISHED]),
     ("Notifications", [FeatureKey.NOTIFICATIONS]),
     ("App", [FeatureKey.LAUNCH_AT_LOGIN, FeatureKey.AUTO_UPDATES, FeatureKey.ACCESSIBILITY]),
 ]

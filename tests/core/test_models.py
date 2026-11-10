@@ -300,3 +300,35 @@ class TestEnums:
         assert STATUS_INDICATOR[SessionStatus.WORKING] == "✦"
         assert STATUS_INDICATOR[SessionStatus.IDLE] == "⏸"
         assert STATUS_INDICATOR[SessionStatus.ATTENTION] == "⚠"
+
+
+class TestJustFinishedWindowSetting:
+    def test_default_window(self):
+        from unittest.mock import patch
+
+        from claudewatch.backend.core.models import just_finished_window_seconds
+
+        with patch("claudewatch.backend.core.models.get_facet", return_value=None):
+            assert just_finished_window_seconds() == 3600.0
+
+    def test_each_choice_maps(self):
+        from unittest.mock import patch
+
+        from claudewatch.backend.core.models import JUST_FINISHED_WINDOW_CHOICES, just_finished_window_seconds
+
+        for choice, seconds in JUST_FINISHED_WINDOW_CHOICES.items():
+            with patch("claudewatch.backend.core.models.get_facet", return_value=choice):
+                assert just_finished_window_seconds() == float(seconds)
+
+    def test_bogus_value_falls_back(self):
+        from unittest.mock import patch
+
+        from claudewatch.backend.core.models import just_finished_window_seconds
+
+        with patch("claudewatch.backend.core.models.get_facet", return_value="99 hours"):
+            assert just_finished_window_seconds() == 3600.0
+
+    def test_max_choice_is_eight_hours(self):
+        from claudewatch.backend.core.models import JUST_FINISHED_WINDOW_CHOICES
+
+        assert max(JUST_FINISHED_WINDOW_CHOICES.values()) == 8 * 3600

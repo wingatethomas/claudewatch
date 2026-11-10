@@ -2,6 +2,8 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
+from claudewatch.backend.core.features import FeatureKey, get_facet
+
 # Raw outputs that shouldn't be shown to users as status text
 _GARBAGE_PATTERNS = (
     "execution error",
@@ -52,7 +54,20 @@ STATUS_INDICATOR = {
     SessionStatus.ATTENTION: "⚠",
 }
 
-JUST_FINISHED_WINDOW = 3600  # seconds an auto-mode session counts as just finished after going idle
+JUST_FINISHED_WINDOW = 3600  # default seconds an auto-mode session counts as just finished after going idle
+
+JUST_FINISHED_WINDOW_CHOICES: dict[str, int] = {
+    "1 hour": 3600,
+    "2 hours": 7200,
+    "4 hours": 14400,
+    "8 hours": 28800,
+}
+
+
+def just_finished_window_seconds() -> float:
+    """User-configured Just Finished window; falls back to the 1-hour default."""
+    value = str(get_facet(FeatureKey.JUST_FINISHED, "window") or "")
+    return float(JUST_FINISHED_WINDOW_CHOICES.get(value, JUST_FINISHED_WINDOW))
 
 
 @dataclass

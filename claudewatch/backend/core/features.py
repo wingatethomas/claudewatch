@@ -22,6 +22,7 @@ class FeatureKey(StrEnum):
     ACCESSIBILITY = "accessibility"
     AUTO_UPDATES = "auto_updates"
     BOOKMARKS = "bookmarks"
+    JUST_FINISHED = "just_finished"
     LAUNCH_AT_LOGIN = "launch_at_login"
     NOTIFICATIONS = "notifications"
     SECURITY = "security"

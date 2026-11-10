@@ -190,3 +190,28 @@ class TestRecentlyFinished:
         self.svc.backfill_recent()
         self.svc.get_all()
         assert mock_repo.get_history.call_count == 2
+
+
+class TestRecentlyFinishedWindowConfig:
+    @patch("claudewatch.backend.history.service.history_repo")
+    def test_wider_window_includes_older_entries(self, mock_repo):
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import patch as _patch
+
+        now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+        five_hours_old = HistoryEntryDTO(
+            session_id="s1",
+            project="p",
+            cwd="/tmp/p",
+            model="m",
+            host_app="Terminal",
+            ended_at=(now - timedelta(hours=5)).isoformat(),
+            permission_mode="auto",
+        )
+        mock_repo.get_history.return_value = [five_hours_old]
+        svc = HistoryService()
+        with _patch("claudewatch.backend.core.models.get_facet", return_value="8 hours"):
+            assert [e.session_id for e in svc.recently_finished(now=now)] == ["s1"]
+        svc2 = HistoryService()
+        with _patch("claudewatch.backend.core.models.get_facet", return_value=None):
+            assert svc2.recently_finished(now=now) == []
