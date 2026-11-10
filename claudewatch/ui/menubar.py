@@ -226,13 +226,16 @@ class ClaudeWatchApp:
                 ended_at = (
                     datetime.fromtimestamp(prev.last_activity, tz=UTC).isoformat() if prev.last_activity > 0 else ""
                 )
+                # A session the user quit through ClaudeWatch is acknowledged —
+                # recording its auto mode would resurface it as just finished.
+                user_quit = pid in self._exiting_pids
                 self._history_service.record(
                     session_id=prev.session_id,
                     project=prev.project,
                     cwd=prev.cwd,
                     model=self._usage_service.get_model(prev.cwd, prev.session_id),
                     host_app=prev.host_app.value,
-                    permission_mode=prev.permission_mode,
+                    permission_mode="" if user_quit else prev.permission_mode,
                     ended_at=ended_at,
                 )
 

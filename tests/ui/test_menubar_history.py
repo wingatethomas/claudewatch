@@ -96,3 +96,22 @@ class TestEndedAtFromLastActivity:
         app = _make_app({1: session})
         ClaudeWatchApp._log_changes(app)
         assert app._history_service.record.call_args.kwargs["ended_at"] == ""
+
+
+class TestUserQuitSuppression:
+    def test_user_quit_session_not_marked_auto(self) -> None:
+        session = _session(1, "mainproj", session_id="s1")
+        session.permission_mode = "auto"
+        session.last_activity = 1_700_000_000.0
+        app = _make_app({1: session})
+        app._exiting_pids = {1: 123.0}
+        ClaudeWatchApp._log_changes(app)
+        assert app._history_service.record.call_args.kwargs["permission_mode"] == ""
+
+    def test_natural_exit_keeps_permission_mode(self) -> None:
+        session = _session(1, "mainproj", session_id="s1")
+        session.permission_mode = "auto"
+        app = _make_app({1: session})
+        app._exiting_pids = {}
+        ClaudeWatchApp._log_changes(app)
+        assert app._history_service.record.call_args.kwargs["permission_mode"] == "auto"
