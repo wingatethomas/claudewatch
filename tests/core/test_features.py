@@ -2,8 +2,20 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from claudewatch.backend.core import features
 from claudewatch.backend.core.features import Facet, Feature, FeatureKey
+
+
+@pytest.fixture(autouse=True)
+def _restore_registry():
+    """These tests clear the global registry; restore it so import-time
+    registrations (e.g. the just-finished feature) survive for later tests."""
+    saved = dict(features._registry)
+    yield
+    features._registry.clear()
+    features._registry.update(saved)
 
 
 class TestFeatureRegistry:
@@ -148,6 +160,7 @@ class TestFeatureKeyEnum:
 
         from claudewatch.backend.bookmark import dependencies as _bookmark_deps
         from claudewatch.backend.core import login_item as _login_item
+        from claudewatch.backend.detection import service as _detection_service
         from claudewatch.backend.notifications import dependencies as _notif_deps
         from claudewatch.backend.security import dependencies as _security_deps
         from claudewatch.backend.summary import dependencies as _summary_deps
@@ -158,7 +171,15 @@ class TestFeatureKeyEnum:
         # register() — so use reload to actually re-run the side effects after
         # the clear().
         features._registry.clear()
-        for mod in (_bookmark_deps, _login_item, _notif_deps, _security_deps, _summary_deps, _updates_deps):
+        for mod in (
+            _bookmark_deps,
+            _detection_service,
+            _login_item,
+            _notif_deps,
+            _security_deps,
+            _summary_deps,
+            _updates_deps,
+        ):
             importlib.reload(mod)
 
         registered = set(features._registry.keys())

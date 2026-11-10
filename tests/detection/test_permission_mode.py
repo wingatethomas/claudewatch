@@ -149,3 +149,26 @@ class TestJustFinishedFlag:
         sessions = self._detect(tmp_path, entries, age_seconds=120)
         assert sessions[0].permission_mode == "auto"
         assert sessions[0].just_finished is True
+
+
+class TestJustFinishedWindowConfig:
+    def test_wider_window_extends_flag(self, tmp_path) -> None:
+        from unittest.mock import patch
+
+        flag_helper = TestJustFinishedFlag()
+        with patch("claudewatch.backend.core.models.get_facet", return_value="2 hours"):
+            sessions = flag_helper._detect(tmp_path, [_mode_entry("auto"), _ASSISTANT], age_seconds=5000)
+        assert sessions[0].just_finished is True
+
+    def test_default_window_excludes_old_session(self, tmp_path) -> None:
+        flag_helper = TestJustFinishedFlag()
+        sessions = flag_helper._detect(tmp_path, [_mode_entry("auto"), _ASSISTANT], age_seconds=5000)
+        assert sessions[0].just_finished is False
+
+    def test_disabled_feature_never_flags(self, tmp_path) -> None:
+        from unittest.mock import patch
+
+        flag_helper = TestJustFinishedFlag()
+        with patch("claudewatch.backend.detection.service.is_enabled", return_value=False):
+            sessions = flag_helper._detect(tmp_path, [_mode_entry("auto"), _ASSISTANT], age_seconds=120)
+        assert sessions[0].just_finished is False

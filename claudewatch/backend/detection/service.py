@@ -6,12 +6,14 @@ import subprocess
 import time
 from collections.abc import Callable
 
+from claudewatch.backend.core.features import Facet, FacetType, Feature, FeatureKey, is_enabled, register
 from claudewatch.backend.core.helpers import run_applescript
 from claudewatch.backend.core.models import (
-    JUST_FINISHED_WINDOW,
+    JUST_FINISHED_WINDOW_CHOICES,
     ClaudeSession,
     HostApp,
     SessionStatus,
+    just_finished_window_seconds,
 )
 from claudewatch.backend.core.process.models import ProcessInfo
 from claudewatch.backend.core.process.service import ProcessService
@@ -38,6 +40,23 @@ _JSONL_IDLE_THRESHOLD = 60  # JSONL not modified within this → definitely idle
 _AI_TITLE_PATH_CACHE_MAX = 512  # _ai_title_by_path size that triggers dead-path pruning
 _ACTIVITY_BUCKET_SECONDS = 30  # recency-sort granularity — damps row flip-flop between streaming sessions
 _AGENT_HOT_WINDOW = 3600  # independent knob — tuning the finished window must not unlink teammates
+
+register(
+    Feature(
+        key=FeatureKey.JUST_FINISHED,
+        description="Just Finished section",
+        default_enabled=True,
+        facets=(
+            Facet(
+                name="window",
+                type=FacetType.CHOICE,
+                default="1 hour",
+                description="How long finished auto sessions stay listed",
+                options=tuple(JUST_FINISHED_WINDOW_CHOICES),
+            ),
+        ),
+    )
+)
 
 
 def sort_by_last_activity(sessions: list[ClaudeSession]) -> None:
@@ -535,12 +554,15 @@ class DetectionService(BaseService):
         now = time.time()
         starts = {s.pid: self._process_service.get_start_time(s.pid) for s in sessions}
         link_agent_sessions(sessions, starts, now)
+        finished_enabled = is_enabled(FeatureKey.JUST_FINISHED)
+        finished_window = just_finished_window_seconds()
         for session in sessions:
             session.just_finished = (
-                session.status == SessionStatus.IDLE
+                finished_enabled
+                and session.status == SessionStatus.IDLE
                 and session.permission_mode == PermissionMode.AUTO
                 and session.last_activity > 0
-                and now - session.last_activity < JUST_FINISHED_WINDOW
+                and now - session.last_activity < finished_window
             )
         sort_by_last_activity(sessions)
         return sessions
