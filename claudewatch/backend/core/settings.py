@@ -50,12 +50,16 @@ def set_setting(key: str, value: object) -> None:
     from the old bundle-ID-scoped domain from shadowing the suite write.
     """
     full_key = f"{_SUITE}.{key}"
+    if get_setting(key) == value:
+        return
     _defaults.setObject_forKey_(value, full_key)
     # Clear stale value from standard domain so it doesn't shadow the suite
     std = NSUserDefaults.standardUserDefaults()
     if std.objectForKey_(full_key) is not None:
         std.removeObjectForKey_(full_key)
-    log.info("setting changed: %s=%s", key, value)
+    # Values can carry session-derived text (e.g. command caches) — the audit
+    # log must never contain session content, so log the key only.
+    log.info("setting changed: %s", key)
 
 
 def get_available_sounds() -> tuple[str, ...]:
