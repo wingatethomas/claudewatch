@@ -85,3 +85,38 @@ class TestMigration:
             config._migrate_from_json()
 
         assert self._fake.objectForKey_("com.claudewatch.poll_interval") is None
+
+
+class TestSetSettingPrivacyAndChurn:
+    """set_setting must not log values (session-derived text) and must skip no-op writes."""
+
+    def setup_method(self):
+        self._fake = _FakeDefaults()
+        self._patcher = patch.object(config, "_defaults", self._fake)
+        self._patcher.start()
+
+    def teardown_method(self):
+        self._patcher.stop()
+
+    def test_log_contains_key_but_not_value(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="claudewatch"):
+            config.set_setting("whatis_cache_test", {"curl -u admin:secretpass": "transfer a URL"})
+        assert "whatis_cache_test" in caplog.text
+        assert "secretpass" not in caplog.text
+
+    def test_unchanged_value_skips_write_and_log(self, caplog):
+        import logging
+
+        config.set_setting("churn_key", "same-value")
+        store_after_first = dict(self._fake._store)
+        with caplog.at_level(logging.INFO, logger="claudewatch"):
+            config.set_setting("churn_key", "same-value")
+        assert self._fake._store == store_after_first
+        assert "churn_key" not in caplog.text
+
+    def test_changed_value_still_writes(self):
+        config.set_setting("churn_key", "v1")
+        config.set_setting("churn_key", "v2")
+        assert self._fake._store["com.claudewatch.churn_key"] == "v2"
